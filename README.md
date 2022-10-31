@@ -1,2 +1,3 @@
 # morebuitins
-more builtins for python code snippets
+
+Things which I thought should be set in builtins.
