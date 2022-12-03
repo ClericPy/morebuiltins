@@ -2,6 +2,7 @@ import json as _json
 import re
 import ssl
 from functools import lru_cache, partial
+from http.client import HTTPResponse
 from pathlib import Path
 from tempfile import gettempdir
 from urllib.error import HTTPError, URLError
@@ -63,24 +64,48 @@ class req:
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
 
-        def _mock_json(body: bytes):
-            return _json.loads(body)
+        def ensure_attrs():
+            if hasattr(HTTPResponse, "get_encoding"):
+                return True
 
-        def _get_text(self):
-            if self.encoding is None:
-                encoding = self._get_encoding()
-            else:
-                encoding = self.encoding
-            return self.content.decode(encoding)
+            def get_body(self):
+                return getattr(self, "_response_body", b"")
 
-        def _get_encoding(self):
-            charset = re.search(rb"charset[\s\"'=]*([a-zA-Z0-9._-]+)", self.content)
-            if charset:
-                encoding = charset.group(1).decode("utf-8", "ignore")
-            else:
-                encoding = "utf-8"
-            return encoding
+            def get_encoding(self):
+                charset = re.search(rb"charset[\s\"'=]*([a-zA-Z0-9._-]+)", self.content)
+                if charset:
+                    encoding = charset.group(1).decode("utf-8", "ignore")
+                else:
+                    encoding = "utf-8"
+                return encoding
 
+            def get_text(self):
+                if self.encoding is None:
+                    encoding = self.get_encoding()
+                else:
+                    encoding = self.encoding
+                return self.content.decode(encoding, 'replace')
+
+            def get_json(self, **kwargs):
+                return _json.loads(self.content, **kwargs)
+
+            def get_code(self):
+                return self.code
+
+            def get_ok(self):
+                return self.code < 400
+
+            for cls in [HTTPResponse, HTTPError]:
+                # monkey patch
+                setattr(cls, "encoding", None)
+                setattr(cls, "status_code", property(get_code))
+                setattr(cls, "content", property(get_body))
+                setattr(cls, "text", property(get_text))
+                setattr(cls, "ok", property(get_ok))
+                setattr(cls, "json", get_json)
+                setattr(cls, "get_encoding", get_encoding)
+
+        ensure_attrs()
         response = None
         try:
             with urlopen(**urlopen_kwargs) as resp:
@@ -89,23 +114,8 @@ class req:
         except HTTPError as error:
             body = error.read()
             response = error
-        setattr(response, "content", body)
-        setattr(response, "status_code", response.code)
+        setattr(response, "_response_body", body)
         setattr(response, "headers", dict(response.headers))
-        setattr(response, "json", partial(_mock_json, body))
-        response.encoding = None
-        if not hasattr(response, "get_encoding"):
-            setattr(
-                response.__class__,
-                "get_encoding",
-                _get_encoding,
-            )
-        if not hasattr(response, "text"):
-            setattr(
-                response.__class__,
-                "text",
-                property(_get_text),
-            )
         return response
 
     @classmethod
@@ -114,6 +124,9 @@ class req:
 
         r = req.get("http://httpbin.org/get?a=2", params={"b": "3"})
         assert r.json()["args"] == {"a": "2", "b": "3"}, r.json()
+        assert r.ok
+        assert r.status_code == 200
+        assert r.text.startswith('{')
         time.sleep(1)
         r = req.post("http://httpbin.org/post?a=2", params={"b": "3"}, data=b"data")
         assert (
@@ -133,3 +146,10 @@ class req:
     delete = partial(request, method="DELETE")
     patch = partial(request, method="PATCH")
     options = partial(request, method="OPTIONS")
+
+
+
+
+if __name__ == "__main__":
+    # DomainParser().test()
+    req.test()
