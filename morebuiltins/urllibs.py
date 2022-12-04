@@ -176,10 +176,10 @@ class DomainParser(object):
         "https://github.com/publicsuffix/list/raw/master/public_suffix_list.dat"
     )
 
-    def __init__(self, lru_cache_size=0, public_suffix_file_cache=...):
-        if public_suffix_file_cache is ...:
-            public_suffix_file_cache = self.PUBLIC_SUFFIX_CACHE_PATH
-        self.public_suffix_file_cache = Path(public_suffix_file_cache)
+    def __init__(self, lru_cache_size=0, public_suffix_file_path=...):
+        if public_suffix_file_path is ...:
+            public_suffix_file_path = self.PUBLIC_SUFFIX_CACHE_PATH
+        self.public_suffix_file_path = Path(public_suffix_file_path)
         self.init_local_cache()
         # use lru_cache for performance
         if lru_cache_size:
@@ -221,19 +221,22 @@ class DomainParser(object):
             return default
 
     def init_local_cache(self):
-        if not self.public_suffix_file_cache.is_file():
-            self.public_suffix_file_cache.parent.mkdir(parents=True, exist_ok=True)
+        if not self.public_suffix_file_path.is_file():
+            self.public_suffix_file_path.parent.mkdir(parents=True, exist_ok=True)
+            headers = {"User-Agent": ""}
             for api in [self.PUBLIC_SUFFIX_API_1, self.PUBLIC_SUFFIX_API_2]:
                 try:
-                    r = req.get(api, headers={"User-Agent": ""}, timeout=30)
-                except req.RequestErrors:
+                    req = Request(method="GET", url=api, headers=headers)
+                    with urlopen(req, timeout=10) as r:
+                        text = r.read().decode("utf-8")
+                        self.public_suffix_file_path.write_text(text, encoding="utf-8")
+                        break
+                except URLError:
                     continue
-                self.public_suffix_file_cache.write_text(r.text, encoding="utf-8")
-                break
             else:
                 raise ValueError("request from public suffix api failed")
         _trie = {}
-        with open(self.public_suffix_file_cache, encoding="utf-8") as f:
+        with open(self.public_suffix_file_path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("/"):
