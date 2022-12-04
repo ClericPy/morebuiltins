@@ -10,17 +10,30 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
-class Config:
-    PUBLIC_SUFFIX_CACHE_PATH = Path(gettempdir()) / "public_suffix_list.dat"
-    PUBLIC_SUFFIX_API_1 = "https://publicsuffix.org/list/public_suffix_list.dat"
-    PUBLIC_SUFFIX_API_2 = (
-        "https://github.com/publicsuffix/list/raw/master/public_suffix_list.dat"
-    )
-
-
 class req:
-    "A simple requests mock, slow but useful."
-    RequestError = (URLError,)
+    """A simple requests mock, slow but useful.
+
+    >>> import time
+    >>> r = req.get("http://httpbin.org/get?a=2", params={"b": "3"})
+    >>> r.json()["args"]
+    {'a': '2', 'b': '3'}
+    >>> r.ok
+    True
+    >>> r.status_code
+    200
+    >>> r.text.startswith('{')
+    True
+    >>> time.sleep(1)
+    >>> r = req.post("http://httpbin.org/post?a=2", params={"b": "3"}, data=b"data")
+    >>> r.json()["data"]
+    'data'
+    >>> time.sleep(1)
+    >>> r = req.post("http://httpbin.org/post?a=2", params={"b": "3"}, json={"json": "yes"})
+    >>> r.json()["json"]
+    {'json': 'yes'}
+    """
+
+    RequestErrors = (URLError,)
 
     @staticmethod
     def request(
@@ -33,6 +46,7 @@ class req:
         timeout=None,
         method: str = "GET",
         verify=True,
+        encoding=None,
         urlopen_kwargs: dict = None,
         **kwargs,
     ):
@@ -45,7 +59,12 @@ class req:
         if headers is None:
             headers = {}
         if data:
-            headers.setdefault("Content-Type", "")
+            if isinstance(data, bytes):
+                headers.setdefault("Content-Type", "")
+            elif isinstance(data, dict):
+                # as form
+                data = urlencode(data, doseq=True).encode("utf-8")
+                headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
         else:
             if json:
                 data = _json.dumps(json, allow_nan=False).encode("utf-8")
@@ -84,7 +103,7 @@ class req:
                     encoding = self.get_encoding()
                 else:
                     encoding = self.encoding
-                return self.content.decode(encoding, 'replace')
+                return self.content.decode(encoding, "replace")
 
             def get_json(self, **kwargs):
                 return _json.loads(self.content, **kwargs)
@@ -115,6 +134,7 @@ class req:
             body = error.read()
             response = error
         setattr(response, "_response_body", body)
+        setattr(response, "encoding", encoding)
         setattr(response, "headers", dict(response.headers))
         return response
 
@@ -126,7 +146,7 @@ class req:
         assert r.json()["args"] == {"a": "2", "b": "3"}, r.json()
         assert r.ok
         assert r.status_code == 200
-        assert r.text.startswith('{')
+        assert r.text.startswith("{")
         time.sleep(1)
         r = req.post("http://httpbin.org/post?a=2", params={"b": "3"}, data=b"data")
         assert (
@@ -148,8 +168,88 @@ class req:
     options = partial(request, method="OPTIONS")
 
 
+class DomainParser(object):
+    # default cache path, avoid request too many times
+    PUBLIC_SUFFIX_CACHE_PATH = Path(gettempdir()) / "public_suffix_list.dat"
+    PUBLIC_SUFFIX_API_1 = "https://publicsuffix.org/list/public_suffix_list.dat"
+    PUBLIC_SUFFIX_API_2 = (
+        "https://github.com/publicsuffix/list/raw/master/public_suffix_list.dat"
+    )
+
+    def __init__(self, lru_cache_size=0, public_suffix_file_cache=...):
+        if public_suffix_file_cache is ...:
+            public_suffix_file_cache = self.PUBLIC_SUFFIX_CACHE_PATH
+        self.public_suffix_file_cache = Path(public_suffix_file_cache)
+        self.init_local_cache()
+        # use lru_cache for performance
+        if lru_cache_size:
+            self._get_fld_cached = lru_cache(maxsize=lru_cache_size)(self._get_fld)
+        else:
+            self._get_fld_cached = self._get_fld
+
+    def test(self):
+        assert self.get_fld("github.com") == "github.com"
+        assert self.get_fld("www.github.com") == "github.com"
+        assert self.get_fld("www.api.github.com.cn") == "github.com.cn"
+        assert self.get_fld("a.b.c.kawasaki.jp") == "c.kawasaki.jp"
+        assert self.get_fld("a.b.c.city.kawasaki.jp") == "c.city.kawasaki.jp"
+        assert self.get_fld("aaaaaaaaaaaa.bbbbbbbbbb.ccccccccccc") == ""
+
+    def get_fld(self, hostname: str, default=""):
+        return self._get_fld_cached(hostname=hostname, default=default)
+
+    def _get_fld(self, hostname: str, default=""):
+        parts = hostname.split(".")
+        _suffix_trie = self._suffix_trie
+        finish = False
+        offset = 0
+        for index in range(len(parts) - 1, -1, -1):
+            part = parts[index]
+            try:
+                offset = index
+                if finish:
+                    break
+                _suffix_trie = _suffix_trie[part]
+            except KeyError:
+                if "*" in _suffix_trie:
+                    finish = True
+                break
+        result = parts[offset:]
+        if len(result) > 1:
+            return ".".join(result)
+        else:
+            return default
+
+    def init_local_cache(self):
+        if not self.public_suffix_file_cache.is_file():
+            self.public_suffix_file_cache.parent.mkdir(parents=True, exist_ok=True)
+            for api in [self.PUBLIC_SUFFIX_API_1, self.PUBLIC_SUFFIX_API_2]:
+                try:
+                    r = req.get(api, headers={"User-Agent": ""}, timeout=30)
+                except req.RequestErrors:
+                    continue
+                self.public_suffix_file_cache.write_text(r.text, encoding="utf-8")
+                break
+            else:
+                raise ValueError("request from public suffix api failed")
+        _trie = {}
+        with open(self.public_suffix_file_cache, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("/"):
+                    parts = line.split(".")
+                    root = _trie
+                    for index in range(len(parts) - 1, -1, -1):
+                        part = parts[index]
+                        # disable * while exist !
+                        if part[0] == "!":
+                            root = root.setdefault(part[1:], {})
+                            break
+                        else:
+                            root = root.setdefault(part, {})
+        self._suffix_trie = _trie
 
 
 if __name__ == "__main__":
-    # DomainParser().test()
-    req.test()
+    DomainParser().test()
+    # req.test()
