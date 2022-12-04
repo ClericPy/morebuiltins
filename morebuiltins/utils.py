@@ -1,16 +1,13 @@
 import asyncio
+import hashlib
 import typing
 from functools import wraps
 from itertools import chain
 from time import gmtime, mktime, strftime, strptime, time, timezone
+from urllib.parse import parse_qsl, quote_plus, urlparse, urlunparse
 
 __all__ = [
-    # "print_mem",
-    # "get_mem",
     # "curlparse",
-    # "Null",
-    # "null",
-    # "itertools_chain",
     "slice_into_pieces",
     "slice_by_size",
     "ttime",
@@ -18,11 +15,9 @@ __all__ = [
     # "split_seconds",
     # "timeago",
     # "timepass",
-    # "md5",
-    # "Counts",
+    "md5",
     "unique",
-    # "unparse_qs",
-    # "unparse_qsl",
+    "unparse_qsl",
     # "Regex",
     # "kill_after",
     # "UA",
@@ -37,7 +32,7 @@ __all__ = [
     # "register_re_findone",
     # "Cooldown",
     # "curlrequests",
-    # "sort_url_query",
+    # "url_query_update",
     "retry",
     # "get_readable_size",
     # "encode_as_base64",
@@ -267,6 +262,76 @@ def guess_interval(nums, accuracy=0):
     diffs = [item for item in diffs if item >= accuracy]
     sorted_diff = sorted(diffs)
     return sorted_diff[len(diffs) // 2]
+
+
+def md5(
+    string,
+    n: typing.Union[tuple, list, int] = 32,
+    encoding="utf-8",
+    default: typing.Callable = lambda obj: str(obj).encode("utf-8"),
+):
+    """str(obj) -> md5_string
+
+    >>> from torequests.utils import md5
+    >>> md5(1, 10)
+    '923820dcc5'
+    >>> md5('test')
+    '098f6bcd4621d373cade4e832627b4f6'
+    >>> md5(['list_demo'], (5, 10))
+    '7152a'
+    """
+    if isinstance(string, bytes):
+        todo = string
+    else:
+        todo = default(string)
+    if n == 32:
+        return hashlib.md5(todo).hexdigest()
+    elif isinstance(n, (int, float)):
+        start, end = (32 - n) // 2, (n - 32) // 2
+        return hashlib.md5(todo).hexdigest()[start:end]
+    elif isinstance(n, (tuple, list)):
+        start, end = n[0], n[1]
+        return hashlib.md5(todo).hexdigest()[start:end]
+
+
+def unparse_qsl(qsl, sort=False, reverse=False):
+    """Reverse conversion for parse_qsl"""
+    result = []
+    if sort:
+        qsl = sorted(qsl, key=lambda x: x[0], reverse=reverse)
+    for key, value in qsl:
+        query_name = quote_plus(key)
+        result.append(query_name + "=" + quote_plus(value))
+    return "&".join(result)
+
+
+def url_query_update(
+    url, sort=False, reverse=False, replace_kwargs=None, params: dict = None
+):
+    """Sort url query args to unify format the url.
+    replace_kwargs is a dict to update attributes before sorting  (such as scheme / netloc...).
+
+    >>> url_query_update('http://www.google.com?b=1&c=1&a=1', sort=True)
+    'http://www.google.com?a=1&b=1&c=1'
+    >>> url_query_update("http://www.google.com?b=1&c=1&a=1", sort=True, replace_kwargs={"netloc": "new_host.com"})
+    'http://new_host.com?a=1&b=1&c=1'
+    >>> url_query_update("http://www.google.com?b=1&c=1&a=1", sort=True, params={"c": "2", "d": "1"})
+    'http://www.google.com?a=1&b=1&c=2&d=1'
+    """
+    parsed = urlparse(url)
+    if replace_kwargs is None:
+        replace_kwargs = {}
+    todo = parse_qsl(parsed.query)
+    if params:
+        for index, item in enumerate(todo):
+            if item[0] in params:
+                todo[index] = (item[0], params.pop(item[0]))
+        for k, v in params.items():
+            todo.append((k, v))
+    sorted_parsed = parsed._replace(
+        query=unparse_qsl(todo, sort=sort, reverse=reverse), **replace_kwargs
+    )
+    return urlunparse(sorted_parsed)
 
 
 if __name__ == "__main__":
