@@ -6,8 +6,17 @@ from http.client import HTTPResponse
 from pathlib import Path
 from tempfile import gettempdir
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, quote_plus, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
+
+
+__all__ = [
+    "req",
+    "DomainParser",
+    "unparse_qsl",
+    "update_url_query",
+    # "get_lan_ip",
+]
 
 
 class req:
@@ -23,12 +32,10 @@ class req:
     200
     >>> r.text.startswith('{')
     True
-    >>> time.sleep(1)
     >>> r = req.post("http://httpbin.org/post?a=2", params={"b": "3"}, data=b"data")
     >>> r.json()["data"]
     'data'
-    >>> time.sleep(1)
-    >>> r = req.post("http://httpbin.org/post?a=2", params={"b": "3"}, json={"json": "yes"})
+    >>> r = req.post("http://httpbin.org/post?a=2", json={"json": "yes"})
     >>> r.json()["json"]
     {'json': 'yes'}
     """
@@ -138,27 +145,6 @@ class req:
         setattr(response, "headers", dict(response.headers))
         return response
 
-    @classmethod
-    def test(cls):
-        import time
-
-        r = req.get("http://httpbin.org/get?a=2", params={"b": "3"})
-        assert r.json()["args"] == {"a": "2", "b": "3"}, r.json()
-        assert r.ok
-        assert r.status_code == 200
-        assert r.text.startswith("{")
-        time.sleep(1)
-        r = req.post("http://httpbin.org/post?a=2", params={"b": "3"}, data=b"data")
-        assert (
-            r.json()["args"] == {"a": "2", "b": "3"} and r.json()["data"] == "data"
-        ), r.json()
-        time.sleep(1)
-        r = req.post(
-            "http://httpbin.org/post?a=2", params={"b": "3"}, json={"json": "yes"}
-        )
-        assert r.json()["json"] == {"json": "yes"}, r.json()
-        time.sleep(1)
-
     get = partial(request, method="GET")
     head = partial(request, method="HEAD")
     post = partial(request, method="POST")
@@ -169,36 +155,54 @@ class req:
 
 
 class DomainParser(object):
-    # default cache path, avoid request too many times
+    """Get the Second-level domain(SLD) from a hostname or a url.
+
+    >>> domain_parser = DomainParser()
+    >>> domain_parser.parse_hostname("github.com")
+    'github.com'
+    >>> domain_parser.parse_hostname("www.github.com")
+    'github.com'
+    >>> domain_parser.parse_hostname("www.api.github.com.cn")
+    'github.com.cn'
+    >>> domain_parser.parse_hostname("a.b.c.kawasaki.jp")
+    'c.kawasaki.jp'
+    >>> domain_parser.parse_hostname("a.b.c.city.kawasaki.jp")
+    'c.city.kawasaki.jp'
+    >>> domain_parser.parse_hostname("a.bbbbbb.cccccc")
+    ''
+    >>> domain_parser.parse_hostname("a.bbbbbb.cccccc", default="b.c")
+    'b.c'
+    >>> domain_parser.parse_url("https://github.com/ClericPy/morebuiltins")
+    'github.com'
+
+    """
+
+    # default cache path, avoid request too many times.
+    # you can reset this variable with new path or use $TMP path by default.
     PUBLIC_SUFFIX_CACHE_PATH = Path(gettempdir()) / "public_suffix_list.dat"
     PUBLIC_SUFFIX_API_1 = "https://publicsuffix.org/list/public_suffix_list.dat"
     PUBLIC_SUFFIX_API_2 = (
         "https://github.com/publicsuffix/list/raw/master/public_suffix_list.dat"
     )
 
-    def __init__(self, lru_cache_size=0, public_suffix_file_path=...):
+    def __init__(self, cache_size=0, public_suffix_file_path=...):
         if public_suffix_file_path is ...:
             public_suffix_file_path = self.PUBLIC_SUFFIX_CACHE_PATH
         self.public_suffix_file_path = Path(public_suffix_file_path)
         self.init_local_cache()
         # use lru_cache for performance
-        if lru_cache_size:
-            self._get_fld_cached = lru_cache(maxsize=lru_cache_size)(self._get_fld)
+        if cache_size:
+            self._parse_cached = lru_cache(maxsize=cache_size)(self._parse)
         else:
-            self._get_fld_cached = self._get_fld
+            self._parse_cached = self._parse
 
-    def test(self):
-        assert self.get_fld("github.com") == "github.com"
-        assert self.get_fld("www.github.com") == "github.com"
-        assert self.get_fld("www.api.github.com.cn") == "github.com.cn"
-        assert self.get_fld("a.b.c.kawasaki.jp") == "c.kawasaki.jp"
-        assert self.get_fld("a.b.c.city.kawasaki.jp") == "c.city.kawasaki.jp"
-        assert self.get_fld("aaaaaaaaaaaa.bbbbbbbbbb.ccccccccccc") == ""
+    def parse_url(self, url: str, default=""):
+        return self.parse_hostname(urlparse(url).netloc, default=default)
 
-    def get_fld(self, hostname: str, default=""):
-        return self._get_fld_cached(hostname=hostname, default=default)
+    def parse_hostname(self, hostname: str, default=""):
+        return self._parse_cached(hostname=hostname, default=default)
 
-    def _get_fld(self, hostname: str, default=""):
+    def _parse(self, hostname: str, default=""):
         parts = hostname.split(".")
         _suffix_trie = self._suffix_trie
         finish = False
@@ -253,6 +257,47 @@ class DomainParser(object):
         self._suffix_trie = _trie
 
 
+def unparse_qsl(qsl, sort=False, reverse=False):
+    """Reverse conversion for parse_qsl"""
+    result = []
+    if sort:
+        qsl = sorted(qsl, key=lambda x: x[0], reverse=reverse)
+    for key, value in qsl:
+        query_name = quote_plus(key)
+        result.append(query_name + "=" + quote_plus(value))
+    return "&".join(result)
+
+
+def update_url_query(
+    url, sort=False, reverse=False, replace_kwargs=None, params: dict = None
+):
+    """Sort url query args to unify format the url.
+    replace_kwargs is a dict to update attributes before sorting  (such as scheme / netloc...).
+
+    >>> update_url_query('http://www.google.com?b=1&c=1&a=1', sort=True)
+    'http://www.google.com?a=1&b=1&c=1'
+    >>> update_url_query("http://www.google.com?b=1&c=1&a=1", sort=True, replace_kwargs={"netloc": "new_host.com"})
+    'http://new_host.com?a=1&b=1&c=1'
+    >>> update_url_query("http://www.google.com?b=1&c=1&a=1", sort=True, params={"c": "2", "d": "1"})
+    'http://www.google.com?a=1&b=1&c=2&d=1'
+    """
+    parsed = urlparse(url)
+    if replace_kwargs is None:
+        replace_kwargs = {}
+    todo = parse_qsl(parsed.query)
+    if params:
+        for index, item in enumerate(todo):
+            if item[0] in params:
+                todo[index] = (item[0], params.pop(item[0]))
+        for k, v in params.items():
+            todo.append((k, v))
+    sorted_parsed = parsed._replace(
+        query=unparse_qsl(todo, sort=sort, reverse=reverse), **replace_kwargs
+    )
+    return urlunparse(sorted_parsed)
+
+
 if __name__ == "__main__":
-    DomainParser().test()
-    # req.test()
+    import doctest
+
+    doctest.testmod()
