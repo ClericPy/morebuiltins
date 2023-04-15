@@ -1,8 +1,13 @@
 import doctest
 
-import morebuiltins.urllibs
-import morebuiltins.utils
+import morebuiltins.urllib
+import morebuiltins.util
+
+
+def test_all():
+    doctest.testmod(morebuiltins.util)
+    doctest.testmod(morebuiltins.urllib)
+
 
 if __name__ == "__main__":
-    doctest.testmod(morebuiltins.utils)
-    # doctest.testmod(morebuiltins.urllibs)
+    test_all()

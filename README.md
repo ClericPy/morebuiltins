@@ -1,3 +1,3 @@
 # morebuitins
 
-Things which I thought should be set in builtins.
+Python built-ins is nice, I need more.
