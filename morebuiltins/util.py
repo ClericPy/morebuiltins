@@ -1,8 +1,12 @@
 import asyncio
 import hashlib
+import json
+import re
 import typing
 from functools import wraps
 from itertools import chain
+import base64
+import gzip
 
 __all__ = [
     # "curlparse",
@@ -14,23 +18,20 @@ __all__ = [
     "get_hash",
     "unique",
     # "try_import",
-    # "ensure_request",
     # "ClipboardWatcher",
     # "Saver",
     "guess_interval",
     # "find_one",
-    # "register_re_findone",
     # "Cooldown",
     # "curlrequests",
     "url_query_update",
     "retry",
     # "get_host",
-    # "find_jsons",
+    "find_jsons",
+    "code_inline",
     # "update_url",
     # "stagger_sort",
 ]
-
-
 
 
 def slice_into_pieces(
@@ -238,6 +239,98 @@ def get_hash(
         return _temp[start:end]
 
 
+def find_jsons(string, return_as="json", json_loader=json.loads):
+    """Generator for finding the valid JSON string, only support dict and list.
+    return_as could be 'json' / 'object' / 'index'.
+    ::
+
+        >>> list(find_jsons('string["123"]123{"a": 1}[{"a": 1, "b": [1,2,3]}]'))
+        ['["123"]', '{"a": 1}', '[{"a": 1, "b": [1,2,3]}]']
+        >>> list(find_jsons('string[]{}{"a": 1}'))
+        ['[]', '{}', '{"a": 1}']
+        >>> list(find_jsons('string[]|{}string{"a": 1}', return_as='index'))
+        [(6, 8), (9, 11), (17, 25)]
+        >>> list(find_jsons('xxxx[{"a": 1, "b": [1,2,3]}]xxxx', return_as='object'))
+        [[{'a': 1, 'b': [1, 2, 3]}]]
+    """
+
+    def find_matched(string, left, right):
+        _stack = []
+        for index, char in enumerate(string):
+            if char == left:
+                _stack.append(index)
+            elif char == right:
+                try:
+                    _stack.pop()
+                except IndexError:
+                    break
+            else:
+                continue
+            if not _stack:
+                return index
+
+    search = re.search
+    brackets_map = {"{": "}", "[": "]"}
+    current_start = 0
+    while string and isinstance(string, str):
+        _match = search(r"[\[\{]", string)
+        if not _match:
+            break
+        left = _match.group()
+        right = brackets_map[left]
+        _start = _match.span()[0]
+        sub_string = string[_start:]
+        _end = find_matched(sub_string, left, right)
+        if _end is None:
+            # not found matched, check next left
+            string = sub_string
+            continue
+        string = sub_string[_end + 1 :]
+        try:
+            _partial = sub_string[: _end + 1]
+            _loaded_result = json_loader(_partial)
+            yield {
+                "json": _partial,
+                "object": _loaded_result,
+                "index": (current_start + _start, current_start + _start + _end + 1),
+            }.get(return_as, string)
+        except (ValueError, TypeError):
+            pass
+        current_start += _start + _end + 1
+
+
+def code_inline(
+    source_code: str,
+    encoder: typing.Literal["b16", "b32", "b64", "b85"] = "b85",
+) -> str:
+    """Make the python source code inline.
+
+    Args:
+        source_code (str): python original code.
+        encoder (typing.Literal['b16', 'b32', 'b64', 'b85'], optional): base64.encoder. Defaults to "b85".
+
+    Returns:
+        new source code inline.
+    ::
+
+        >>> code1 = ''
+        >>> code2 = code_inline("variable=12345")
+        >>> # import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY8mBl+`0{<&ZEXqtw%1N~~G%_|Z1ptx!(o_xr000".encode("u8"))))
+        >>> exec(code2)
+        >>> variable
+        12345
+
+    """
+    _encoder = getattr(base64, f"{encoder}encode")
+    _source = source_code.encode(encoding="u8")
+    _source = gzip.compress(_source)
+    _source = _encoder(_source)
+    code = _source.decode("u8")
+    result = (
+        "import base64,gzip;exec(gzip.decompress("
+        f'base64.{encoder}decode("{code}".encode("u8"))))'
+    )
+    return result
 
 
 if __name__ == "__main__":
