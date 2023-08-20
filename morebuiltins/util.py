@@ -1,12 +1,12 @@
 import asyncio
+import base64
+import gzip
 import hashlib
 import json
 import re
 import typing
 from functools import wraps
-from itertools import chain
-import base64
-import gzip
+from itertools import islice
 
 __all__ = [
     # "curlparse",
@@ -36,7 +36,7 @@ __all__ = [
 
 def slice_into_pieces(
     items: typing.Sequence, n: int
-) -> typing.Generator[tuple, None, None]:
+) -> typing.Generator[typing.Union[tuple, typing.Sequence], None, None]:
     """Slice a sequence into `n` pieces, return a generation of n pieces.
     Examples:
         >>> for chunk in slice_into_pieces(range(10), 3):
@@ -65,8 +65,8 @@ def slice_into_pieces(
 
 
 def slice_by_size(
-    items: typing.Sequence, size: int
-) -> typing.Generator[tuple, None, None]:
+    items: typing.Sequence, size: int, callback=tuple
+) -> typing.Generator[typing.Union[tuple, typing.Sequence], None, None]:
     """Slice a sequence into chunks, return as a generation of tuple chunks with `size`.
     Examples:
         >>> for chunk in slice_by_size(range(10), 3):
@@ -86,12 +86,13 @@ def slice_by_size(
     Yields:
         Iterator[typing.Generator[tuple, None, None]]: a tuple with n of items.
     """
-    filling = object()
-    for it in zip(*(chain(items, [filling] * size),) * size):
-        if filling in it:
-            it = tuple(i for i in it if i is not filling)
-        if it:
-            yield it
+    iter_seq = iter(items)
+    while True:
+        chunk = callback(islice(iter_seq, size))
+        if chunk:
+            yield chunk
+        else:
+            break
 
 
 def unique(
