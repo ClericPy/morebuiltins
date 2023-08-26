@@ -23,7 +23,7 @@ class req:
     """A simple requests mock, slow but useful.
 
     >>> import time
-    >>> r = req.get("http://httpbin.org/get?a=2", params={"b": "3"})
+    >>> r = req.get("https://postman-echo.com/get?a=2", timeout=3, params={"b": "3"})
     >>> r.json()["args"]
     {'a': '2', 'b': '3'}
     >>> r.ok
@@ -32,12 +32,12 @@ class req:
     200
     >>> r.text.startswith('{')
     True
-    >>> r = req.post("http://httpbin.org/post?a=2", params={"b": "3"}, data=b"data")
-    >>> r.json()["data"]
-    'data'
-    >>> r = req.post("http://httpbin.org/post?a=2", json={"json": "yes"})
+    >>> r = req.post("https://postman-echo.com/post?a=2", timeout=3, params={"b": "3"}, data=b"mock data")
+    >>> [r.json()["data"], r.json()["args"]]
+    ['mock data', {'a': '2', 'b': '3'}]
+    >>> r = req.post("https://postman-echo.com/post?a=2", timeout=3, json={"json": "yes json"})
     >>> r.json()["json"]
-    {'json': 'yes'}
+    {'json': 'yes json'}
     """
 
     RequestErrors = (URLError,)
