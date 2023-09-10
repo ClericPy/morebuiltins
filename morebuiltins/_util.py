@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import typing
+from enum import IntEnum
 from functools import wraps
 from itertools import islice
 
@@ -24,13 +25,15 @@ __all__ = [
     # "find_one",
     # "Cooldown",
     # "curlrequests",
-    "url_query_update",
+    # "url_query_update",
     "retry",
     # "get_host",
     "find_jsons",
     "code_inline",
     # "update_url",
     # "stagger_sort",
+    "readable_size",
+    "readable_time",
 ]
 
 
@@ -332,6 +335,87 @@ def code_inline(
         f'base64.{encoder}decode("{code}".encode("u8"))))'
     )
     return result
+
+
+class BytesUnit(IntEnum):
+    B = 0
+    KB = 1 * 1024**1
+    MB = 1 * 1024**2
+    GB = 1 * 1024**3
+    TB = 1 * 1024**4
+    PB = 1 * 1024**5
+
+
+class TimeUnit(IntEnum):
+    secs = 0
+    mins = 60
+    hours = 60 * 60
+    days = 60 * 60 * 24
+    mons = 60 * 60 * 24 * 30
+    years = 60 * 60 * 24 * 365
+
+
+def readable_num(b, enum_class=IntEnum, rounded: int = None):
+    unit = None
+    for _unit in enum_class:
+        if unit is None or _unit.value <= b:
+            unit = _unit
+        elif _unit.value > b:
+            break
+    assert unit is not None
+    return f"{round(b / (unit.value or 1), rounded)} {unit.name}"
+
+
+def readable_size(b, rounded: int = None):
+    """From B to readable string.
+
+    Args:
+        b: B
+        rounded (int, optional): arg for round. Defaults to None.
+
+    Returns:
+        str
+
+    ::
+        >>> readable_size(0)
+        '0 B'
+        >>> for i in range(0, 6):
+        ...     [1.2345 * 1024**i, readable_size(1.2345 * 1024**i, rounded=3)]
+        ...
+        [1.2345, '1.234 B']
+        [1264.128, '1.234 KB']
+        [1294467.072, '1.234 MB']
+        [1325534281.728, '1.234 GB']
+        [1357347104489.472, '1.234 TB']
+        [1389923434997219.2, '1.234 PB']
+    """
+    return readable_num(b, BytesUnit, rounded=rounded)
+
+
+def readable_time(secs, rounded: int = None):
+    """From secs to readable string.
+
+    Args:
+        b: seconds
+        rounded (int, optional): arg for round. Defaults to None.
+
+    Returns:
+        str
+
+    ::
+        >>> readable_time(0)
+        '0 secs'
+        >>> for i in range(0, 6):
+        ...     [1.2345 * 60**i, readable_time(1.2345 * 60**i, rounded=1)]
+        ...
+        [1.2345, '1.2 secs']
+        [74.07, '1.2 mins']
+        [4444.2, '1.2 hours']
+        [266652.0, '3.1 days']
+        [15999120.0, '6.2 mons']
+        [959947200.0, '30.4 years']
+    """
+    return readable_num(secs, TimeUnit, rounded=rounded)
 
 
 if __name__ == "__main__":
