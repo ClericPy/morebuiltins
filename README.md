@@ -1,3 +1,3 @@
 # morebuitins
 
-Python built-ins is nice, I need more.
+I need much more built-ins.

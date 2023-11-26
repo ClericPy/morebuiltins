@@ -432,18 +432,18 @@ class Validator:
         ...     name: str = field(default=None, metadata={"description": "姓名"})
         ...     age: int = field(default=0, metadata={"description": "年龄"})
         ...     screen: dict = None
-        ...     _direct_types = {int: int, str: str, float: float, dict: lambda i: i["s"]}
+        ...     _type_callback = {int: int, str: str, float: float, dict: lambda i: i["s"]}
         ...
         >>>
         >>> print(Person(123, "123", {"s": 3}))
         Person(name='123', age=123, screen=3)
     """
-    _direct_types = {int: int, str: str, float: float}
+    _type_callback = {int: int, str: str, float: float}
 
     def __post_init__(self):
         for f in self.__dataclass_fields__.values():
-            if f.type in self._direct_types:
-                setattr(self, f.name, self._direct_types[f.type](getattr(self, f.name)))
+            if f.type in self._type_callback:
+                setattr(self, f.name, self._type_callback[f.type](getattr(self, f.name)))
 
 
 if __name__ == "__main__":
