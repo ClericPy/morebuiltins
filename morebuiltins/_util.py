@@ -418,6 +418,34 @@ def readable_time(secs, rounded: int = None):
     return readable_num(secs, TimeUnit, rounded=rounded)
 
 
+class Validator:
+    """
+    Validator for dataclasses.
+
+    ::
+        >>> from dataclasses import dataclass, field
+        >>> # from morebuiltins._util import Validator
+        >>>
+        >>>
+        >>> @dataclass
+        ... class Person(Validator):
+        ...     name: str = field(default=None, metadata={"description": "姓名"})
+        ...     age: int = field(default=0, metadata={"description": "年龄"})
+        ...     screen: dict = None
+        ...     _direct_types = {int: int, str: str, float: float, dict: lambda i: i["s"]}
+        ...
+        >>>
+        >>> print(Person(123, "123", {"s": 3}))
+        Person(name='123', age=123, screen=3)
+    """
+    _direct_types = {int: int, str: str, float: float}
+
+    def __post_init__(self):
+        for f in self.__dataclass_fields__.values():
+            if f.type in self._direct_types:
+                setattr(self, f.name, self._direct_types[f.type](getattr(self, f.name)))
+
+
 if __name__ == "__main__":
     import doctest
 
