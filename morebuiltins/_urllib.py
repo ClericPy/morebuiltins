@@ -1,11 +1,11 @@
 import json as _json
 import re
 import ssl
-from typing import Optional
 from functools import lru_cache, partial
 from http.client import HTTPResponse
 from pathlib import Path
 from tempfile import gettempdir
+from typing import Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote_plus, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
@@ -14,12 +14,10 @@ __all__ = [
     "req",
     "DomainParser",
     "unparse_qsl",
-    "update_url_query",
-    # "get_lan_ip",
+    "update_url",
+    "get_lan_ip",
     # "curlparse",
     # "curlrequests",
-    # "update_url",
-    # "url_query_update",
 ]
 
 
@@ -273,37 +271,67 @@ def unparse_qsl(qsl, sort=False, reverse=False):
     return "&".join(result)
 
 
-def update_url_query(
+def update_url(
     url,
+    params: Optional[dict] = None,
+    replace_kwargs=None,
     sort=False,
     reverse=False,
-    replace_kwargs=None,
-    params: Optional[dict] = None,
+    **kw_params,
 ):
     """Sort url query args to unify format the url.
     replace_kwargs is a dict to update attributes before sorting  (such as scheme / netloc...).
 
-    >>> update_url_query('http://www.google.com?b=1&c=1&a=1', sort=True)
-    'http://www.google.com?a=1&b=1&c=1'
-    >>> update_url_query("http://www.google.com?b=1&c=1&a=1", sort=True, replace_kwargs={"netloc": "new_host.com"})
-    'http://new_host.com?a=1&b=1&c=1'
-    >>> update_url_query("http://www.google.com?b=1&c=1&a=1", sort=True, params={"c": "2", "d": "1"})
-    'http://www.google.com?a=1&b=1&c=2&d=1'
+    >>> update_url('http://www.github.com?b=1&c=1&a=1', {"b": None, "c": None})  # remove params
+    'http://www.github.com?a=1'
+    >>> update_url("http://www.github.com?b=1&c=1&a=1", a="123", b=None)  # update params with kwargs
+    'http://www.github.com?c=1&a=123'
+    >>> update_url('http://www.github.com?b=1&c=1&a=1', sort=True)  # sort params
+    'http://www.github.com?a=1&b=1&c=1'
+    >>> update_url("http://www.github.com?b=1&c=1&a=1", {"a": "999"})  # update params
+    'http://www.github.com?b=1&c=1&a=999'
+    >>> update_url("http://www.github.com?b=1&c=1&a=1", replace_kwargs={"netloc": "www.new_host.com"})  # update netloc
+    'http://www.new_host.com?b=1&c=1&a=1'
     """
     parsed = urlparse(url)
     if replace_kwargs is None:
         replace_kwargs = {}
     todo = parse_qsl(parsed.query)
     if params:
+        kw_params.update(params)
+    if kw_params:
+        delete_indexes = set()
         for index, item in enumerate(todo):
-            if item[0] in params:
-                todo[index] = (item[0], params.pop(item[0]))
-        for k, v in params.items():
+            name, _ = item
+            if name in kw_params:
+                new = kw_params.pop(name)
+                if new is None:
+                    delete_indexes.add(index)
+                else:
+                    todo[index] = (name, new)
+        if delete_indexes:
+            todo = [
+                item for index, item in enumerate(todo) if index not in delete_indexes
+            ]
+        for k, v in kw_params.items():
             todo.append((k, v))
     sorted_parsed = parsed._replace(
         query=unparse_qsl(todo, sort=sort, reverse=reverse), **replace_kwargs
     )
     return urlunparse(sorted_parsed)
+
+
+def get_lan_ip():
+    if not globals().get("socket"):
+        import socket
+    try:
+        # 获取本机主机名
+        hostname = socket.gethostname()
+        # 获取本机IP
+        return socket.gethostbyname(hostname)
+    except Exception:
+        pass
+    return ""
 
 
 if __name__ == "__main__":
