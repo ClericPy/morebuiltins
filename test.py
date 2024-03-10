@@ -9,6 +9,7 @@ def test_all():
     doctest.testmod(morebuiltins._time)
     doctest.testmod(morebuiltins._util)
     doctest.testmod(morebuiltins._urllib)
+    print("all is ok")
 
 
 if __name__ == "__main__":
