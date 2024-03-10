@@ -4,42 +4,39 @@ import gzip
 import hashlib
 import json
 import re
-import typing
 from enum import IntEnum
 from functools import wraps
-from itertools import islice
+from itertools import groupby, islice
+from typing import (
+    Any,
+    Callable,
+    Generator,
+    Literal,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+)
 
 __all__ = [
-    # "curlparse",
     "slice_into_pieces",
     "slice_by_size",
-    # "split_seconds",
-    # "timeago",
-    # "timepass",
     "get_hash",
     "unique",
-    # "try_import",
-    # "ClipboardWatcher",
-    # "Saver",
     "guess_interval",
-    # "find_one",
-    # "Cooldown",
-    # "curlrequests",
-    # "url_query_update",
     "retry",
-    # "get_host",
     "find_jsons",
     "code_inline",
-    # "update_url",
-    # "stagger_sort",
-    "readable_size",
-    "readable_time",
+    "stagger_sort",
+    "read_size",
+    "read_time",
 ]
 
 
 def slice_into_pieces(
-    items: typing.Sequence, n: int
-) -> typing.Generator[typing.Union[tuple, typing.Sequence], None, None]:
+    items: Sequence, n: int
+) -> Generator[Union[tuple, Sequence], None, None]:
     """Slice a sequence into `n` pieces, return a generation of n pieces.
     Examples:
         >>> for chunk in slice_into_pieces(range(10), 3):
@@ -53,10 +50,10 @@ def slice_into_pieces(
         n (_type_): split the given sequence into `n` pieces.
 
     Returns:
-        typing.Generator[tuple, None, None]: a generator with tuples.
+        Generator[tuple, None, None]: a generator with tuples.
 
     Yields:
-        Iterator[typing.Generator[tuple, None, None]]: a tuple with n of items.
+        Iterator[Generator[tuple, None, None]]: a tuple with n of items.
     """
     length = len(items)
     if length % n == 0:
@@ -68,8 +65,8 @@ def slice_into_pieces(
 
 
 def slice_by_size(
-    items: typing.Sequence, size: int, callback=tuple
-) -> typing.Generator[typing.Union[tuple, typing.Sequence], None, None]:
+    items: Sequence, size: int, callback=tuple
+) -> Generator[Union[tuple, Sequence], None, None]:
     """Slice a sequence into chunks, return as a generation of tuple chunks with `size`.
     Examples:
         >>> for chunk in slice_by_size(range(10), 3):
@@ -80,14 +77,14 @@ def slice_by_size(
         (9,)
 
     Args:
-        items (typing.Sequence): _description_
+        items (Sequence): _description_
         size (int): _description_
 
     Returns:
-        typing.Generator[tuple, None, None]: a generator with tuples.
+        Generator[tuple, None, None]: a generator with tuples.
 
     Yields:
-        Iterator[typing.Generator[tuple, None, None]]: a tuple with n of items.
+        Iterator[Generator[tuple, None, None]]: a tuple with n of items.
     """
     iter_seq = iter(items)
     while True:
@@ -99,8 +96,8 @@ def slice_by_size(
 
 
 def unique(
-    items: typing.Sequence, key: typing.Callable = None
-) -> typing.Generator[typing.Any, None, None]:
+    items: Sequence, key: Optional[Callable] = None
+) -> Generator[Any, None, None]:
     """Unique the seq and keep the order(fast).
 
     Examples:
@@ -111,14 +108,14 @@ def unique(
         ['01', '1', '2']
 
     Args:
-        items (typing.Sequence): raw sequence.
-        key (typing.Callable): the function to normalize each item.
+        items (Sequence): raw sequence.
+        key (Callable): the function to normalize each item.
 
     Returns:
-        typing.Generator[tuple, None, None]: a generator with unique items.
+        Generator[tuple, None, None]: a generator with unique items.
 
     Yields:
-        Iterator[typing.Generator[tuple, None, None]]: the unique item.
+        Iterator[Generator[tuple, None, None]]: the unique item.
     """
     seen: set = set()
     _add = seen.add
@@ -137,7 +134,7 @@ def unique(
 
 def retry(
     tries=2,
-    exceptions: typing.Tuple[typing.Type[BaseException]] = (Exception,),
+    exceptions: Tuple[Type[BaseException]] = (Exception,),
     return_exception=False,
 ):
     """A decorator which will retry the function `tries` times while raising given exceptions.
@@ -151,7 +148,7 @@ def retry(
 
     Args:
         tries (int, optional): try n times, if n==1 means no retry. Defaults to 1.
-        exceptions (typing.Tuple[typing.Type[BaseException]], optional): only retry the given errors. Defaults to (Exception,).
+        exceptions (Tuple[Type[BaseException]], optional): only retry the given errors. Defaults to (Exception,).
         return_exception (bool, optional): raise the last exception or return it. Defaults to False.
     """
 
@@ -211,8 +208,8 @@ def guess_interval(nums, accuracy=0):
 
 def get_hash(
     string,
-    n: typing.Union[tuple, list, int, None] = None,
-    default: typing.Callable = lambda obj: str(obj).encode("utf-8"),
+    n: Union[tuple, list, int, None] = None,
+    default: Callable = lambda obj: str(obj).encode("utf-8"),
     func=hashlib.md5,
 ) -> str:
     """Get the md5_string from given string
@@ -305,13 +302,13 @@ def find_jsons(string, return_as="json", json_loader=json.loads):
 
 def code_inline(
     source_code: str,
-    encoder: typing.Literal["b16", "b32", "b64", "b85"] = "b85",
+    encoder: Literal["b16", "b32", "b64", "b85"] = "b85",
 ) -> str:
     """Make the python source code inline.
 
     Args:
         source_code (str): python original code.
-        encoder (typing.Literal['b16', 'b32', 'b64', 'b85'], optional): base64.encoder. Defaults to "b85".
+        encoder (Literal['b16', 'b32', 'b64', 'b85'], optional): base64.encoder. Defaults to "b85".
 
     Returns:
         new source code inline.
@@ -344,6 +341,9 @@ class BytesUnit(IntEnum):
     GB = 1 * 1024**3
     TB = 1 * 1024**4
     PB = 1 * 1024**5
+    EB = 1 * 1024**6
+    ZB = 1 * 1024**7
+    YB = 1 * 1024**8
 
 
 class TimeUnit(IntEnum):
@@ -355,7 +355,7 @@ class TimeUnit(IntEnum):
     years = 60 * 60 * 24 * 365
 
 
-def readable_num(b, enum_class=IntEnum, rounded: int = None):
+def read_num(b, enum_class=IntEnum, rounded: Optional[int] = None):
     unit = None
     for _unit in enum_class:
         if unit is None or _unit.value <= b:
@@ -366,7 +366,7 @@ def readable_num(b, enum_class=IntEnum, rounded: int = None):
     return f"{round(b / (unit.value or 1), rounded)} {unit.name}"
 
 
-def readable_size(b, rounded: int = None):
+def read_size(b, rounded: Optional[int] = None):
     """From B to readable string.
 
     Args:
@@ -377,22 +377,26 @@ def readable_size(b, rounded: int = None):
         str
 
     ::
-        >>> readable_size(0)
+        >>> read_size(0)
         '0 B'
-        >>> for i in range(0, 6):
-        ...     [1.2345 * 1024**i, readable_size(1.2345 * 1024**i, rounded=3)]
+        >>> for i in range(0, 10):
+        ...     [1 * 1024**i, read_size(1 * 1024**i, rounded=1)]
         ...
-        [1.2345, '1.234 B']
-        [1264.128, '1.234 KB']
-        [1294467.072, '1.234 MB']
-        [1325534281.728, '1.234 GB']
-        [1357347104489.472, '1.234 TB']
-        [1389923434997219.2, '1.234 PB']
+        [1, '1.0 B']
+        [1024, '1.0 KB']
+        [1048576, '1.0 MB']
+        [1073741824, '1.0 GB']
+        [1099511627776, '1.0 TB']
+        [1125899906842624, '1.0 PB']
+        [1152921504606846976, '1.0 EB']
+        [1180591620717411303424, '1.0 ZB']
+        [1208925819614629174706176, '1.0 YB']
+        [1237940039285380274899124224, '1024.0 YB']
     """
-    return readable_num(b, BytesUnit, rounded=rounded)
+    return read_num(b, BytesUnit, rounded=rounded)
 
 
-def readable_time(secs, rounded: int = None):
+def read_time(secs, rounded: Optional[int] = None):
     """From secs to readable string.
 
     Args:
@@ -403,10 +407,10 @@ def readable_time(secs, rounded: int = None):
         str
 
     ::
-        >>> readable_time(0)
+        >>> read_time(0)
         '0 secs'
         >>> for i in range(0, 6):
-        ...     [1.2345 * 60**i, readable_time(1.2345 * 60**i, rounded=1)]
+        ...     [1.2345 * 60**i, read_time(1.2345 * 60**i, rounded=1)]
         ...
         [1.2345, '1.2 secs']
         [74.07, '1.2 mins']
@@ -415,7 +419,7 @@ def readable_time(secs, rounded: int = None):
         [15999120.0, '6.2 mons']
         [959947200.0, '30.4 years']
     """
-    return readable_num(secs, TimeUnit, rounded=rounded)
+    return read_num(secs, TimeUnit, rounded=rounded)
 
 
 class Validator:
@@ -448,6 +452,33 @@ class Validator:
     #         field.name: getattr(self, field.name)
     #         for field in self.__dataclass_fields__.values()
     #     }
+
+
+def stagger_sort(items, group_key, sort_key=None):
+    """Ensure that the same group is ordered and staggered, avoid data skew. Will not affect the original list, return as a generator.
+
+    ::
+
+        >>> items = [('a', 0), ('a', 2), ('a', 1), ('b', 0), ('b', 1)]
+        >>> list(stagger_sort(items, sort_key=lambda i: (i[0], i[1]), group_key=lambda i: i[0]))
+        [('a', 0), ('b', 0), ('a', 1), ('b', 1), ('a', 2)]
+
+    """
+    if sort_key:
+        items = sorted(items, key=sort_key)
+    buckets = [list(group[1]) for group in groupby(items, group_key)]
+    while True:
+        next_buckets = []
+        for items in buckets:
+            try:
+                yield items.pop(0)
+                next_buckets.append(items)
+            except IndexError:
+                pass
+        if next_buckets:
+            buckets = next_buckets
+        else:
+            break
 
 
 if __name__ == "__main__":
