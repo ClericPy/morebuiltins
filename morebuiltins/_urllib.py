@@ -1,6 +1,7 @@
 import json as _json
 import re
 import ssl
+from typing import Optional
 from functools import lru_cache, partial
 from http.client import HTTPResponse
 from pathlib import Path
@@ -8,7 +9,6 @@ from tempfile import gettempdir
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote_plus, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
-
 
 __all__ = [
     "req",
@@ -45,16 +45,16 @@ class req:
     @staticmethod
     def request(
         url: str,
-        params: dict = None,
-        headers: dict = None,
-        data: bytes = None,
+        params: Optional[dict] = None,
+        headers: Optional[dict] = None,
+        data: Optional[bytes] = None,
         json=None,
         form=None,
         timeout=None,
         method: str = "GET",
         verify=True,
         encoding=None,
-        urlopen_kwargs: dict = None,
+        urlopen_kwargs: Optional[dict] = None,
         **kwargs,
     ):
         if params:
@@ -269,7 +269,11 @@ def unparse_qsl(qsl, sort=False, reverse=False):
 
 
 def update_url_query(
-    url, sort=False, reverse=False, replace_kwargs=None, params: dict = None
+    url,
+    sort=False,
+    reverse=False,
+    replace_kwargs=None,
+    params: Optional[dict] = None,
 ):
     """Sort url query args to unify format the url.
     replace_kwargs is a dict to update attributes before sorting  (such as scheme / netloc...).
