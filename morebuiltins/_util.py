@@ -443,6 +443,12 @@ class Validator:
             if callback:
                 setattr(self, f.name, callback(getattr(self, f.name)))
 
+    # def to_dict(self):
+    #     return {
+    #         field.name: getattr(self, field.name)
+    #         for field in self.__dataclass_fields__.values()
+    #     }
+
 
 if __name__ == "__main__":
     import doctest
