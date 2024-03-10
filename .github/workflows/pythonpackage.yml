@@ -16,9 +16,6 @@ jobs:
               uses: actions/setup-python@v1
               with:
                   python-version: ${{ matrix.python-version }}
-            - name: Install dependencies
-              run: |
-                  python setup.py install
             - name: Test
               run: |
                   python test.py
@@ -36,9 +33,6 @@ jobs:
               uses: actions/setup-python@v1
               with:
                   python-version: ${{ matrix.python-version }}
-            - name: Install dependencies
-              run: |
-                  python setup.py install
             - name: Test
               run: |
                   python test.py
@@ -56,9 +50,6 @@ jobs:
               uses: actions/setup-python@v1
               with:
                   python-version: ${{ matrix.python-version }}
-            - name: Install dependencies
-              run: |
-                  python setup.py install
             - name: Test
               run: |
                   python test.py
