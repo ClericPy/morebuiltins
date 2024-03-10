@@ -1,18 +1,18 @@
-import typing
+from typing import Union, Optional
 from time import gmtime, mktime, strftime, strptime, time, timezone
 
 __all__ = ["ttime", "ptime"]
 
 
 def ttime(
-    timestamp: typing.Union[float, int, None] = None,
+    timestamp: Optional[Union[float, int]] = None,
     tzone: int = int(-timezone / 3600),
     fmt="%Y-%m-%d %H:%M:%S",
 ) -> str:
     """From timestamp to timestr. Translate timestamp into human-readable: %Y-%m-%d %H:%M:%S.
 
     Examples:
-        >>> ttime(1486572818.421858323)
+        >>> ttime(1486572818.421858323, tzone=8)
         '2017-02-09 00:53:38'
 
     Args:
@@ -29,13 +29,13 @@ def ttime(
 
 
 def ptime(
-    timestr: str = None,
+    timestr: Optional[str] = None,
     tzone: int = int(-timezone / 3600),
     fmt: str = "%Y-%m-%d %H:%M:%S",
 ) -> int:
     """From timestr to timestamp. Translate %Y-%m-%d %H:%M:%S into timestamp.
     Examples:
-        >>> ptime("2018-03-15 01:27:56")
+        >>> ptime("2018-03-15 01:27:56", tzone=8)
         1521048476
 
     Args:
