@@ -7,9 +7,14 @@ def test_all():
     import doctest
 
     print("all is testing")
-    doctest.testmod(morebuiltins._time)
-    doctest.testmod(morebuiltins._util)
-    doctest.testmod(morebuiltins._urllib)
+    for mod in [
+        morebuiltins._time,
+        morebuiltins._util,
+        morebuiltins._urllib,
+    ]:
+        result = doctest.testmod(mod)
+        if result.failed:
+            raise RuntimeError
     print("all is ok")
 
 
