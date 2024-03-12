@@ -4,9 +4,6 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Optional
 
-# L: 2**32
-# Q: 2**64
-
 
 class IPCEncoder(ABC):
     # HEAD_LENGTH: Package length
@@ -23,14 +20,14 @@ class IPCEncoder(ABC):
 
     def dumps(self, raw: Any) -> bytes:
         result = self._dumps(raw)
-        head = len(result).to_bytes(self.HEAD_SIZE)
+        head = len(result).to_bytes(self.HEAD_SIZE, "big")
         return head + result
 
     def loads(self, raw: Any) -> bytes:
         return self._loads(raw)
 
     def get_size(self, head: bytes):
-        return int.from_bytes(head)
+        return int.from_bytes(head, "big")
 
 
 class JSONEncoder(IPCEncoder):
@@ -159,7 +156,7 @@ class SocketServer:
             await self.server.start_serving()
         else:
             self.server = await asyncio.start_unix_server(
-                self.handler, path=self.host, **self.connect_kwargs
+                self.connect_callback, path=self.host, **self.connect_kwargs
             )
 
     def is_serving(self):
@@ -263,14 +260,16 @@ async def _test_ipc():
         print("Test Linux Unix Domain Socket")
         from pathlib import Path
 
-        path = Path("./uds.sock")
-        path.touch()
+        path = Path("/tmp/uds.sock")
+        # path.touch(0o777)
         task = asyncio.create_task(test_server(path.absolute().as_posix(), port=None))
+        await asyncio.sleep(1)
         await test_client(path.absolute().as_posix(), port=None)
         await task
 
     # test socket
     task = asyncio.create_task(test_server())
+    await asyncio.sleep(1)
     await test_client()
     await task
 
