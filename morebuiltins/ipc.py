@@ -105,9 +105,8 @@ class SocketServer:
 
     @staticmethod
     async def default_handler(self: "SocketServer", item: Any):
-        print(
-            time.strftime("%Y-%m-%d %H:%M:%S"), "[Server] recv:", repr(item), flush=True
-        )
+        now = time.strftime("%Y-%m-%d %H:%M:%S")
+        print(now, "[Server] recv:", repr(item), flush=True)
         if item == "[shutdown server]":
             await self.close()
         else:
@@ -241,14 +240,9 @@ async def test_client(host="127.0.0.1", port=8090):
         for case in [123, "123", None, {"a"}, ["a"], ("a",), {"a": 1}]:
             await c.send(case)
             response = await c.recv()
-            print(
-                time.strftime("%Y-%m-%d %H:%M:%S"),
-                "[Client]",
-                repr(case),
-                "=>",
-                repr(response),
-            )
-            assert case == response
+            now = time.strftime("%Y-%m-%d %H:%M:%S")
+            print(now, "[Client]", repr(case), "=>", repr(response))
+            assert case == response, [case, response]
         await c.send("[shutdown server]")
 
 
