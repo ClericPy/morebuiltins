@@ -255,7 +255,7 @@ async def test_client():
         await c.send("[shutdown server]")
 
 
-async def test_ipc():
+async def _test_ipc():
     # test normal
     task = asyncio.create_task(test_server())
     await test_client()
@@ -270,5 +270,9 @@ async def test_ipc():
         await task
 
 
+def test_ipc():
+    asyncio.run(_test_ipc())
+
+
 if __name__ == "__main__":
-    asyncio.run(test_ipc())
+    test_ipc()
