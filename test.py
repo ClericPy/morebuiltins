@@ -1,6 +1,7 @@
 import morebuiltins._time
 import morebuiltins._urllib
-import morebuiltins._util
+import morebuiltins._utils
+import morebuiltins._ipc
 
 
 def test_all():
@@ -9,12 +10,13 @@ def test_all():
     print("all is testing")
     for mod in [
         morebuiltins._time,
-        morebuiltins._util,
+        morebuiltins._utils,
         morebuiltins._urllib,
     ]:
         result = doctest.testmod(mod)
         if result.failed:
             raise RuntimeError
+    morebuiltins._ipc.test_ipc()
     print("all is ok")
 
 
