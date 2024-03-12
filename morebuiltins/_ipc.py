@@ -261,8 +261,12 @@ async def _test_ipc():
 
     if platform.system() == "Linux":
         print("Test Linux Unix Domain Socket")
-        task = asyncio.create_task(test_server("./uds.sock", port=None))
-        await test_client("./uds.sock", port=None)
+        from pathlib import Path
+
+        path = Path("./uds.sock")
+        path.touch()
+        task = asyncio.create_task(test_server(path.absolute().as_posix(), port=None))
+        await test_client(path.absolute().as_posix(), port=None)
         await task
 
     # test socket
