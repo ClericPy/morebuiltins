@@ -239,8 +239,8 @@ async def test_server(host="127.0.0.1", port=8090):
         await asyncio.sleep(2)
 
 
-async def test_client():
-    async with SocketClient(host="127.0.0.1", port=8090, encoder=PickleEncoder()) as c:
+async def test_client(host="127.0.0.1", port=8090):
+    async with SocketClient(host=host, port=port, encoder=PickleEncoder()) as c:
         for case in [123, "123", None, {"a"}, ["a"], ("a",), {"a": 1}]:
             await c.send(case)
             response = await c.recv()
@@ -262,7 +262,7 @@ async def _test_ipc():
     if platform.system() == "Linux":
         print("Test Linux Unix Domain Socket")
         task = asyncio.create_task(test_server("./uds.sock", port=None))
-        await test_client()
+        await test_client("./uds.sock", port=None)
         await task
 
     # test socket
