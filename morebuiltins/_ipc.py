@@ -253,25 +253,21 @@ async def test_client(host="127.0.0.1", port=8090):
 
 
 async def _test_ipc():
-    # test unix domain socket
     import platform
 
     if platform.system() == "Linux":
+        # test unix domain socket
         print("Test Linux Unix Domain Socket")
-        from pathlib import Path
-
-        path = Path("/tmp/uds.sock")
-        # path.touch(0o777)
-        task = asyncio.create_task(test_server(path.absolute().as_posix(), port=None))
-        await asyncio.sleep(1)
-        await test_client(path.absolute().as_posix(), port=None)
-        await task
+        host = "/tmp/uds.sock"
+        port = None
+        async with SocketServer(host=host, port=port, encoder=PickleEncoder()):
+            await test_client(host, port=None)
 
     # test socket
-    task = asyncio.create_task(test_server())
-    await asyncio.sleep(1)
-    await test_client()
-    await task
+    host = "127.0.0.1"
+    port = 8090
+    async with SocketServer(host=host, port=port, encoder=PickleEncoder()):
+        await test_client()
 
 
 def test_ipc():
