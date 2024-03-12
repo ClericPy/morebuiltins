@@ -1,22 +1,28 @@
+import time
+
+import morebuiltins._ipc
 import morebuiltins._time
 import morebuiltins._urllib
 import morebuiltins._utils
-import morebuiltins._ipc
 
 
 def test_all():
     import doctest
 
-    print("all is testing")
     for mod in [
         morebuiltins._time,
         morebuiltins._utils,
         morebuiltins._urllib,
     ]:
+        print(time.strftime("%Y-%m-%d %H:%M:%S"), "test", mod.__name__, flush=True)
         result = doctest.testmod(mod)
         if result.failed:
             raise RuntimeError
-    morebuiltins._ipc.test_ipc()
+        print(time.strftime("%Y-%m-%d %H:%M:%S"), "pass", mod.__name__, flush=True)
+    mod = morebuiltins._ipc
+    print(time.strftime("%Y-%m-%d %H:%M:%S"), "test", mod.__name__, flush=True)
+    mod.test_ipc()
+    print(time.strftime("%Y-%m-%d %H:%M:%S"), "pass", mod.__name__, flush=True)
     print("all is ok")
 
 

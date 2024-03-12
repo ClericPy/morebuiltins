@@ -256,10 +256,6 @@ async def test_client():
 
 
 async def _test_ipc():
-    # test normal
-    task = asyncio.create_task(test_server())
-    await test_client()
-    await task
     # test unix domain socket
     import platform
 
@@ -268,6 +264,11 @@ async def _test_ipc():
         task = asyncio.create_task(test_server("./uds.sock", port=None))
         await test_client()
         await task
+
+    # test socket
+    task = asyncio.create_task(test_server())
+    await test_client()
+    await task
 
 
 def test_ipc():
