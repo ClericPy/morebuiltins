@@ -159,7 +159,7 @@ class SocketServer:
             await self.server.start_serving()
         else:
             self.server = await asyncio.start_unix_server(
-                self.handle, path=self.host, **self.connect_kwargs
+                self.handler, path=self.host, **self.connect_kwargs
             )
 
     def is_serving(self):
