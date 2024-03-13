@@ -530,11 +530,17 @@ def format_error(
         ...     format_error(e)
         '[<doctest __main__.format_error[0]>:<module>:2] 1 / 0 # test >>> ZeroDivisionError(division by zero)'
         >>> try:
-        ...     def func(): 1 / 0
-        ...     func()
+        ...     def func1(): 1 / 0
+        ...     func1()
         ... except Exception as e:
         ...     format_error(e)
-        '[<doctest __main__.format_error[1]>:func:2] def func(): 1 / 0 >>> ZeroDivisionError(division by zero)'
+        '[<doctest __main__.format_error[1]>:func1:2] def func1(): 1 / 0 >>> ZeroDivisionError(division by zero)'
+        >>> try:
+        ...     def func2(): 1 / 0
+        ...     func2()
+        ... except Exception as e:
+        ...     format_error(e, index=0)
+        '[<doctest __main__.format_error[2]>:<module>:3] func2() >>> ZeroDivisionError(division by zero)'
     """
     try:
         tb = traceback.extract_tb(error.__traceback__)[index]
