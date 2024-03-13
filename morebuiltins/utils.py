@@ -16,6 +16,7 @@ from typing import (
     Sequence,
     Tuple,
     Type,
+    TypedDict,
     Union,
 )
 
@@ -31,6 +32,9 @@ __all__ = [
     "stagger_sort",
     "read_size",
     "read_time",
+    "typeddict_init",
+    # "progress_bar1"
+    # "progress_bar2"
 ]
 
 
@@ -479,6 +483,34 @@ def stagger_sort(items, group_key, sort_key=None):
             buckets = next_buckets
         else:
             break
+
+
+def typeddict_init(cls: Type[dict], **kwargs):
+    """Init a default object from TypedDict subclass.
+
+    ::
+
+        >>> class Demo(dict):
+        ...     int_obj: int
+        ...     float_obj: float
+        ...     bytes_obj: bytes
+        ...     str_obj: str
+        ...     list_obj: list
+        ...     tuple_obj: tuple
+        ...     set_obj: set
+        ...     dict_obj: dict
+        >>> typeddict_init(Demo, bytes_obj=b'1')
+        {'int_obj': 0, 'float_obj': 0.0, 'bytes_obj': b'1', 'str_obj': '', 'list_obj': [], 'tuple_obj': (), 'set_obj': set(), 'dict_obj': {}}
+
+    """
+    result = cls()
+    built_in_types = {int, float, bytes, str, list, tuple, set, dict}
+    for key, tp in cls.__annotations__.items():
+        if key in kwargs:
+            result[key] = kwargs[key]
+        elif tp in built_in_types:
+            result[key] = tp()
+    return result
 
 
 if __name__ == "__main__":
