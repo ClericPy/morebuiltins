@@ -4,9 +4,11 @@ import gzip
 import hashlib
 import json
 import re
+import traceback
 from enum import IntEnum
 from functools import wraps
 from itertools import groupby, islice
+from os.path import basename
 from typing import (
     Any,
     Callable,
@@ -16,7 +18,6 @@ from typing import (
     Sequence,
     Tuple,
     Type,
-    TypedDict,
     Union,
 )
 
@@ -485,7 +486,7 @@ def stagger_sort(items, group_key, sort_key=None):
             break
 
 
-def typeddict_init(cls: Type[dict], **kwargs):
+def typeddict_init(cls: Type[dict], **kwargs) -> dict:
     """Init a default object from TypedDict subclass.
 
     ::
@@ -511,6 +512,39 @@ def typeddict_init(cls: Type[dict], **kwargs):
         elif tp in built_in_types:
             result[key] = tp()
     return result
+
+
+def format_error(
+    error: BaseException,
+    index=-1,
+    template="[{filename}:{tb.name}:{tb.lineno}] {tb.line} >>> {error.__class__.__name__}({error!s})",
+    **kwargs,
+) -> str:
+    """Get the frame info from Exception.
+
+        ::
+
+        >>> try:
+        ...     1 / 0 # test
+        ... except Exception as e:
+        ...     format_error(e)
+        '[<doctest __main__.format_error[0]>:<module>:2] 1 / 0 # test >>> ZeroDivisionError(division by zero)'
+        >>> try:
+        ...     def func(): 1 / 0
+        ...     func()
+        ... except Exception as e:
+        ...     format_error(e)
+        '[<doctest __main__.format_error[1]>:func:2] def func(): 1 / 0 >>> ZeroDivisionError(division by zero)'
+    """
+    try:
+        tb = traceback.extract_tb(error.__traceback__)[index]
+        _kwargs = dict(locals())
+        _kwargs.update(kwargs)
+        if "filename" not in _kwargs:
+            _kwargs["filename"] = basename(tb.filename)
+        return template.format_map(_kwargs)
+    except IndexError:
+        return ""
 
 
 if __name__ == "__main__":
