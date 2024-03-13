@@ -528,19 +528,19 @@ def format_error(
         ...     1 / 0 # test
         ... except Exception as e:
         ...     format_error(e)
-        '[<doctest __main__.format_error[0]>:<module>:2] 1 / 0 # test >>> ZeroDivisionError(division by zero)'
+        '[<doctest morebuiltins.utils.format_error[0]>:<module>:2] 1 / 0 # test >>> ZeroDivisionError(division by zero)'
         >>> try:
         ...     def func1(): 1 / 0
         ...     func1()
         ... except Exception as e:
         ...     format_error(e)
-        '[<doctest __main__.format_error[1]>:func1:2] def func1(): 1 / 0 >>> ZeroDivisionError(division by zero)'
+        '[<doctest morebuiltins.utils.format_error[1]>:func1:2] def func1(): 1 / 0 >>> ZeroDivisionError(division by zero)'
         >>> try:
         ...     def func2(): 1 / 0
         ...     func2()
         ... except Exception as e:
         ...     format_error(e, index=0)
-        '[<doctest __main__.format_error[2]>:<module>:3] func2() >>> ZeroDivisionError(division by zero)'
+        '[<doctest morebuiltins.utils.format_error[2]>:<module>:3] func2() >>> ZeroDivisionError(division by zero)'
     """
     try:
         tb = traceback.extract_tb(error.__traceback__)[index]
@@ -555,5 +555,6 @@ def format_error(
 
 if __name__ == "__main__":
     import doctest
+    __name__ = 'morebuiltins.utils'
 
     doctest.testmod()
