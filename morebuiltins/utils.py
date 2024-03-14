@@ -34,6 +34,7 @@ __all__ = [
     "read_size",
     "read_time",
     "typeddict_init",
+    "format_error",
     # "progress_bar1"
     # "progress_bar2"
 ]
@@ -514,36 +515,84 @@ def typeddict_init(cls: Type[dict], **kwargs) -> dict:
     return result
 
 
+def always_return_value(value):
+    """Got a function always return the given value.
+
+    >>> func = always_return_value(1)
+    >>> func(1, 2, 3)
+    1
+    >>> func(1, 2, c=3)
+    1
+    """
+
+    def func(*args, **kws):
+        return value
+
+    return func
+
+
+def _tb_filter(tb: traceback.FrameSummary):
+    "filt tb with code-line and not in site-packages"
+    return tb.line and "site-packages" not in tb.filename
+
+
 def format_error(
     error: BaseException,
     index=-1,
+    filter: Optional[Callable] = _tb_filter,
     template="[{filename}:{tb.name}:{tb.lineno}] {tb.line} >>> {error.__class__.__name__}({error!s})",
     **kwargs,
 ) -> str:
-    """Get the frame info from Exception.
+    """Get the frame info from Exception. Default filter will skip `site-packages` info.
 
-        ::
+    ::
 
-        >>> try:
-        ...     1 / 0 # test
-        ... except Exception as e:
-        ...     format_error(e)
-        '[<doctest morebuiltins.utils.format_error[0]>:<module>:2] 1 / 0 # test >>> ZeroDivisionError(division by zero)'
-        >>> try:
-        ...     def func1(): 1 / 0
-        ...     func1()
-        ... except Exception as e:
-        ...     format_error(e)
-        '[<doctest morebuiltins.utils.format_error[1]>:func1:2] def func1(): 1 / 0 >>> ZeroDivisionError(division by zero)'
-        >>> try:
-        ...     def func2(): 1 / 0
-        ...     func2()
-        ... except Exception as e:
-        ...     format_error(e, index=0)
-        '[<doctest morebuiltins.utils.format_error[2]>:<module>:3] func2() >>> ZeroDivisionError(division by zero)'
+    >>> try:
+    ...     # test default
+    ...     1 / 0
+    ... except Exception as e:
+    ...     format_error(e)
+    '[<doctest morebuiltins.utils.format_error[0]>:<module>:3] 1 / 0 >>> ZeroDivisionError(division by zero)'
+    >>> try:
+    ...     # test in function
+    ...     def func1(): 1 / 0
+    ...     func1()
+    ... except Exception as e:
+    ...     format_error(e)
+    '[<doctest morebuiltins.utils.format_error[1]>:func1:3] def func1(): 1 / 0 >>> ZeroDivisionError(division by zero)'
+    >>> try:
+    ...     # test index
+    ...     def func2(): 1 / 0
+    ...     func2()
+    ... except Exception as e:
+    ...     format_error(e, index=0)
+    '[<doctest morebuiltins.utils.format_error[2]>:<module>:4] func2() >>> ZeroDivisionError(division by zero)'
+    >>> try:
+    ...     # test with default filter
+    ...     import os
+    ...     os.path.join(1, 2, 3)
+    ... except Exception as e:
+    ...     format_error(e)
+    '[<doctest morebuiltins.utils.format_error[3]>:<module>:4] os.path.join(1, 2, 3) >>> TypeError(expected str, bytes or os.PathLike object, not int)'
+    >>> try:
+    ...     # test without filter
+    ...     import os
+    ...     os.path.join(1, 2, 3)
+    ... except Exception as e:
+    ...     format_error(e, filter=None)
+    '[<frozen ntpath>:join:108]  >>> TypeError(expected str, bytes or os.PathLike object, not int)'
+    >>> try:
+    ...     # test without custom filter. refuse all, raise IndexError to return ''
+    ...     import os
+    ...     os.path.join(1, 2, 3)
+    ... except Exception as e:
+    ...     format_error(e, filter=lambda tb: False)
+    ''
     """
     try:
-        tb = traceback.extract_tb(error.__traceback__)[index]
+        filter = filter or always_return_value(True)
+        tbs = [tb for tb in traceback.extract_tb(error.__traceback__) if filter(tb)]
+        tb = tbs[index]
         _kwargs = dict(locals())
         _kwargs.update(kwargs)
         if "filename" not in _kwargs:
@@ -555,6 +604,7 @@ def format_error(
 
 if __name__ == "__main__":
     import doctest
-    __name__ = 'morebuiltins.utils'
+
+    __name__ = "morebuiltins.utils"
 
     doctest.testmod()
