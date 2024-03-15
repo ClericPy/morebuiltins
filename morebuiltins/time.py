@@ -9,7 +9,7 @@ def ttime(
     tzone: int = int(-timezone / 3600),
     fmt="%Y-%m-%d %H:%M:%S",
 ) -> str:
-    """From timestamp to timestr. Translate timestamp into human-readable: %Y-%m-%d %H:%M:%S.
+    """From timestamp to timestring. Translate timestamp into human-readable: %Y-%m-%d %H:%M:%S.
 
     Examples:
         >>> ttime(1486572818.421858323, tzone=8)
@@ -29,17 +29,17 @@ def ttime(
 
 
 def ptime(
-    timestr: Optional[str] = None,
+    timestring: Optional[str] = None,
     tzone: int = int(-timezone / 3600),
     fmt: str = "%Y-%m-%d %H:%M:%S",
 ) -> int:
-    """From timestr to timestamp. Translate %Y-%m-%d %H:%M:%S into timestamp.
+    """From timestring to timestamp. Translate %Y-%m-%d %H:%M:%S into timestamp.
     Examples:
         >>> ptime("2018-03-15 01:27:56", tzone=8)
         1521048476
 
     Args:
-        timestr (str, optional): string like 2018-03-15 01:27:56. Defaults to ttime().
+        timestring (str, optional): string like 2018-03-15 01:27:56. Defaults to ttime().
         tzone (int, optional): time compensation. Defaults to int(-timezone / 3600).
         fmt (_type_, optional): strptime fmt. Defaults to "%Y-%m-%d %H:%M:%S".
 
@@ -47,9 +47,9 @@ def ptime(
         str: time string formatted.
     """
     fix_tz = -(tzone * 3600 + timezone)
-    #: str(timestr) for datetime.datetime object
-    if timestr:
-        return int(mktime(strptime(str(timestr), fmt)) + fix_tz)
+    #: str(timestring) for datetime.datetime object
+    if timestring:
+        return int(mktime(strptime(str(timestring), fmt)) + fix_tz)
     else:
         return int(time())
 
