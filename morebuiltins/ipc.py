@@ -1,11 +1,22 @@
 import asyncio
 import sys
-import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Optional
 
 
+__all__ = [
+    "IPCEncoder",
+    "JSONEncoder",
+    "PickleEncoder",
+    "SocketLogHandlerEncoder",
+    "SocketServer",
+    "SocketClient",
+]
+
+
 class IPCEncoder(ABC):
+    """Abstract base class for all encoders; users only need to implement two abstract methods to set up the communication protocol. Note that different header lengths affect the packaging max length."""
+
     # HEAD_LENGTH: Package length
     # 1: 256 B, 2: 64 KB, 3: 16 MB, 4: 4 GB, 5: 1 TB, 6: 256 TB
     HEAD_SIZE = 4
@@ -105,8 +116,8 @@ class SocketServer:
 
     @staticmethod
     async def default_handler(self: "SocketServer", item: Any):
-        now = time.strftime("%Y-%m-%d %H:%M:%S")
-        print(now, "[Server] recv:", repr(item), flush=True)
+        if globals().get("print_log"):
+            print("[Server] recv:", repr(item), "=>", "send:", repr(item), flush=True)
         if item == "[shutdown server]":
             await self.close()
         else:
@@ -122,7 +133,7 @@ class SocketServer:
         while self.is_serving() and not reader.at_eof():
             head = await reader.read(head_size)
             if len(head) < head_size:
-                break
+                raise RuntimeError()
             content_length = self.encoder.get_size(head)
             # read the whole package
             head = await reader.read(content_length)
@@ -216,7 +227,7 @@ class SocketClient:
             assert not reader.at_eof()
             head = await reader.read(self.encoder.HEAD_SIZE)
             if len(head) < self.encoder.HEAD_SIZE:
-                raise ValueError()
+                raise RuntimeError()
             content_length = self.encoder.get_size(head)
             head = await reader.read(content_length)
             while len(head) < content_length:
@@ -240,8 +251,8 @@ async def test_client(host="127.0.0.1", port=8090):
         for case in [123, "123", None, {"a"}, ["a"], ("a",), {"a": 1}]:
             await c.send(case)
             response = await c.recv()
-            now = time.strftime("%Y-%m-%d %H:%M:%S")
-            print(now, "[Client]", repr(case), "=>", repr(response))
+            if globals().get("print_log"):
+                print("[Client]", "send:", repr(case), "=>", "recv:", repr(response))
             assert case == response, [case, response]
         await c.send("[shutdown server]")
 
@@ -261,12 +272,14 @@ async def _test_ipc():
     host = "127.0.0.1"
     port = 8090
     async with SocketServer(host=host, port=port, encoder=PickleEncoder()):
-        await test_client()
+        await test_client(host="127.0.0.1", port=8090)
 
 
-def test_ipc():
+def test():
     asyncio.run(_test_ipc())
 
 
 if __name__ == "__main__":
-    test_ipc()
+    # local test show logs
+    globals().setdefault("print_log", True)
+    test()
