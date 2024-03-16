@@ -280,6 +280,5 @@ def test():
 
 
 if __name__ == "__main__":
-    # local test show logs
-    globals().setdefault("print_log", True)
+    globals().setdefault("print_log", True)  # local test show logs
     test()

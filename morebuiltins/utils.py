@@ -9,6 +9,7 @@ from enum import IntEnum
 from functools import wraps
 from itertools import groupby, islice
 from os.path import basename
+from time import gmtime, mktime, strftime, strptime, time, timezone
 from typing import (
     Any,
     Callable,
@@ -22,6 +23,8 @@ from typing import (
 )
 
 __all__ = [
+    "ttime",
+    "ptime",
     "slice_into_pieces",
     "slice_by_size",
     "get_hash",
@@ -33,23 +36,69 @@ __all__ = [
     "stagger_sort",
     "read_size",
     "read_time",
-    "typeddict_init",
+    "default_dict",
     "format_error",
     # "progress_bar1"
     # "progress_bar2"
 ]
 
 
+def ttime(
+    timestamp: Optional[Union[float, int]] = None,
+    tzone: int = int(-timezone / 3600),
+    fmt="%Y-%m-%d %H:%M:%S",
+) -> str:
+    """From timestamp to timestring. Translate timestamp into human-readable: %Y-%m-%d %H:%M:%S.
+    >>> ttime(1486572818.421858323, tzone=8)
+    '2017-02-09 00:53:38'
+
+    Args:
+        timestamp (float, optional): the timestamp float. Defaults to time.time().
+        tzone (int, optional): time compensation. Defaults to int(-time.timezone / 3600).
+        fmt (str, optional): strftime fmt. Defaults to "%Y-%m-%d %H:%M:%S".
+
+    Returns:
+        str: time string formatted.
+    """
+    fix_tz = tzone * 3600
+    timestamp = time() if timestamp is None else timestamp
+    return strftime(fmt, gmtime(timestamp + fix_tz))
+
+
+def ptime(
+    timestring: Optional[str] = None,
+    tzone: int = int(-timezone / 3600),
+    fmt: str = "%Y-%m-%d %H:%M:%S",
+) -> int:
+    """From timestring to timestamp. Translate %Y-%m-%d %H:%M:%S into timestamp
+    >>> ptime("2018-03-15 01:27:56", tzone=8)
+    1521048476
+
+    Args:
+        timestring (str, optional): string like 2018-03-15 01:27:56. Defaults to ttime().
+        tzone (int, optional): time compensation. Defaults to int(-timezone / 3600).
+        fmt (_type_, optional): strptime fmt. Defaults to "%Y-%m-%d %H:%M:%S".
+
+    Returns:
+        str: time string formatted.
+    """
+    fix_tz = -(tzone * 3600 + timezone)
+    #: str(timestring) for datetime.datetime object
+    if timestring:
+        return int(mktime(strptime(str(timestring), fmt)) + fix_tz)
+    else:
+        return int(time())
+
+
 def slice_into_pieces(
     items: Sequence, n: int
 ) -> Generator[Union[tuple, Sequence], None, None]:
     """Slice a sequence into `n` pieces, return a generation of n pieces.
-    Examples:
-        >>> for chunk in slice_into_pieces(range(10), 3):
-        ...     print(chunk)
-        (0, 1, 2, 3)
-        (4, 5, 6, 7)
-        (8, 9)
+    >>> for chunk in slice_into_pieces(range(10), 3):
+    ...     print(chunk)
+    (0, 1, 2, 3)
+    (4, 5, 6, 7)
+    (8, 9)
 
     Args:
         seq (_type_): input a sequence.
@@ -74,13 +123,12 @@ def slice_by_size(
     items: Sequence, size: int, callback=tuple
 ) -> Generator[Union[tuple, Sequence], None, None]:
     """Slice a sequence into chunks, return as a generation of tuple chunks with `size`.
-    Examples:
-        >>> for chunk in slice_by_size(range(10), 3):
-        ...     print(chunk)
-        (0, 1, 2)
-        (3, 4, 5)
-        (6, 7, 8)
-        (9,)
+    >>> for chunk in slice_by_size(range(10), 3):
+    ...     print(chunk)
+    (0, 1, 2)
+    (3, 4, 5)
+    (6, 7, 8)
+    (9,)
 
     Args:
         items (Sequence): _description_
@@ -105,13 +153,11 @@ def unique(
     items: Sequence, key: Optional[Callable] = None
 ) -> Generator[Any, None, None]:
     """Unique the seq and keep the order(fast).
-
-    Examples:
-        >>> a = ['01', '1', '2']
-        >>> list(unique(a, int))
-        [1, 2]
-        >>> list(unique(a))
-        ['01', '1', '2']
+    >>> a = ['01', '1', '2']
+    >>> list(unique(a, int))
+    [1, 2]
+    >>> list(unique(a))
+    ['01', '1', '2']
 
     Args:
         items (Sequence): raw sequence.
@@ -144,13 +190,11 @@ def retry(
     return_exception=False,
 ):
     """A decorator which will retry the function `tries` times while raising given exceptions.
-
-    Examples:
-        >>> func = lambda items: 1/items.pop(0)
-        >>> items = [0, 1]
-        >>> new_func = retry(tries=2, exceptions=(ZeroDivisionError,))(func)
-        >>> new_func(items)
-        1.0
+    >>> func = lambda items: 1/items.pop(0)
+    >>> items = [0, 1]
+    >>> new_func = retry(tries=2, exceptions=(ZeroDivisionError,))(func)
+    >>> new_func(items)
+    1.0
 
     Args:
         tries (int, optional): try n times, if n==1 means no retry. Defaults to 1.
@@ -191,14 +235,12 @@ def retry(
 
 def guess_interval(nums, accuracy=0):
     """Given a seq of number, return the median, only calculate interval >= accuracy.
-
-    Example::
-        # sorted_seq: [2, 10, 12, 19, 19, 29, 30, 32, 38, 40, 41, 54, 62]
-        # diffs: [8, 7, 10, 6, 13, 8]
-        # median: 8
-        >>> seq = [2, 10, 12, 19, 19, 29, 30, 32, 38, 40, 41, 54, 62]
-        >>> guess_interval(seq, 5)
-        8
+    >>> # sorted_seq: [2, 10, 12, 19, 19, 29, 30, 32, 38, 40, 41, 54, 62]
+    >>> # diffs: [8, 7, 10, 6, 13, 8]
+    >>> # median: 8
+    >>> seq = [2, 10, 12, 19, 19, 29, 30, 32, 38, 40, 41, 54, 62]
+    >>> guess_interval(seq, 5)
+    8
 
     """
     if not nums:
@@ -219,7 +261,6 @@ def get_hash(
     func=hashlib.md5,
 ) -> str:
     """Get the md5_string from given string
-
     >>> get_hash(123456, 10)
     'a59abbe56e'
     >>> get_hash('test')
@@ -246,19 +287,20 @@ def get_hash(
         return _temp[start:end]
 
 
-def find_jsons(string, return_as="json", json_loader=json.loads):
+def find_jsons(
+    string,
+    return_as: Literal["json", "object", "index"] = "json",
+    json_loader=json.loads,
+):
     """Generator for finding the valid JSON string, only support dict and list.
-    return_as could be 'json' / 'object' / 'index'.
-    ::
-
-        >>> list(find_jsons('string["123"]123{"a": 1}[{"a": 1, "b": [1,2,3]}]'))
-        ['["123"]', '{"a": 1}', '[{"a": 1, "b": [1,2,3]}]']
-        >>> list(find_jsons('string[]{}{"a": 1}'))
-        ['[]', '{}', '{"a": 1}']
-        >>> list(find_jsons('string[]|{}string{"a": 1}', return_as='index'))
-        [(6, 8), (9, 11), (17, 25)]
-        >>> list(find_jsons('xxxx[{"a": 1, "b": [1,2,3]}]xxxx', return_as='object'))
-        [[{'a': 1, 'b': [1, 2, 3]}]]
+    >>> list(find_jsons('string["123"]123{"a": 1}[{"a": 1, "b": [1,2,3]}]'))
+    ['["123"]', '{"a": 1}', '[{"a": 1, "b": [1,2,3]}]']
+    >>> list(find_jsons('string[]{}{"a": 1}'))
+    ['[]', '{}', '{"a": 1}']
+    >>> list(find_jsons('string[]|{}string{"a": 1}', return_as='index'))
+    [(6, 8), (9, 11), (17, 25)]
+    >>> list(find_jsons('xxxx[{"a": 1, "b": [1,2,3]}]xxxx', return_as='object'))
+    [[{'a': 1, 'b': [1, 2, 3]}]]
     """
 
     def find_matched(string, left, right):
@@ -311,22 +353,18 @@ def code_inline(
     encoder: Literal["b16", "b32", "b64", "b85"] = "b85",
 ) -> str:
     """Make the python source code inline.
+    >>> code1 = ''
+    >>> code2 = code_inline("variable=12345")
+    >>> # import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY8mBl+`0{<&ZEXqtw%1N~~G%_|Z1ptx!(o_xr000".encode("u8"))))
+    >>> exec(code2)
+    >>> variable
+    12345
 
     Args:
         source_code (str): python original code.
         encoder (Literal['b16', 'b32', 'b64', 'b85'], optional): base64.encoder. Defaults to "b85".
-
     Returns:
         new source code inline.
-    ::
-
-        >>> code1 = ''
-        >>> code2 = code_inline("variable=12345")
-        >>> # import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY8mBl+`0{<&ZEXqtw%1N~~G%_|Z1ptx!(o_xr000".encode("u8"))))
-        >>> exec(code2)
-        >>> variable
-        12345
-
     """
     _encoder = getattr(base64, f"{encoder}encode")
     _source = source_code.encode(encoding="u8")
@@ -374,6 +412,21 @@ def read_num(b, enum_class=IntEnum, rounded: Optional[int] = None):
 
 def read_size(b, rounded: Optional[int] = None):
     """From B to readable string.
+    >>> read_size(0)
+    '0 B'
+    >>> for i in range(0, 10):
+    ...     [1 * 1024**i, read_size(1 * 1024**i, rounded=1)]
+    ...
+    [1, '1.0 B']
+    [1024, '1.0 KB']
+    [1048576, '1.0 MB']
+    [1073741824, '1.0 GB']
+    [1099511627776, '1.0 TB']
+    [1125899906842624, '1.0 PB']
+    [1152921504606846976, '1.0 EB']
+    [1180591620717411303424, '1.0 ZB']
+    [1208925819614629174706176, '1.0 YB']
+    [1237940039285380274899124224, '1024.0 YB']
 
     Args:
         b: B
@@ -382,28 +435,24 @@ def read_size(b, rounded: Optional[int] = None):
     Returns:
         str
 
-    ::
-        >>> read_size(0)
-        '0 B'
-        >>> for i in range(0, 10):
-        ...     [1 * 1024**i, read_size(1 * 1024**i, rounded=1)]
-        ...
-        [1, '1.0 B']
-        [1024, '1.0 KB']
-        [1048576, '1.0 MB']
-        [1073741824, '1.0 GB']
-        [1099511627776, '1.0 TB']
-        [1125899906842624, '1.0 PB']
-        [1152921504606846976, '1.0 EB']
-        [1180591620717411303424, '1.0 ZB']
-        [1208925819614629174706176, '1.0 YB']
-        [1237940039285380274899124224, '1024.0 YB']
+
     """
     return read_num(b, BytesUnit, rounded=rounded)
 
 
 def read_time(secs, rounded: Optional[int] = None):
     """From secs to readable string.
+    >>> read_time(0)
+    '0 secs'
+    >>> for i in range(0, 6):
+    ...     [1.2345 * 60**i, read_time(1.2345 * 60**i, rounded=1)]
+    ...
+    [1.2345, '1.2 secs']
+    [74.07, '1.2 mins']
+    [4444.2, '1.2 hours']
+    [266652.0, '3.1 days']
+    [15999120.0, '6.2 mons']
+    [959947200.0, '30.4 years']
 
     Args:
         b: seconds
@@ -411,40 +460,24 @@ def read_time(secs, rounded: Optional[int] = None):
 
     Returns:
         str
-
-    ::
-        >>> read_time(0)
-        '0 secs'
-        >>> for i in range(0, 6):
-        ...     [1.2345 * 60**i, read_time(1.2345 * 60**i, rounded=1)]
-        ...
-        [1.2345, '1.2 secs']
-        [74.07, '1.2 mins']
-        [4444.2, '1.2 hours']
-        [266652.0, '3.1 days']
-        [15999120.0, '6.2 mons']
-        [959947200.0, '30.4 years']
     """
     return read_num(secs, TimeUnit, rounded=rounded)
 
 
 class Validator:
-    """
-    Validator for dataclasses.
-
-    ::
-        >>> from dataclasses import dataclass, field
-        >>>
-        >>>
-        >>> @dataclass
-        ... class Person(Validator):
-        ...     screen: dict = field(metadata={"callback": lambda i: i["s"]})
-        ...     name: str = field(default=None, metadata={"callback": str})
-        ...     age: int = field(default=0, metadata={"callback": int})
-        ...
-        >>>
-        >>> print(Person({"s": 3}, 123, "123"))
-        Person(screen=3, name='123', age=123)
+    """Validator for dataclasses.
+    >>> from dataclasses import dataclass, field
+    >>>
+    >>>
+    >>> @dataclass
+    ... class Person(Validator):
+    ...     screen: dict = field(metadata={"callback": lambda i: i["s"]})
+    ...     name: str = field(default=None, metadata={"callback": str})
+    ...     age: int = field(default=0, metadata={"callback": int})
+    ...
+    >>>
+    >>> print(Person({"s": 3}, 123, "123"))
+    Person(screen=3, name='123', age=123)
     """
 
     def __post_init__(self):
@@ -462,12 +495,9 @@ class Validator:
 
 def stagger_sort(items, group_key, sort_key=None):
     """Ensure that the same group is ordered and staggered, avoid data skew. Will not affect the original list, return as a generator.
-
-    ::
-
-        >>> items = [('a', 0), ('a', 2), ('a', 1), ('b', 0), ('b', 1)]
-        >>> list(stagger_sort(items, sort_key=lambda i: (i[0], i[1]), group_key=lambda i: i[0]))
-        [('a', 0), ('b', 0), ('a', 1), ('b', 1), ('a', 2)]
+    >>> items = [('a', 0), ('a', 2), ('a', 1), ('b', 0), ('b', 1)]
+    >>> list(stagger_sort(items, sort_key=lambda i: (i[0], i[1]), group_key=lambda i: i[0]))
+    [('a', 0), ('b', 0), ('a', 1), ('b', 1), ('a', 2)]
 
     """
     if sort_key:
@@ -487,23 +517,19 @@ def stagger_sort(items, group_key, sort_key=None):
             break
 
 
-def typeddict_init(cls: Type[dict], **kwargs) -> dict:
-    """Init a default object from TypedDict subclass.
-
-    ::
-
-        >>> class Demo(dict):
-        ...     int_obj: int
-        ...     float_obj: float
-        ...     bytes_obj: bytes
-        ...     str_obj: str
-        ...     list_obj: list
-        ...     tuple_obj: tuple
-        ...     set_obj: set
-        ...     dict_obj: dict
-        >>> typeddict_init(Demo, bytes_obj=b'1')
-        {'int_obj': 0, 'float_obj': 0.0, 'bytes_obj': b'1', 'str_obj': '', 'list_obj': [], 'tuple_obj': (), 'set_obj': set(), 'dict_obj': {}}
-
+def default_dict(cls: Type[dict], **kwargs) -> dict:
+    """Init a default zero-value dict from the subclass of TypedDict.
+    >>> class Demo(dict):
+    ...     int_obj: int
+    ...     float_obj: float
+    ...     bytes_obj: bytes
+    ...     str_obj: str
+    ...     list_obj: list
+    ...     tuple_obj: tuple
+    ...     set_obj: set
+    ...     dict_obj: dict
+    >>> default_dict(Demo, bytes_obj=b'1')
+    {'int_obj': 0, 'float_obj': 0.0, 'bytes_obj': b'1', 'str_obj': '', 'list_obj': [], 'tuple_obj': (), 'set_obj': set(), 'dict_obj': {}}
     """
     result = cls()
     built_in_types = {int, float, bytes, str, list, tuple, set, dict}
@@ -517,7 +543,6 @@ def typeddict_init(cls: Type[dict], **kwargs) -> dict:
 
 def always_return_value(value):
     """Got a function always return the given value.
-
     >>> func = always_return_value(1)
     >>> func(1, 2, 3)
     1
@@ -532,7 +557,7 @@ def always_return_value(value):
 
 
 def _tb_filter(tb: traceback.FrameSummary):
-    "filt tb with code-line and not in site-packages"
+    # filt tb with code-line and not in site-packages
     return tb.line and "site-packages" not in tb.filename
 
 
@@ -544,9 +569,6 @@ def format_error(
     **kwargs,
 ) -> str:
     """Get the frame info from Exception. Default filter will skip `site-packages` info.
-
-    ::
-
     >>> try:
     ...     # test default
     ...     1 / 0
