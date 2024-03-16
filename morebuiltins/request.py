@@ -126,11 +126,10 @@ def _request(
 
 class req:
     """A simple requests mock, slow but useful.
-
     >>> import time
     >>> r = req.get("https://postman-echo.com/get?a=2", timeout=3, params={"b": "3"})
-    >>> r.json()["args"]
-    {'a': '2', 'b': '3'}
+    >>> r.url
+    'https://postman-echo.com/get?a=2&b=3'
     >>> r.ok
     True
     >>> r.status_code
@@ -138,11 +137,13 @@ class req:
     >>> r.text.startswith('{')
     True
     >>> r = req.post("https://postman-echo.com/post?a=2", timeout=3, params={"b": "3"}, data=b"mock data")
-    >>> [r.json()["data"], r.json()["args"]]
-    ['mock data', {'a': '2', 'b': '3'}]
-    >>> r = req.post("https://postman-echo.com/post?a=2", timeout=3, json={"json": "yes json"})
+    >>> r.json()["data"]
+    'mock data'
+    >>> r.json()["args"]
+    {'a': '2', 'b': '3'}
+    >>> r = req.post("https://postman-echo.com/post?a=2", timeout=3, json={"data": "yes json"})
     >>> r.json()["json"]
-    {'json': 'yes json'}
+    {'data': 'yes json'}
     """
 
     RequestErrors = (URLError,)
@@ -159,7 +160,6 @@ class req:
 
 class DomainParser(object):
     """Get the Second-level domain(SLD) from a hostname or a url.
-
     >>> domain_parser = DomainParser()
     >>> domain_parser.parse_hostname("github.com")
     'github.com'
@@ -280,8 +280,6 @@ def update_url(
     **kw_params,
 ):
     """Sort url query args to unify format the url.
-    replace_kwargs is a dict to update attributes before sorting  (such as scheme / netloc...).
-
     >>> update_url('http://www.github.com?b=1&c=1&a=1', {"b": None, "c": None})  # remove params
     'http://www.github.com?a=1'
     >>> update_url("http://www.github.com?b=1&c=1&a=1", a="123", b=None)  # update params with kwargs
@@ -292,6 +290,8 @@ def update_url(
     'http://www.github.com?b=1&c=1&a=999'
     >>> update_url("http://www.github.com?b=1&c=1&a=1", replace_kwargs={"netloc": "www.new_host.com"})  # update netloc
     'http://www.new_host.com?b=1&c=1&a=1'
+
+    `replace_kwargs` is a dict to update attributes before sorting  (such as scheme / netloc...).
     """
     parsed = urlparse(url)
     if replace_kwargs is None:
