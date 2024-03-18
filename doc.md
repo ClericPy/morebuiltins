@@ -305,6 +305,38 @@
 
 ---
 
+
+    1.16 Trie - Make a normal dict to trie tree with the feature of prefix-match.
+        >>> trie = Trie({"ab": 1, "abc": 2, b"aa": 3, ("e", "e"): 4, (1, 2): 5})
+        >>> trie
+        {'a': {'b': {'_VALUE': 1, 'c': {'_VALUE': 2}}}, 97: {97: {'_VALUE': 3}}, 'e': {'e': {'_VALUE': 4}}, 1: {2: {'_VALUE': 5}}}
+        >>> trie.match("abcde")
+        (3, 2)
+        >>> trie.match("abde")
+        (2, 1)
+        >>> trie.match(b"aabb")
+        (2, 3)
+        >>> trie.match("eee")
+        (2, 4)
+        >>> trie.match(list("eee"))
+        (2, 4)
+        >>> trie.match(tuple("eee"))
+        (2, 4)
+        >>> trie.match((1, 2, 3, 4))
+        (2, 5)
+    
+
+---
+
+
+    1.17 GuessExt - Determine whether the input prefix bytes are compressed files,
+        >>> cg = GuessExt()
+        >>> cg.get_ext(b"PKzipfiledemo")
+        '.zip'
+    
+
+---
+
 ======================
 
 ### 2. morebuiltins.request

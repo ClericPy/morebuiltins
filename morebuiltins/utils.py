@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import traceback
+from collections import UserDict
 from enum import IntEnum
 from functools import wraps
 from itertools import groupby, islice
@@ -12,7 +13,9 @@ from os.path import basename
 from time import gmtime, mktime, strftime, strptime, time, timezone
 from typing import (
     Any,
+    AnyStr,
     Callable,
+    Dict,
     Generator,
     Literal,
     Optional,
@@ -38,6 +41,8 @@ __all__ = [
     "read_time",
     "default_dict",
     "format_error",
+    "Trie",
+    "GuessExt",
     # "progress_bar1"
     # "progress_bar2"
 ]
@@ -622,6 +627,121 @@ def format_error(
         return template.format_map(_kwargs)
     except IndexError:
         return ""
+
+
+class Trie(UserDict):
+    """Make a normal dict to trie tree with the feature of prefix-match.
+    >>> trie = Trie({"ab": 1, "abc": 2, b"aa": 3, ("e", "e"): 4, (1, 2): 5})
+    >>> trie
+    {'a': {'b': {'_VALUE': 1, 'c': {'_VALUE': 2}}}, 97: {97: {'_VALUE': 3}}, 'e': {'e': {'_VALUE': 4}}, 1: {2: {'_VALUE': 5}}}
+    >>> trie.match("abcde")
+    (3, 2)
+    >>> trie.match("abde")
+    (2, 1)
+    >>> trie.match(b"aabb")
+    (2, 3)
+    >>> trie.match("eee")
+    (2, 4)
+    >>> trie.match(list("eee"))
+    (2, 4)
+    >>> trie.match(tuple("eee"))
+    (2, 4)
+    >>> trie.match((1, 2, 3, 4))
+    (2, 5)
+    """
+
+    def __init__(self, data: Dict[AnyStr, Any], value_node="_VALUE"):
+        # data should be 1-depth dict
+        super().__init__(self.parse_dict(data, value_node))
+        self.value_node = value_node
+        self.not_set = object()
+
+    @staticmethod
+    def parse_dict(data: dict, value_node="_VALUE") -> dict:
+        "Convert a regular dictionary to a prefix tree dictionary"
+        result: dict = {}
+        for word, value in data.items():
+            trie = result
+            for char in word:
+                if char not in trie:
+                    trie[char] = {}
+                trie = trie[char]
+            trie[value_node] = value
+        return result
+
+    def match(self, seq, default: Tuple[Union[None, int], Any] = (None, None)):
+        """Use the input sequence to match the hit value in the prefix tree as much as possible.
+
+        Args:
+            seq: iterable object
+            default:return while not match. Defaults to (None, None).
+
+        Returns:
+            _type_: tuple
+        """
+        trie = self
+        value_node = self.value_node
+        value = self.not_set
+        dep = 0
+        for char in seq:
+            if char in trie:
+                dep += 1
+                trie = trie[char]
+                try:
+                    value = trie[value_node]
+                except KeyError:
+                    pass
+            else:
+                break
+        if value is not self.not_set:
+            return (dep, value)
+        return default
+
+
+class GuessExt(object):
+    """Determine whether the input prefix bytes are compressed files,
+    >>> cg = GuessExt()
+    >>> cg.get_ext(b"PK\x05\x06zipfiledemo")
+    '.zip'
+    """
+
+    MAGIC = {
+        b"PK\x03\x04": ".zip",
+        b"PK\x03\x06": ".zip",
+        b"PK\x03\x08": ".zip",
+        b"PK\x05\x04": ".zip",
+        b"PK\x05\x06": ".zip",
+        b"PK\x05\x08": ".zip",
+        b"PK\x07\x04": ".zip",
+        b"PK\x07\x06": ".zip",
+        b"PK\x07\x08": ".zip",
+        b'"\xb5/\xfd': ".zst",
+        b"#\xb5/\xfd": ".zst",
+        b"$\xb5/\xfd": ".zst",
+        b"%\xb5/\xfd": ".zst",
+        b"&\xb5/\xfd": ".zst",
+        b"'\xb5/\xfd": ".zst",
+        b"(\xb5/\xfd": ".zst",
+        b"LZIP": ".lz",
+        b"MSCF": ".cab",
+        b"ISc(": ".cab",
+        b"\x1f\x8b\x08": ".gz",
+        b"BZh": ".bz2",
+        b"\xfd7zXZ\x00": ".xz",
+        b"7z\xbc\xaf'\x1c": ".7z",
+        b"Rar!\x1a\x07\x00": ".rar",
+        b"Rar!\x1a\x07\x01": ".rar",
+    }
+
+    def __init__(self):
+        self.trie = Trie(self.MAGIC)
+
+    def get_ext(self, magic_bytes: bytes, default=""):
+        dep, value = self.trie.match(magic_bytes)
+        if dep is None:
+            return default
+        else:
+            return value
 
 
 if __name__ == "__main__":
