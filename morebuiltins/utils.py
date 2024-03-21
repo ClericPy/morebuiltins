@@ -408,9 +408,9 @@ def read_num(
     b,
     enum=IntEnum,
     rounded: Optional[int] = None,
-    sep=" ",
-    strip_float=False,
+    shorten=False,
     precision=1.0,
+    sep=" ",
 ):
     units = tuple(enum)
     unit = units[0]
@@ -421,47 +421,27 @@ def read_num(
         else:
             break
     result = round(b / (unit.value or 1), rounded)
-    if strip_float and isinstance(result, float):
+    if shorten and isinstance(result, float):
         int_result = int(result)
         if int_result / result >= precision:
             result = int_result
     return f"{result}{sep}{unit.name}"
 
 
-def read_size(
-    b, rounded: Optional[int] = None, sep=" ", strip_float=False, precision=1.0
-):
-    """From bytes to readable string. strip_float=True and precision=0.99 can shorten unnecessary tail floating-point numbers.
-    >>> read_size(0)
-    '0 B'
-    >>> read_size(400.5, 1)
-    '400.5 B'
-    >>> read_size(400.5, 1, strip_float=True, precision=0.99)
-    '400 B'
-    >>> read_size(400.5555, 1, strip_float=True, precision=0.99999)
-    '400.6 B'
-    >>> read_size(600.5555, 1, strip_float=True, precision=0.99999)
-    '0.6 KB'
-    >>> read_size(1024)
-    '1 KB'
-    >>> read_size(512)
-    '512 B'
-    >>> read_size(512, 0)
-    '512.0 B'
-    >>> read_size(512, 0, strip_float=True)
-    '512 B'
-    >>> read_size(512, -2, strip_float=True)
-    '500 B'
-    >>> read_size(512, 1)
-    '0.5 KB'
-    >>> read_size(512, 1, '')
+def read_size(b, rounded: Optional[int] = None, shorten=False, precision=1.0, sep=" "):
+    """From bytes to readable string. shorten=True and precision=0.99 can shorten unnecessary tail floating-point numbers.
+    >>> (read_size(1023), read_size(1024))
+    ('1023 B', '1 KB')
+    >>> (read_size(400.5, 1), read_size(400.5, 1, True), read_size(400.5, 1, True, 0.99))
+    ('400.5 B', '400.5 B', '400 B')
+    >>> (read_size(511.55, 1, shorten=True, precision=0.999), read_size(512.55, 1, shorten=True, precision=0.999))
+    ('511.6 B', '0.5 KB')
+    >>> (read_size(511, 1, shorten=True), read_size(512, 1, shorten=True))
+    ('511 B', '0.5 KB')
+    >>> read_size(512, 1, sep='')
     '0.5KB'
-    >>> read_size(1025, 1, strip_float=False)
-    '1.0 KB'
-    >>> read_size(1025, 1, strip_float=True)
-    '1 KB'
-    >>> read_size(696.32, 5, strip_float=True)
-    '0.68 KB'
+    >>> read_size(1025, 1, shorten=False), read_size(1025, 1, shorten=True)
+    ('1.0 KB', '1 KB')
     >>> for i in range(0, 5):
     ...     [1.1111 * 1024**i, i, read_size(1.1111 * 1024**i, rounded=i)]
     ...
@@ -471,10 +451,11 @@ def read_size(
     [1193034540.6464, 3, '1.111 GB']
     [1221667369621.9136, 4, '1.1111 TB']
 
-
     Args:
         b: bytes
         rounded (int, optional): arg for round. Defaults to None.
+        shorten (bool): shorten unnecessary tail 0.
+        precision: (float): shorten precision, often set to 0.99.
         sep (str, optional): sep between result and unit.
 
     Returns:
@@ -486,14 +467,14 @@ def read_size(
         b,
         BytesUnit,
         rounded=rounded,
-        sep=sep,
-        strip_float=strip_float,
+        shorten=shorten,
         precision=precision,
+        sep=sep,
     )
 
 
 def read_time(
-    secs, rounded: Optional[int] = None, sep=" ", strip_float=False, precision=1.0
+    secs, rounded: Optional[int] = None, shorten=False, precision=1.0, sep=" "
 ):
     """From secs to readable string.
     >>> read_time(0)
@@ -513,6 +494,8 @@ def read_time(
     Args:
         b: seconds
         rounded (int, optional): arg for round. Defaults to None.
+        shorten (bool): shorten unnecessary tail 0.
+        precision: (float): shorten precision, often set to 0.99.
         sep (str, optional): sep between result and unit.
 
     Returns:
@@ -522,9 +505,9 @@ def read_time(
         secs,
         TimeUnit,
         rounded=rounded,
-        sep=sep,
-        strip_float=strip_float,
+        shorten=shorten,
         precision=precision,
+        sep=sep,
     )
 
 
