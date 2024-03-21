@@ -404,51 +404,102 @@ class TimeUnit(IntEnum):
     years = 60 * 60 * 24 * 365
 
 
-def read_num(b, enum_class=IntEnum, rounded: Optional[int] = None):
-    unit = None
-    for _unit in enum_class:
-        if unit is None or _unit.value <= b:
+def read_num(
+    b,
+    enum=IntEnum,
+    rounded: Optional[int] = None,
+    sep=" ",
+    strip_float=False,
+    precision=1.0,
+):
+    units = tuple(enum)
+    unit = units[0]
+    ntime = 0.5 if rounded and rounded > 0 else 1
+    for _unit in units:
+        if b >= _unit.value * ntime:
             unit = _unit
-        elif _unit.value > b:
+        else:
             break
-    assert unit is not None
-    return f"{round(b / (unit.value or 1), rounded)} {unit.name}"
+    result = round(b / (unit.value or 1), rounded)
+    if strip_float and isinstance(result, float):
+        int_result = int(result)
+        if int_result / result >= precision:
+            result = int_result
+    return f"{result}{sep}{unit.name}"
 
 
-def read_size(b, rounded: Optional[int] = None):
-    """From B to readable string.
+def read_size(
+    b, rounded: Optional[int] = None, sep=" ", strip_float=False, precision=1.0
+):
+    """From bytes to readable string. strip_float=True and precision=0.99 can shorten unnecessary tail floating-point numbers.
     >>> read_size(0)
     '0 B'
-    >>> for i in range(0, 10):
-    ...     [1 * 1024**i, read_size(1 * 1024**i, rounded=1)]
+    >>> read_size(400.5, 1)
+    '400.5 B'
+    >>> read_size(400.5, 1, strip_float=True, precision=0.99)
+    '400 B'
+    >>> read_size(400.5555, 1, strip_float=True, precision=0.99999)
+    '400.6 B'
+    >>> read_size(600.5555, 1, strip_float=True, precision=0.99999)
+    '0.6 KB'
+    >>> read_size(1024)
+    '1 KB'
+    >>> read_size(512)
+    '512 B'
+    >>> read_size(512, 0)
+    '512.0 B'
+    >>> read_size(512, 0, strip_float=True)
+    '512 B'
+    >>> read_size(512, -2, strip_float=True)
+    '500 B'
+    >>> read_size(512, 1)
+    '0.5 KB'
+    >>> read_size(512, 1, '')
+    '0.5KB'
+    >>> read_size(1025, 1, strip_float=False)
+    '1.0 KB'
+    >>> read_size(1025, 1, strip_float=True)
+    '1 KB'
+    >>> read_size(696.32, 5, strip_float=True)
+    '0.68 KB'
+    >>> for i in range(0, 5):
+    ...     [1.1111 * 1024**i, i, read_size(1.1111 * 1024**i, rounded=i)]
     ...
-    [1, '1.0 B']
-    [1024, '1.0 KB']
-    [1048576, '1.0 MB']
-    [1073741824, '1.0 GB']
-    [1099511627776, '1.0 TB']
-    [1125899906842624, '1.0 PB']
-    [1152921504606846976, '1.0 EB']
-    [1180591620717411303424, '1.0 ZB']
-    [1208925819614629174706176, '1.0 YB']
-    [1237940039285380274899124224, '1024.0 YB']
+    [1.1111, 0, '1.0 B']
+    [1137.7664, 1, '1.1 KB']
+    [1165072.7936, 2, '1.11 MB']
+    [1193034540.6464, 3, '1.111 GB']
+    [1221667369621.9136, 4, '1.1111 TB']
+
 
     Args:
-        b: B
+        b: bytes
         rounded (int, optional): arg for round. Defaults to None.
+        sep (str, optional): sep between result and unit.
 
     Returns:
         str
 
 
     """
-    return read_num(b, BytesUnit, rounded=rounded)
+    return read_num(
+        b,
+        BytesUnit,
+        rounded=rounded,
+        sep=sep,
+        strip_float=strip_float,
+        precision=precision,
+    )
 
 
-def read_time(secs, rounded: Optional[int] = None):
+def read_time(
+    secs, rounded: Optional[int] = None, sep=" ", strip_float=False, precision=1.0
+):
     """From secs to readable string.
     >>> read_time(0)
     '0 secs'
+    >>> read_time(60)
+    '1 mins'
     >>> for i in range(0, 6):
     ...     [1.2345 * 60**i, read_time(1.2345 * 60**i, rounded=1)]
     ...
@@ -456,17 +507,25 @@ def read_time(secs, rounded: Optional[int] = None):
     [74.07, '1.2 mins']
     [4444.2, '1.2 hours']
     [266652.0, '3.1 days']
-    [15999120.0, '6.2 mons']
+    [15999120.0, '0.5 years']
     [959947200.0, '30.4 years']
 
     Args:
         b: seconds
         rounded (int, optional): arg for round. Defaults to None.
+        sep (str, optional): sep between result and unit.
 
     Returns:
         str
     """
-    return read_num(secs, TimeUnit, rounded=rounded)
+    return read_num(
+        secs,
+        TimeUnit,
+        rounded=rounded,
+        sep=sep,
+        strip_float=strip_float,
+        precision=precision,
+    )
 
 
 class Validator:
