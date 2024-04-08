@@ -637,26 +637,26 @@ def format_error(
     ...     format_error(e, index=0)
     '[<doctest morebuiltins.utils.format_error[2]>:<module>:4] func2() >>> ZeroDivisionError(division by zero)'
     >>> try:
-    ...     # test with default filter
-    ...     import os
-    ...     os.path.join(1, 2, 3)
+    ...     # test with default filter(filename skip site-packages)
+    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
+    ...     version_info_to_nodot(0)
     ... except Exception as e:
     ...     format_error(e)
-    '[<doctest morebuiltins.utils.format_error[3]>:<module>:4] os.path.join(1, 2, 3) >>> TypeError(expected str, bytes or os.PathLike object, not int)'
+    "[<doctest morebuiltins.utils.format_error[3]>:<module>:4] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
     >>> try:
     ...     # test without filter
-    ...     import os
-    ...     os.path.join(1, 2, 3)
+    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
+    ...     version_info_to_nodot(0)
     ... except Exception as e:
     ...     format_error(e, filter=None)
-    '[<frozen ntpath>:join:108]  >>> TypeError(expected str, bytes or os.PathLike object, not int)'
+    '[compatibility_tags.py:version_info_to_nodot:23] return "".join(map(str, version_info[:2])) >>> TypeError(\\'int\\' object is not subscriptable)'
     >>> try:
-    ...     # test without custom filter. refuse all, raise IndexError to return ''
-    ...     import os
-    ...     os.path.join(1, 2, 3)
+    ...     # test with custom filter.
+    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
+    ...     version_info_to_nodot(0)
     ... except Exception as e:
-    ...     format_error(e, filter=lambda tb: False)
-    ''
+    ...     format_error(e, filter=lambda i: '<doctest' in str(i))
+    "[<doctest morebuiltins.utils.format_error[5]>:<module>:4] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
     """
     try:
         filter = filter or always_return_value(True)
@@ -787,8 +787,7 @@ class GuessExt(object):
 
 
 if __name__ == "__main__":
-    import doctest
-
     __name__ = "morebuiltins.utils"
+    import doctest
 
     doctest.testmod()
