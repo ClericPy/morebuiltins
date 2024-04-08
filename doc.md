@@ -188,26 +188,34 @@
 ---
 
 
-    1.12 read_size - From B to readable string.
-        >>> read_size(0)
-        '0 B'
-        >>> for i in range(0, 10):
-        ...     [1 * 1024**i, read_size(1 * 1024**i, rounded=1)]
+    1.12 read_size - From bytes to readable string. shorten=True and precision=0.99 can shorten unnecessary tail floating-point numbers.
+        >>> (read_size(1023), read_size(1024))
+        ('1023 B', '1 KB')
+        >>> (read_size(400.5, 1), read_size(400.5, 1, True), read_size(400.5, 1, True, 0.99))
+        ('400.5 B', '400.5 B', '400 B')
+        >>> (read_size(511.55, 1, shorten=True, precision=0.999), read_size(512.55, 1, shorten=True, precision=0.999))
+        ('511.6 B', '0.5 KB')
+        >>> (read_size(511, 1, shorten=True), read_size(512, 1, shorten=True))
+        ('511 B', '0.5 KB')
+        >>> read_size(512, 1, sep='')
+        '0.5KB'
+        >>> read_size(1025, 1, shorten=False), read_size(1025, 1, shorten=True)
+        ('1.0 KB', '1 KB')
+        >>> for i in range(0, 5):
+        ...     [1.1111 * 1024**i, i, read_size(1.1111 * 1024**i, rounded=i)]
         ...
-        [1, '1.0 B']
-        [1024, '1.0 KB']
-        [1048576, '1.0 MB']
-        [1073741824, '1.0 GB']
-        [1099511627776, '1.0 TB']
-        [1125899906842624, '1.0 PB']
-        [1152921504606846976, '1.0 EB']
-        [1180591620717411303424, '1.0 ZB']
-        [1208925819614629174706176, '1.0 YB']
-        [1237940039285380274899124224, '1024.0 YB']
+        [1.1111, 0, '1.0 B']
+        [1137.7664, 1, '1.1 KB']
+        [1165072.7936, 2, '1.11 MB']
+        [1193034540.6464, 3, '1.111 GB']
+        [1221667369621.9136, 4, '1.1111 TB']
 
         Args:
-            b: B
+            b: bytes
             rounded (int, optional): arg for round. Defaults to None.
+            shorten (bool): shorten unnecessary tail 0.
+            precision: (float): shorten precision, often set to 0.99.
+            sep (str, optional): sep between result and unit.
 
         Returns:
             str
@@ -221,6 +229,8 @@
     1.13 read_time - From secs to readable string.
         >>> read_time(0)
         '0 secs'
+        >>> read_time(60)
+        '1 mins'
         >>> for i in range(0, 6):
         ...     [1.2345 * 60**i, read_time(1.2345 * 60**i, rounded=1)]
         ...
@@ -228,12 +238,15 @@
         [74.07, '1.2 mins']
         [4444.2, '1.2 hours']
         [266652.0, '3.1 days']
-        [15999120.0, '6.2 mons']
+        [15999120.0, '0.5 years']
         [959947200.0, '30.4 years']
 
         Args:
             b: seconds
             rounded (int, optional): arg for round. Defaults to None.
+            shorten (bool): shorten unnecessary tail 0.
+            precision: (float): shorten precision, often set to 0.99.
+            sep (str, optional): sep between result and unit.
 
         Returns:
             str
@@ -339,12 +352,36 @@
 
 ======================
 
-### 2. morebuiltins.request
+### 2. morebuiltins.ipc
 
 ======================
 
 
-    2.1 req - A simple requests mock, slow but useful.
+    2.1 IPCEncoder - Abstract base class for all encoders; users only need to implement two abstract methods to set up the communication protocol. Note that different header lengths affect the packaging max length.
+
+
+---
+
+
+    2.4 SocketLogHandlerEncoder - View the test code: morebuiltins\ipc.py:_test_log_ipc
+
+
+---
+
+
+    2.5 SocketServer - View the test code: morebuiltins\ipc.py:_test_pickle_ipc
+
+
+---
+
+======================
+
+### 3. morebuiltins.request
+
+======================
+
+
+    3.1 req - A simple requests mock, slow but useful.
         >>> import time
         >>> r = req.get("https://postman-echo.com/get?a=2", timeout=3, params={"b": "3"})
         >>> r.url
@@ -368,7 +405,7 @@
 ---
 
 
-    2.2 DomainParser - Get the Second-level domain(SLD) from a hostname or a url.
+    3.2 DomainParser - Get the Second-level domain(SLD) from a hostname or a url.
         >>> domain_parser = DomainParser()
         >>> domain_parser.parse_hostname("github.com")
         'github.com'
@@ -392,13 +429,13 @@
 ---
 
 
-    2.3 unparse_qsl - Reverse conversion for parse_qsl
+    3.3 unparse_qsl - Reverse conversion for parse_qsl
 
 
 ---
 
 
-    2.4 update_url - Sort url query args to unify format the url.
+    3.4 update_url - Sort url query args to unify format the url.
         >>> update_url('http://www.github.com?b=1&c=1&a=1', {"b": None, "c": None})  # remove params
         'http://www.github.com?a=1'
         >>> update_url("http://www.github.com?b=1&c=1&a=1", a="123", b=None)  # update params with kwargs
@@ -412,18 +449,6 @@
 
         `replace_kwargs` is a dict to update attributes before sorting  (such as scheme / netloc...).
     
-
----
-
-======================
-
-### 3. morebuiltins.ipc
-
-======================
-
-
-    3.1 IPCEncoder - Abstract base class for all encoders; users only need to implement two abstract methods to set up the communication protocol. Note that different header lengths affect the packaging max length.
-
 
 ---
 
