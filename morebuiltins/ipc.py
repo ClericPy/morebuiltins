@@ -1,8 +1,10 @@
 import asyncio
+import pickle
 import sys
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Optional
-
+from logging import LogRecord
+from logging.handlers import SocketHandler
+from typing import Any, Callable, Dict, Literal, Optional, Union
 
 __all__ = [
     "IPCEncoder",
@@ -20,6 +22,7 @@ class IPCEncoder(ABC):
     # HEAD_LENGTH: Package length
     # 1: 256 B, 2: 64 KB, 3: 16 MB, 4: 4 GB, 5: 1 TB, 6: 256 TB
     HEAD_SIZE = 4
+    BYTEORDER: Literal["little", "big"] = "big"
 
     @abstractmethod
     def _dumps(self, raw: Any) -> bytes:
@@ -31,14 +34,14 @@ class IPCEncoder(ABC):
 
     def dumps(self, raw: Any) -> bytes:
         result = self._dumps(raw)
-        head = len(result).to_bytes(self.HEAD_SIZE, "big")
+        head = len(result).to_bytes(self.HEAD_SIZE, self.BYTEORDER)
         return head + result
 
     def loads(self, raw: Any) -> bytes:
         return self._loads(raw)
 
     def get_size(self, head: bytes):
-        return int.from_bytes(head, "big")
+        return int.from_bytes(head, self.BYTEORDER)
 
 
 class JSONEncoder(IPCEncoder):
@@ -63,38 +66,46 @@ class JSONEncoder(IPCEncoder):
 class PickleEncoder(IPCEncoder):
     _DUMP_KWARGS: Dict = {}
     _LOAD_KWARGS: Dict = {}
-    _ENCODING = "utf-8"
 
     def __init__(self):
-        import pickle
-
-        self._encoder = pickle.dumps
-        self._decoder = pickle.loads
         super().__init__()
 
     def _dumps(self, raw: Any) -> bytes:
-        return self._encoder(raw, **self._DUMP_KWARGS)
+        return pickle.dumps(raw, **self._DUMP_KWARGS)
 
     def _loads(self, raw: bytes) -> Any:
-        return self._decoder(raw, **self._LOAD_KWARGS)
+        return pickle.loads(raw, **self._LOAD_KWARGS)
 
 
-class SocketLogHandlerEncoder(PickleEncoder):
-    _DUMP_KWARGS: Dict = {}
+class SocketLogHandlerEncoder(IPCEncoder):
+    "View the test code: morebuiltins\ipc.py:_test_log_ipc"
+
+    _DUMP_KWARGS: Dict = {"protocol": 1}
     _LOAD_KWARGS: Dict = {}
-    _ENCODING = "utf-8"
 
     def __init__(self):
         super().__init__()
 
-    def _dumps(self, raw: Any) -> bytes:
-        return self._encoder(raw, **self._DUMP_KWARGS)
+    def makePickle(self, d: Union[dict, LogRecord]):
+        if isinstance(d, LogRecord):
+            msg = d.getMessage()
+            d = dict(d.__dict__)
+            d["msg"] = msg
+            d["args"] = None
+            d["exc_info"] = None
+            d.pop("message", None)
+        return pickle.dumps(d, **self._DUMP_KWARGS)
+
+    def _dumps(self, raw: Union[LogRecord, dict]) -> bytes:
+        return self.makePickle(raw)
 
     def _loads(self, raw: bytes) -> Any:
-        return self._decoder(raw, **self._LOAD_KWARGS)
+        return pickle.loads(raw, **self._LOAD_KWARGS)
 
 
 class SocketServer:
+    "View the test code: morebuiltins\ipc.py:_test_pickle_ipc"
+
     def __init__(
         self,
         host: str = "127.0.0.1",
@@ -152,6 +163,7 @@ class SocketServer:
     async def close(self):
         if self.is_serving():
             self.server.close()
+            await self.server.wait_closed()
             self._shutdown_ev.set()
 
     async def start(self):
@@ -257,7 +269,7 @@ async def test_client(host="127.0.0.1", port=8090):
         await c.send("[shutdown server]")
 
 
-async def _test_ipc():
+async def _test_pickle_ipc():
     import platform
 
     if platform.system() == "Linux":
@@ -275,10 +287,32 @@ async def _test_ipc():
         await test_client(host="127.0.0.1", port=8090)
 
 
+async def _test_log_ipc():
+    import logging
+
+    host = "127.0.0.1"
+    port = 8090
+    async with SocketServer(host=host, port=port, encoder=SocketLogHandlerEncoder()):
+        # socket logger demo
+        # ==================
+        logger = logging.getLogger("test_logger")
+        logger.setLevel(logging.DEBUG)
+        h = SocketHandler(host, port)
+        h.setLevel(logging.DEBUG)
+        logger.addHandler(h)
+        logger.info("test socket")
+        # ==================
+
+        # ensure test case
+        await asyncio.sleep(0.1)
+        assert pickle.loads(h.sock.recv(int(1e10))[4:])["name"] == logger.name
+
+
 def test():
-    asyncio.run(_test_ipc())
+    globals().setdefault("print_log", True)  # local test show logs
+    for function in [_test_pickle_ipc, _test_log_ipc]:
+        asyncio.get_event_loop().run_until_complete(function())
 
 
 if __name__ == "__main__":
-    globals().setdefault("print_log", True)  # local test show logs
     test()
