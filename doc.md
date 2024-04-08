@@ -363,14 +363,73 @@
 ---
 
 
-    2.4 SocketLogHandlerEncoder - View the test code: morebuiltins\ipc.py:_test_log_ipc
+    2.4 SocketLogHandlerEncoder - View the test code: morebuiltins\ipc.py:_test_ipc_logging
 
+        ```
+        async def _test_ipc_logging():
+            import logging
+
+            host = "127.0.0.1"
+            port = 8090
+            async with SocketServer(host=host, port=port, encoder=SocketLogHandlerEncoder()):
+                # socket logger demo
+                # ==================
+                logger = logging.getLogger("test_logger")
+                logger.setLevel(logging.DEBUG)
+                h = SocketHandler(host, port)
+                h.setLevel(logging.DEBUG)
+                logger.addHandler(h)
+                logger.info("test socket")
+                # ==================
+
+                # ensure test case
+                await asyncio.sleep(0.1)
+                assert pickle.loads(h.sock.recv(int(1e10))[4:])["name"] == logger.name
+        ```
+    
 
 ---
 
 
-    2.5 SocketServer - View the test code: morebuiltins\ipc.py:_test_pickle_ipc
+    2.5 SocketServer - View the test code: morebuiltins\ipc.py:_test_ipc
+            ```
+        async def test_client(host="127.0.0.1", port=8090, encoder=None, cases=None):
+            async with SocketClient(host=host, port=port, encoder=encoder) as c:
+                for case in cases:
+                    await c.send(case)
+                    response = await c.recv()
+                    if globals().get("print_log"):
+                        print("[Client]", "send:", repr(case), "=>", "recv:", repr(response))
+                    assert case == response or str(case) == response, [case, response]
+                await c.send("[shutdown server]")
 
+
+        async def _test_ipc():
+            import platform
+
+            JSONEncoder._DUMP_KWARGS["default"] = str
+            for enc, cases in [
+                [PickleEncoder, [123, "123", None, {"a"}, ["a"], ("a",), {"a": 1}]],
+                [JSONEncoder, [123, "123", None, {"a"}, ["a"], {"a": 1}]],
+            ]:
+                encoder = enc()
+                if platform.system() == "Linux":
+                    # test unix domain socket
+                    print("Test Linux Unix Domain Socket")
+                    host = "/tmp/uds.sock"
+                    port = None
+                    async with SocketServer(host=host, port=port, encoder=encoder):
+                        await test_client(host, port=None, encoder=encoder, cases=cases)
+
+                # test socket
+                host = "127.0.0.1"
+                port = 8090
+                async with SocketServer(host=host, port=port, encoder=encoder):
+                    await test_client(host="127.0.0.1", port=8090, encoder=encoder, cases=cases)
+
+
+            ```
+    
 
 ---
 
