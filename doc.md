@@ -384,7 +384,7 @@
 
                 # ensure test case
                 await asyncio.sleep(0.1)
-                assert pickle.loads(h.sock.recv(int(1e10))[4:])["name"] == logger.name
+                assert pickle.loads(h.sock.recv(100000)[4:])["name"] == logger.name
         ```
     
 
