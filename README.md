@@ -1,4 +1,4 @@
-# morebuitins
+# morebuiltins
 
 I need much more built-ins.
 
