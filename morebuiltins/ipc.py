@@ -17,7 +17,7 @@ __all__ = [
 
 
 class IPCEncoder(ABC):
-    """Abstract base class for all encoders; users only need to implement two abstract methods to set up the communication protocol. Note that different header lengths affect the packaging max length."""
+    """An abstract base class for all encoders; implementing the necessary communication protocol requires only the definition of two abstract methods. Be mindful that varying header lengths will impact the maximum packaging size."""
 
     # HEAD_LENGTH: Package length
     # 1: 256 B, 2: 64 KB, 3: 16 MB, 4: 4 GB, 5: 1 TB, 6: 256 TB
@@ -78,7 +78,7 @@ class PickleEncoder(IPCEncoder):
 
 
 class SocketLogHandlerEncoder(IPCEncoder):
-    """View the test code: morebuiltins\ipc.py:_test_ipc_logging
+    """For a practical demonstration, refer to the test code: morebuiltins\ipc.py:_test_ipc_logging.
 
     ```
     async def _test_ipc_logging():
@@ -127,7 +127,8 @@ class SocketLogHandlerEncoder(IPCEncoder):
 
 
 class SocketServer:
-    """View the test code: morebuiltins\ipc.py:_test_ipc
+    """To see an example in action, view the test code: morebuiltins\ipc.py:_test_ipc.
+
         ```
     async def test_client(host="127.0.0.1", port=8090, encoder=None, cases=None):
         async with SocketClient(host=host, port=port, encoder=encoder) as c:
