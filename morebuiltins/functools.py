@@ -28,9 +28,10 @@ def lru_cache_ttl(
     >>> import time
     >>> # test ttl
     >>> values = [1, 2]
-    >>> func = lambda: values.pop(0)
-    >>> func1 = lru_cache_ttl(1, 0.1)(func)
-    >>> [func1(), func1(), time.sleep(0.11), func1()]
+    >>> @lru_cache_ttl(1, 0.1)
+    ... def func1(i):
+    ...     return values.pop(0)
+    >>> [func1(1), func1(1), time.sleep(0.11), func1(1)]
     [1, 1, None, 2]
     >>> # test maxsize
     >>> values = [1, 2, 3]
@@ -51,8 +52,9 @@ def lru_cache_ttl(
     1
     >>> # test auto_clear=False
     >>> values = [1, 2, 3, 4]
-    >>> func = lambda i: values.pop(0)
-    >>> func1 = lru_cache_ttl(5, 0.1, controls=True, auto_clear=False)(func)
+    >>> @lru_cache_ttl(5, 0.1, controls=True, auto_clear=False)
+    ... def func1(i):
+    ...     return values.pop(0)
     >>> [func1(1), func1(2), func1(3)]
     [1, 2, 3]
     >>> time.sleep(0.11)

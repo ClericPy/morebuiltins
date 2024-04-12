@@ -2,9 +2,9 @@
 
 I need much more built-ins.
 
-Document: https://github.com/ClericPy/morebuiltins/blob/master/doc.md
-
 ---
+
+\[Document\]: https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 <!-- start -->
 ## 1. morebuiltins.utils
