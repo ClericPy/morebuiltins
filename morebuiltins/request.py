@@ -125,7 +125,8 @@ def _request(
 
 
 class req:
-    """A simple requests mock, slow but useful.
+    """A basic mock for requests, performant albeit simplistic.
+
     >>> import time
     >>> r = req.get("https://postman-echo.com/get?a=2", timeout=3, params={"b": "3"})
     >>> r.url
@@ -159,7 +160,8 @@ class req:
 
 
 class DomainParser(object):
-    """Get the Second-level domain(SLD) from a hostname or a url.
+    """Extracts the Second-level domain (SLD) from a provided hostname or URL.
+
     >>> domain_parser = DomainParser()
     >>> domain_parser.parse_hostname("github.com")
     'github.com'
@@ -261,7 +263,7 @@ class DomainParser(object):
 
 
 def unparse_qsl(qsl, sort=False, reverse=False):
-    """Reverse conversion for parse_qsl"""
+    """Provides the inverse operation of parse_qsl, converting query string lists back into a URL-encoded string."""
     result = []
     if sort:
         qsl = sorted(qsl, key=lambda x: x[0], reverse=reverse)
@@ -279,7 +281,8 @@ def update_url(
     reverse=False,
     **kw_params,
 ):
-    """Sort url query args to unify format the url.
+    """Organizes the query arguments within a URL to standardize its format.
+
     >>> update_url('http://www.github.com?b=1&c=1&a=1', {"b": None, "c": None})  # remove params
     'http://www.github.com?a=1'
     >>> update_url("http://www.github.com?b=1&c=1&a=1", a="123", b=None)  # update params with kwargs
@@ -291,7 +294,7 @@ def update_url(
     >>> update_url("http://www.github.com?b=1&c=1&a=1", replace_kwargs={"netloc": "www.new_host.com"})  # update netloc
     'http://www.new_host.com?b=1&c=1&a=1'
 
-    `replace_kwargs` is a dict to update attributes before sorting  (such as scheme / netloc...).
+    replace_kwargs is a dict to update attributes before sorting  (such as scheme / netloc...).
     """
     parsed = urlparse(url)
     if replace_kwargs is None:

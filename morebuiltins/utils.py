@@ -30,21 +30,21 @@ __all__ = [
     "ptime",
     "slice_into_pieces",
     "slice_by_size",
-    "get_hash",
     "unique",
-    "guess_interval",
     "retry",
+    "guess_interval",
+    "get_hash",
     "find_jsons",
     "code_inline",
-    "stagger_sort",
     "read_size",
     "read_time",
+    "Validator",
+    "stagger_sort",
     "default_dict",
+    "always_return_value",
     "format_error",
     "Trie",
     "GuessExt",
-    # "progress_bar1"
-    # "progress_bar2"
 ]
 
 
@@ -53,7 +53,8 @@ def ttime(
     tzone: int = int(-timezone / 3600),
     fmt="%Y-%m-%d %H:%M:%S",
 ) -> str:
-    """From timestamp to timestring. Translate timestamp into human-readable: %Y-%m-%d %H:%M:%S.
+    """Converts a timestamp to a human-readable timestring formatted as %Y-%m-%d %H:%M:%S.
+
     >>> ttime(1486572818.421858323, tzone=8)
     '2017-02-09 00:53:38'
 
@@ -75,7 +76,8 @@ def ptime(
     tzone: int = int(-timezone / 3600),
     fmt: str = "%Y-%m-%d %H:%M:%S",
 ) -> int:
-    """From timestring to timestamp. Translate %Y-%m-%d %H:%M:%S into timestamp
+    """Converts a timestring formatted as %Y-%m-%d %H:%M:%S back into a timestamp.
+
     >>> ptime("2018-03-15 01:27:56", tzone=8)
     1521048476
 
@@ -98,7 +100,8 @@ def ptime(
 def slice_into_pieces(
     items: Sequence, n: int
 ) -> Generator[Union[tuple, Sequence], None, None]:
-    """Slice a sequence into `n` pieces, return a generation of n pieces.
+    """Divides a sequence into “n” segments, returning a generator that yields “n” pieces.
+
     >>> for chunk in slice_into_pieces(range(10), 3):
     ...     print(chunk)
     (0, 1, 2, 3)
@@ -107,7 +110,7 @@ def slice_into_pieces(
 
     Args:
         seq (_type_): input a sequence.
-        n (_type_): split the given sequence into `n` pieces.
+        n (_type_): split the given sequence into "n" pieces.
 
     Returns:
         Generator[tuple, None, None]: a generator with tuples.
@@ -127,7 +130,8 @@ def slice_into_pieces(
 def slice_by_size(
     items: Sequence, size: int, callback=tuple
 ) -> Generator[Union[tuple, Sequence], None, None]:
-    """Slice a sequence into chunks, return as a generation of tuple chunks with `size`.
+    """Slices a sequence into chunks of a specified “size”, returning a generator that produces tuples of chunks.
+
     >>> for chunk in slice_by_size(range(10), 3):
     ...     print(chunk)
     (0, 1, 2)
@@ -157,7 +161,8 @@ def slice_by_size(
 def unique(
     items: Sequence, key: Optional[Callable] = None
 ) -> Generator[Any, None, None]:
-    """Unique the seq and keep the order(fast).
+    """Removes duplicate elements from a sequence while preserving the original order efficiently.
+
     >>> a = ['01', '1', '2']
     >>> list(unique(a, int))
     [1, 2]
@@ -194,7 +199,8 @@ def retry(
     exceptions: Tuple[Type[BaseException]] = (Exception,),
     return_exception=False,
 ):
-    """A decorator which will retry the function `tries` times while raising given exceptions.
+    """A decorator that retries the decorated function up to “tries” times if the specified exceptions are raised.
+
     >>> func = lambda items: 1/items.pop(0)
     >>> items = [0, 1]
     >>> new_func = retry(tries=2, exceptions=(ZeroDivisionError,))(func)
@@ -239,7 +245,8 @@ def retry(
 
 
 def guess_interval(nums, accuracy=0):
-    """Given a seq of number, return the median, only calculate interval >= accuracy.
+    """Analyzes a sequence of numbers and returns the median, calculating intervals only if they are greater than or equal to the specified accuracy.
+
     >>> # sorted_seq: [2, 10, 12, 19, 19, 29, 30, 32, 38, 40, 41, 54, 62]
     >>> # diffs: [8, 7, 10, 6, 13, 8]
     >>> # median: 8
@@ -265,7 +272,8 @@ def get_hash(
     default: Callable = lambda obj: str(obj).encode("utf-8"),
     func=hashlib.md5,
 ) -> str:
-    """Get the md5_string from given string
+    """Generates an MD5 hash string from the given input string.
+
     >>> get_hash(123456, 10)
     'a59abbe56e'
     >>> get_hash('test')
@@ -297,7 +305,8 @@ def find_jsons(
     return_as: Literal["json", "object", "index"] = "json",
     json_loader=json.loads,
 ):
-    """Generator for finding the valid JSON string, only support dict and list.
+    """A generator that locates valid JSON strings, supporting only dictionaries and lists.
+
     >>> list(find_jsons('string["123"]123{"a": 1}[{"a": 1, "b": [1,2,3]}]'))
     ['["123"]', '{"a": 1}', '[{"a": 1, "b": [1,2,3]}]']
     >>> list(find_jsons('string[]{}{"a": 1}'))
@@ -357,7 +366,8 @@ def code_inline(
     source_code: str,
     encoder: Literal["b16", "b32", "b64", "b85"] = "b85",
 ) -> str:
-    """Make the python source code inline.
+    """Minifies Python source code into a single line.
+
     >>> code1 = ''
     >>> code2 = code_inline("variable=12345")
     >>> # import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY8mBl+`0{<&ZEXqtw%1N~~G%_|Z1ptx!(o_xr000".encode("u8"))))
@@ -429,7 +439,8 @@ def read_num(
 
 
 def read_size(b, rounded: Optional[int] = None, shorten=False, precision=1.0, sep=" "):
-    """From bytes to readable string. shorten=True and precision=0.99 can shorten unnecessary tail floating-point numbers.
+    """Converts byte counts into a human-readable string. Setting shorten=True and precision=0.99 will trim unnecessary decimal places from the tail of floating-point numbers.
+
     >>> (read_size(1023), read_size(1024))
     ('1023 B', '1 KB')
     >>> (read_size(400.5, 1), read_size(400.5, 1, True), read_size(400.5, 1, True, 0.99))
@@ -476,7 +487,8 @@ def read_size(b, rounded: Optional[int] = None, shorten=False, precision=1.0, se
 def read_time(
     secs, rounded: Optional[int] = None, shorten=False, precision=1.0, sep=" "
 ):
-    """From secs to readable string.
+    """Converts seconds into a more readable time duration string.
+
     >>> read_time(0)
     '0 secs'
     >>> read_time(60)
@@ -541,7 +553,8 @@ class Validator:
 
 
 def stagger_sort(items, group_key, sort_key=None):
-    """Ensure that the same group is ordered and staggered, avoid data skew. Will not affect the original list, return as a generator.
+    """Ensures that identical groups are ordered and evenly distributed, mitigating data skew. The function does not alter the original list and returns a generator.
+
     >>> items = [('a', 0), ('a', 2), ('a', 1), ('b', 0), ('b', 1)]
     >>> list(stagger_sort(items, sort_key=lambda i: (i[0], i[1]), group_key=lambda i: i[0]))
     [('a', 0), ('b', 0), ('a', 1), ('b', 1), ('a', 2)]
@@ -565,7 +578,8 @@ def stagger_sort(items, group_key, sort_key=None):
 
 
 def default_dict(cls: Type[dict], **kwargs) -> dict:
-    """Init a default zero-value dict from the subclass of TypedDict.
+    """Initializes a dictionary with default zero values based on a subclass of TypedDict.
+
     >>> class Demo(dict):
     ...     int_obj: int
     ...     float_obj: float
@@ -615,7 +629,8 @@ def format_error(
     template="[{filename}:{tb.name}:{tb.lineno}] {tb.line} >>> {error.__class__.__name__}({error!s})",
     **kwargs,
 ) -> str:
-    """Get the frame info from Exception. Default filter will skip `site-packages` info.
+    """Extracts frame information from an exception, with an option to filter out “site-packages” details by default.
+
     >>> try:
     ...     # test default
     ...     1 / 0
@@ -672,7 +687,8 @@ def format_error(
 
 
 class Trie(UserDict):
-    """Make a normal dict to trie tree with the feature of prefix-match.
+    """Transforms a standard dictionary into a trie structure that supports prefix matching.
+
     >>> trie = Trie({"ab": 1, "abc": 2, b"aa": 3, ("e", "e"): 4, (1, 2): 5})
     >>> trie
     {'a': {'b': {'_VALUE': 1, 'c': {'_VALUE': 2}}}, 97: {97: {'_VALUE': 3}}, 'e': {'e': {'_VALUE': 4}}, 1: {2: {'_VALUE': 5}}}
@@ -741,7 +757,8 @@ class Trie(UserDict):
 
 
 class GuessExt(object):
-    """Determine whether the input prefix bytes are compressed files,
+    """Determines whether the input bytes of a file prefix indicate a compressed file format.
+
     >>> cg = GuessExt()
     >>> cg.get_ext(b"PK\x05\x06zipfiledemo")
     '.zip'

@@ -1,11 +1,13 @@
 ======================
 
-### 1. morebuiltins.utils
+## 1. morebuiltins.utils
+
 
 ======================
 
 
-    1.1 ttime - From timestamp to timestring. Translate timestamp into human-readable: %Y-%m-%d %H:%M:%S.
+    1.1 `ttime` - Converts a timestamp to a human-readable timestring formatted as %Y-%m-%d %H:%M:%S.
+
         >>> ttime(1486572818.421858323, tzone=8)
         '2017-02-09 00:53:38'
 
@@ -21,7 +23,8 @@
 ---
 
 
-    1.2 ptime - From timestring to timestamp. Translate %Y-%m-%d %H:%M:%S into timestamp
+    1.2 `ptime` - Converts a timestring formatted as %Y-%m-%d %H:%M:%S back into a timestamp.
+
         >>> ptime("2018-03-15 01:27:56", tzone=8)
         1521048476
 
@@ -37,7 +40,8 @@
 ---
 
 
-    1.3 slice_into_pieces - Slice a sequence into `n` pieces, return a generation of n pieces.
+    1.3 `slice_into_pieces` - Divides a sequence into “n” segments, returning a generator that yields “n” pieces.
+
         >>> for chunk in slice_into_pieces(range(10), 3):
         ...     print(chunk)
         (0, 1, 2, 3)
@@ -46,7 +50,7 @@
 
         Args:
             seq (_type_): input a sequence.
-            n (_type_): split the given sequence into `n` pieces.
+            n (_type_): split the given sequence into "n" pieces.
 
         Returns:
             Generator[tuple, None, None]: a generator with tuples.
@@ -58,7 +62,8 @@
 ---
 
 
-    1.4 slice_by_size - Slice a sequence into chunks, return as a generation of tuple chunks with `size`.
+    1.4 `slice_by_size` - Slices a sequence into chunks of a specified “size”, returning a generator that produces tuples of chunks.
+
         >>> for chunk in slice_by_size(range(10), 3):
         ...     print(chunk)
         (0, 1, 2)
@@ -80,23 +85,8 @@
 ---
 
 
-    1.5 get_hash - Get the md5_string from given string
-        >>> get_hash(123456, 10)
-        'a59abbe56e'
-        >>> get_hash('test')
-        '098f6bcd4621d373cade4e832627b4f6'
-        >>> get_hash(['list_demo'], (5, 10))
-        '7152a'
-        >>> get_hash(['list_demo'], func=hashlib.sha256)
-        'a6072e063d36a09052a9e5eb389a425a3dc158d3a5955808159a118aa192c718'
-        >>> get_hash(['list_demo'], 16, func=hashlib.sha256)
-        '389a425a3dc158d3'
-    
+    1.5 `unique` - Removes duplicate elements from a sequence while preserving the original order efficiently.
 
----
-
-
-    1.6 unique - Unique the seq and keep the order(fast).
         >>> a = ['01', '1', '2']
         >>> list(unique(a, int))
         [1, 2]
@@ -117,20 +107,8 @@
 ---
 
 
-    1.7 guess_interval - Given a seq of number, return the median, only calculate interval >= accuracy.
-        >>> # sorted_seq: [2, 10, 12, 19, 19, 29, 30, 32, 38, 40, 41, 54, 62]
-        >>> # diffs: [8, 7, 10, 6, 13, 8]
-        >>> # median: 8
-        >>> seq = [2, 10, 12, 19, 19, 29, 30, 32, 38, 40, 41, 54, 62]
-        >>> guess_interval(seq, 5)
-        8
+    1.6 `retry` - A decorator that retries the decorated function up to “tries” times if the specified exceptions are raised.
 
-    
-
----
-
-
-    1.8 retry - A decorator which will retry the function `tries` times while raising given exceptions.
         >>> func = lambda items: 1/items.pop(0)
         >>> items = [0, 1]
         >>> new_func = retry(tries=2, exceptions=(ZeroDivisionError,))(func)
@@ -146,7 +124,39 @@
 ---
 
 
-    1.9 find_jsons - Generator for finding the valid JSON string, only support dict and list.
+    1.7 `guess_interval` - Analyzes a sequence of numbers and returns the median, calculating intervals only if they are greater than or equal to the specified accuracy.
+
+        >>> # sorted_seq: [2, 10, 12, 19, 19, 29, 30, 32, 38, 40, 41, 54, 62]
+        >>> # diffs: [8, 7, 10, 6, 13, 8]
+        >>> # median: 8
+        >>> seq = [2, 10, 12, 19, 19, 29, 30, 32, 38, 40, 41, 54, 62]
+        >>> guess_interval(seq, 5)
+        8
+
+    
+
+---
+
+
+    1.8 `get_hash` - Generates an MD5 hash string from the given input string.
+
+        >>> get_hash(123456, 10)
+        'a59abbe56e'
+        >>> get_hash('test')
+        '098f6bcd4621d373cade4e832627b4f6'
+        >>> get_hash(['list_demo'], (5, 10))
+        '7152a'
+        >>> get_hash(['list_demo'], func=hashlib.sha256)
+        'a6072e063d36a09052a9e5eb389a425a3dc158d3a5955808159a118aa192c718'
+        >>> get_hash(['list_demo'], 16, func=hashlib.sha256)
+        '389a425a3dc158d3'
+    
+
+---
+
+
+    1.9 `find_jsons` - A generator that locates valid JSON strings, supporting only dictionaries and lists.
+
         >>> list(find_jsons('string["123"]123{"a": 1}[{"a": 1, "b": [1,2,3]}]'))
         ['["123"]', '{"a": 1}', '[{"a": 1, "b": [1,2,3]}]']
         >>> list(find_jsons('string[]{}{"a": 1}'))
@@ -160,7 +170,8 @@
 ---
 
 
-    1.10 code_inline - Make the python source code inline.
+    1.10 `code_inline` - Minifies Python source code into a single line.
+
         >>> code1 = ''
         >>> code2 = code_inline("variable=12345")
         >>> # import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY8mBl+`0{<&ZEXqtw%1N~~G%_|Z1ptx!(o_xr000".encode("u8"))))
@@ -178,17 +189,8 @@
 ---
 
 
-    1.11 stagger_sort - Ensure that the same group is ordered and staggered, avoid data skew. Will not affect the original list, return as a generator.
-        >>> items = [('a', 0), ('a', 2), ('a', 1), ('b', 0), ('b', 1)]
-        >>> list(stagger_sort(items, sort_key=lambda i: (i[0], i[1]), group_key=lambda i: i[0]))
-        [('a', 0), ('b', 0), ('a', 1), ('b', 1), ('a', 2)]
+    1.11 `read_size` - Converts byte counts into a human-readable string. Setting shorten=True and precision=0.99 will trim unnecessary decimal places from the tail of floating-point numbers.
 
-    
-
----
-
-
-    1.12 read_size - From bytes to readable string. shorten=True and precision=0.99 can shorten unnecessary tail floating-point numbers.
         >>> (read_size(1023), read_size(1024))
         ('1023 B', '1 KB')
         >>> (read_size(400.5, 1), read_size(400.5, 1, True), read_size(400.5, 1, True, 0.99))
@@ -226,7 +228,8 @@
 ---
 
 
-    1.13 read_time - From secs to readable string.
+    1.12 `read_time` - Converts seconds into a more readable time duration string.
+
         >>> read_time(0)
         '0 secs'
         >>> read_time(60)
@@ -255,7 +258,37 @@
 ---
 
 
-    1.14 default_dict - Init a default zero-value dict from the subclass of TypedDict.
+    1.13 `Validator` - Validator for dataclasses.
+        >>> from dataclasses import dataclass, field
+        >>>
+        >>>
+        >>> @dataclass
+        ... class Person(Validator):
+        ...     screen: dict = field(metadata={"callback": lambda i: i["s"]})
+        ...     name: str = field(default=None, metadata={"callback": str})
+        ...     age: int = field(default=0, metadata={"callback": int})
+        ...
+        >>>
+        >>> print(Person({"s": 3}, 123, "123"))
+        Person(screen=3, name='123', age=123)
+    
+
+---
+
+
+    1.14 `stagger_sort` - Ensures that identical groups are ordered and evenly distributed, mitigating data skew. The function does not alter the original list and returns a generator.
+
+        >>> items = [('a', 0), ('a', 2), ('a', 1), ('b', 0), ('b', 1)]
+        >>> list(stagger_sort(items, sort_key=lambda i: (i[0], i[1]), group_key=lambda i: i[0]))
+        [('a', 0), ('b', 0), ('a', 1), ('b', 1), ('a', 2)]
+
+    
+
+---
+
+
+    1.15 `default_dict` - Initializes a dictionary with default zero values based on a subclass of TypedDict.
+
         >>> class Demo(dict):
         ...     int_obj: int
         ...     float_obj: float
@@ -272,7 +305,19 @@
 ---
 
 
-    1.15 format_error - Get the frame info from Exception. Default filter will skip `site-packages` info.
+    1.16 `always_return_value` - Got a function always return the given value.
+        >>> func = always_return_value(1)
+        >>> func(1, 2, 3)
+        1
+        >>> func(1, 2, c=3)
+        1
+    
+
+---
+
+
+    1.17 `format_error` - Extracts frame information from an exception, with an option to filter out “site-packages” details by default.
+
         >>> try:
         ...     # test default
         ...     1 / 0
@@ -319,7 +364,8 @@
 ---
 
 
-    1.16 Trie - Make a normal dict to trie tree with the feature of prefix-match.
+    1.18 `Trie` - Transforms a standard dictionary into a trie structure that supports prefix matching.
+
         >>> trie = Trie({"ab": 1, "abc": 2, b"aa": 3, ("e", "e"): 4, (1, 2): 5})
         >>> trie
         {'a': {'b': {'_VALUE': 1, 'c': {'_VALUE': 2}}}, 97: {97: {'_VALUE': 3}}, 'e': {'e': {'_VALUE': 4}}, 1: {2: {'_VALUE': 5}}}
@@ -342,7 +388,8 @@
 ---
 
 
-    1.17 GuessExt - Determine whether the input prefix bytes are compressed files,
+    1.19 `GuessExt` - Determines whether the input bytes of a file prefix indicate a compressed file format.
+
         >>> cg = GuessExt()
         >>> cg.get_ext(b"PKzipfiledemo")
         '.zip'
@@ -352,18 +399,78 @@
 
 ======================
 
-### 2. morebuiltins.ipc
+## 2. morebuiltins.functools
+
 
 ======================
 
 
-    2.1 IPCEncoder - Abstract base class for all encoders; users only need to implement two abstract methods to set up the communication protocol. Note that different header lengths affect the packaging max length.
+    2.1 `lru_cache_ttl` - A Least Recently Used (LRU) cache with a Time To Live (TTL) feature.
+
+        Args:
+            maxsize (int): maxsize of cache
+            ttl (Optional[Union[int, float]], optional): time to live. Defaults to None.
+            controls (bool, optional): set cache/ttl_clean attributes. Defaults to False.
+            auto_clear (bool, optional): clear dead cache automatically. Defaults to True.
+            timer (callable, optional): Defaults to time.time.
+
+        Returns:
+            callable: decorator function
+
+        >>> import time
+        >>> # test ttl
+        >>> values = [1, 2]
+        >>> func = lambda: values.pop(0)
+        >>> func1 = lru_cache_ttl(1, 0.1)(func)
+        >>> [func1(), func1(), time.sleep(0.11), func1()]
+        [1, 1, None, 2]
+        >>> # test maxsize
+        >>> values = [1, 2, 3]
+        >>> func = lambda i: values.pop(0)
+        >>> func1 = lru_cache_ttl(2)(func)
+        >>> [func1(i) for i in [1, 1, 1, 2, 2, 2, 3, 3, 3]]
+        [1, 1, 1, 2, 2, 2, 3, 3, 3]
+        >>> # test auto_clear=True, with controls
+        >>> values = [1, 2, 3, 4]
+        >>> func = lambda i: values.pop(0)
+        >>> func1 = lru_cache_ttl(5, 0.1, controls=True, auto_clear=True)(func)
+        >>> [func1(1), func1(2), func1(3)]
+        [1, 2, 3]
+        >>> time.sleep(0.11)
+        >>> func1(3)
+        4
+        >>> len(func1.cache)
+        1
+        >>> # test auto_clear=False
+        >>> values = [1, 2, 3, 4]
+        >>> func = lambda i: values.pop(0)
+        >>> func1 = lru_cache_ttl(5, 0.1, controls=True, auto_clear=False)(func)
+        >>> [func1(1), func1(2), func1(3)]
+        [1, 2, 3]
+        >>> time.sleep(0.11)
+        >>> func1(3)
+        4
+        >>> len(func1.cache)
+        3
+    
+
+---
+
+======================
+
+## 3. morebuiltins.ipc
+
+
+======================
+
+
+    3.1 `IPCEncoder` - An abstract base class for all encoders; implementing the necessary communication protocol requires only the definition of two abstract methods. Be mindful that varying header lengths will impact the maximum packaging size.
 
 
 ---
 
 
-    2.4 SocketLogHandlerEncoder - View the test code: morebuiltins\ipc.py:_test_ipc_logging
+    3.4 `SocketLogHandlerEncoder` - For a practical demonstration, refer to the test code: morebuiltins\ipc.py:_test_ipc_logging.
 
         ```
         async def _test_ipc_logging():
@@ -391,7 +498,8 @@
 ---
 
 
-    2.5 SocketServer - View the test code: morebuiltins\ipc.py:_test_ipc
+    3.5 `SocketServer` - To see an example in action, view the test code: morebuiltins\ipc.py:_test_ipc.
+
             ```
         async def test_client(host="127.0.0.1", port=8090, encoder=None, cases=None):
             async with SocketClient(host=host, port=port, encoder=encoder) as c:
@@ -435,12 +543,14 @@
 
 ======================
 
-### 3. morebuiltins.request
+## 4. morebuiltins.request
+
 
 ======================
 
 
-    3.1 req - A simple requests mock, slow but useful.
+    4.1 `req` - A basic mock for requests, performant albeit simplistic.
+
         >>> import time
         >>> r = req.get("https://postman-echo.com/get?a=2", timeout=3, params={"b": "3"})
         >>> r.url
@@ -464,7 +574,8 @@
 ---
 
 
-    3.2 DomainParser - Get the Second-level domain(SLD) from a hostname or a url.
+    4.2 `DomainParser` - Extracts the Second-level domain (SLD) from a provided hostname or URL.
+
         >>> domain_parser = DomainParser()
         >>> domain_parser.parse_hostname("github.com")
         'github.com'
@@ -488,13 +599,14 @@
 ---
 
 
-    3.3 unparse_qsl - Reverse conversion for parse_qsl
+    4.3 `unparse_qsl` - Provides the inverse operation of parse_qsl, converting query string lists back into a URL-encoded string.
 
 
 ---
 
 
-    3.4 update_url - Sort url query args to unify format the url.
+    4.4 `update_url` - Organizes the query arguments within a URL to standardize its format.
+
         >>> update_url('http://www.github.com?b=1&c=1&a=1', {"b": None, "c": None})  # remove params
         'http://www.github.com?a=1'
         >>> update_url("http://www.github.com?b=1&c=1&a=1", a="123", b=None)  # update params with kwargs
@@ -506,7 +618,7 @@
         >>> update_url("http://www.github.com?b=1&c=1&a=1", replace_kwargs={"netloc": "www.new_host.com"})  # update netloc
         'http://www.new_host.com?b=1&c=1&a=1'
 
-        `replace_kwargs` is a dict to update attributes before sorting  (such as scheme / netloc...).
+        replace_kwargs is a dict to update attributes before sorting  (such as scheme / netloc...).
     
 
 ---
