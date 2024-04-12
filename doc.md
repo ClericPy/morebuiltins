@@ -420,9 +420,10 @@
         >>> import time
         >>> # test ttl
         >>> values = [1, 2]
-        >>> func = lambda: values.pop(0)
-        >>> func1 = lru_cache_ttl(1, 0.1)(func)
-        >>> [func1(), func1(), time.sleep(0.11), func1()]
+        >>> @lru_cache_ttl(1, 0.1)
+        ... def func1(i):
+        ...     return values.pop(0)
+        >>> [func1(1), func1(1), time.sleep(0.11), func1(1)]
         [1, 1, None, 2]
         >>> # test maxsize
         >>> values = [1, 2, 3]
@@ -443,8 +444,9 @@
         1
         >>> # test auto_clear=False
         >>> values = [1, 2, 3, 4]
-        >>> func = lambda i: values.pop(0)
-        >>> func1 = lru_cache_ttl(5, 0.1, controls=True, auto_clear=False)(func)
+        >>> @lru_cache_ttl(5, 0.1, controls=True, auto_clear=False)
+        ... def func1(i):
+        ...     return values.pop(0)
         >>> [func1(1), func1(2), func1(3)]
         [1, 2, 3]
         >>> time.sleep(0.11)
@@ -452,6 +454,36 @@
         4
         >>> len(func1.cache)
         3
+    
+
+---
+
+
+    2.2 `threads` - Quickly convert synchronous functions to be concurrency-able. (similar to madisonmay/Tomorrow)
+
+        >>> @threads(10)
+        ... def test(i):
+        ...     time.sleep(i)
+        ...     return i
+        >>> start = time.time()
+        >>> tasks = [test(i) for i in [0.1] * 5]
+        >>> len(test.pool._threads)
+        5
+        >>> len(test.tasks)
+        5
+        >>> for i in tasks:
+        ...     i.result() if hasattr(i, 'result') else i
+        0.1
+        0.1
+        0.1
+        0.1
+        0.1
+        >>> time.time() - start < 0.2
+        True
+        >>> len(test.pool._threads)
+        5
+        >>> len(test.tasks)
+        0
     
 
 ---
