@@ -1,9 +1,11 @@
 import time
+from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from itertools import chain
 from typing import Optional, OrderedDict, Union
+from weakref import WeakSet
 
-__all__ = ["lru_cache_ttl"]
+__all__ = ["lru_cache_ttl", "threads"]
 
 
 def lru_cache_ttl(
@@ -115,12 +117,53 @@ def lru_cache_ttl(
     return decorator
 
 
-def threads(n=1):
-    pass
+def threads(n: Optional[int] = None, executor_class=None, **kws):
+    """Quickly convert synchronous functions to be concurrency-able. (similar to madisonmay/Tomorrow)
+
+    >>> @threads(10)
+    ... def test(i):
+    ...     time.sleep(i)
+    ...     return i
+    >>> start = time.time()
+    >>> tasks = [test(i) for i in [0.1] * 5]
+    >>> len(test.pool._threads)
+    5
+    >>> len(test.tasks)
+    5
+    >>> for i in tasks:
+    ...     i.result() if hasattr(i, 'result') else i
+    0.1
+    0.1
+    0.1
+    0.1
+    0.1
+    >>> time.time() - start < 0.2
+    True
+    >>> len(test.pool._threads)
+    5
+    >>> len(test.tasks)
+    0
+    """
+    pool = (executor_class or ThreadPoolExecutor)(max_workers=n, **kws)
+    tasks: WeakSet = WeakSet()
+
+    def decorator(func):
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            future = pool.submit(func, *args, **kwargs)
+            future.add_done_callback(lambda task: tasks.discard(task))
+            tasks.add(future)
+            return future
+
+        setattr(wrapped, "pool", pool)
+        setattr(wrapped, "tasks", tasks)
+        return wrapped
+
+    return decorator
 
 
 if __name__ == "__main__":
-    __name__ = "morebuiltins.utils"
+    __name__ = "morebuiltins.functools"
     import doctest
 
     doctest.testmod()

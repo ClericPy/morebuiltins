@@ -52,6 +52,8 @@ I need much more built-ins.
 
 2.1 `lru_cache_ttl` - A Least Recently Used (LRU) cache with a Time To Live (TTL) feature.
 
+2.2 `threads` - Quickly convert synchronous functions to be concurrency-able. (similar to madisonmay/Tomorrow)
+
 
 ## 3. morebuiltins.ipc
 
@@ -78,11 +80,10 @@ I need much more built-ins.
 ## On the way
 
 1. quick logger
-2. threads
-3. progress_bar
-4. http.server (upload)
-5. function parser (signature.parameters)
-6. time reaches
-7. quick tkinter
-8. http parser (request/response)
-9. asyncio free-flying tasks
+2. progress_bar
+3. http.server (upload)
+4. function parser (signature.parameters)
+5. time reaches
+6. quick tkinter
+7. http parser (request/response)
+8. asyncio free-flying tasks
