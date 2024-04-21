@@ -1,7 +1,8 @@
-# morebuiltins
+# [morebuiltins](https://github.com/ClericPy/morebuiltins)
 
 > I need much more built-ins
 
+[![PyPI](https://img.shields.io/pypi/v/morebuiltins?style=plastic)](https://pypi.org/project/morebuiltins/)[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/clericpy/morebuiltins/pythonpackage.yml)](https://github.com/ClericPy/morebuiltins/actions)![PyPI - Wheel](https://img.shields.io/pypi/wheel/morebuiltins?style=plastic)![PyPI - Python Version](https://img.shields.io/pypi/pyversions/morebuiltins?style=plastic)![PyPI - Downloads](https://img.shields.io/pypi/dm/morebuiltins?style=plastic)![PyPI - License](https://img.shields.io/pypi/l/morebuiltins?style=plastic)
 ## Purpose
 
 1. Collect commonly used code snippets to make up for the lack of built-in functions
