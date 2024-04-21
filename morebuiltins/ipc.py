@@ -101,6 +101,7 @@ class SocketLogHandlerEncoder(IPCEncoder):
             await asyncio.sleep(0.1)
             assert pickle.loads(h.sock.recv(100000)[4:])["name"] == logger.name
     ```
+    And provide a simple implementation for generating logs for coroutine code with Client usage.
     """
 
     _DUMP_KWARGS: Dict = {"protocol": 1}

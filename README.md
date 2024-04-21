@@ -1,10 +1,18 @@
 # morebuiltins
 
-I need much more built-ins.
+> I need much more built-ins
+
+## Purpose
+
+1. Collect commonly used code snippets to make up for the lack of built-in functions
+2. Provide some common ideas for beginners
+3. Stay Hungry, Stay Foolish
+
+## Doc
 
 ---
 
-\[Document\]: https://github.com/ClericPy/morebuiltins/blob/master/doc.md
+Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 <!-- start -->
 ## 1. morebuiltins.utils
@@ -79,7 +87,7 @@ I need much more built-ins.
 
 ## On the way
 
-1. quick logger
+1. TimeSizeRotatingHandler of logging.handlers
 2. progress_bar
 3. http.server (upload)
 4. function parser (signature.parameters)
