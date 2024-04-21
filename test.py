@@ -1,6 +1,9 @@
+#! D:\downloads\python-3.12.1-embed-amd64\python.exe
 import importlib
+import sys
 import time
 
+sys.path.insert(0, "./")
 import morebuiltins
 from doc import make_docs
 

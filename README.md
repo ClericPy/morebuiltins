@@ -68,9 +68,9 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 3.1 `IPCEncoder` - An abstract base class for all encoders; implementing the necessary communication protocol requires only the definition of two abstract methods. Be mindful that varying header lengths will impact the maximum packaging size.
 
-3.4 `SocketLogHandlerEncoder` - For a practical demonstration, refer to the test code: morebuiltins\ipc.py:_test_ipc_logging.
+3.4 `SocketLogHandlerEncoder` - For a practical demonstration, refer to the test code: morebuiltins/ipc.py:_test_ipc_logging.
 
-3.5 `SocketServer` - To see an example in action, view the test code: morebuiltins\ipc.py:_test_ipc.
+3.5 `SocketServer` - To see an example in action, view the test code: morebuiltins/ipc.py:_test_ipc.
 
 
 ## 4. morebuiltins.request

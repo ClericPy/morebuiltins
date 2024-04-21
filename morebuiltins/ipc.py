@@ -207,7 +207,7 @@ class SocketServer:
         while self.is_serving() and not reader.at_eof():
             head = await reader.read(head_size)
             if len(head) < head_size:
-                raise RuntimeError()
+                break
             content_length = self.encoder.get_size(head)
             # read the whole package
             head = await reader.read(content_length)
@@ -364,6 +364,7 @@ async def _test_ipc_logging():
         # ensure test case
         await asyncio.sleep(0.1)
         assert pickle.loads(h.sock.recv(100000)[4:])["name"] == logger.name
+        h.sock.close()
 
 
 def test():

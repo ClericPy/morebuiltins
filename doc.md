@@ -502,7 +502,7 @@
 ---
 
 
-    3.4 `SocketLogHandlerEncoder` - For a practical demonstration, refer to the test code: morebuiltins\ipc.py:_test_ipc_logging.
+    3.4 `SocketLogHandlerEncoder` - For a practical demonstration, refer to the test code: morebuiltins/ipc.py:_test_ipc_logging.
 
         ```
         async def _test_ipc_logging():
@@ -531,7 +531,7 @@
 ---
 
 
-    3.5 `SocketServer` - To see an example in action, view the test code: morebuiltins\ipc.py:_test_ipc.
+    3.5 `SocketServer` - To see an example in action, view the test code: morebuiltins/ipc.py:_test_ipc.
 
             ```
         async def test_client(host="127.0.0.1", port=8090, encoder=None, cases=None):
