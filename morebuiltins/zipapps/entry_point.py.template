@@ -1,0 +1,106 @@
+# -*- coding: utf-8 -*-
+import os
+import sys
+from pathlib import Path
+from runpy import run_module, run_path
+from string import Template
+from subprocess import run
+from tempfile import gettempdir
+
+from activate_zipapps import activate
+
+
+def activate_envs():
+    # try to activate the --zipapps env paths
+    HANDLE_OTHER_ENVS_FLAG = "{HANDLE_OTHER_ENVS_FLAG}"
+    build_env_paths = {env_paths}
+    todo_paths = build_env_paths.split(',') if build_env_paths else []
+    ignore_indexes = set()
+    for index, arg in enumerate(sys.argv):
+        if arg.startswith(HANDLE_OTHER_ENVS_FLAG):
+            ignore_indexes.add(index)
+            if '=' in arg:
+                paths = arg[len(HANDLE_OTHER_ENVS_FLAG) + 1:]
+            else:
+                ignore_indexes.add(index + 1)
+                paths = sys.argv[index + 1]
+            for _path in paths.split(','):
+                todo_paths.append(_path)
+    if ignore_indexes:
+        sys.argv = [
+            arg for index, arg in enumerate(sys.argv)
+            if index not in ignore_indexes
+        ]
+    for env_path in todo_paths:
+        _env_path = ensure_env_path(env_path)
+        if not _env_path.is_file():
+            raise RuntimeError('%s is not exist.' % _env_path)
+        activate(_env_path)
+
+
+def ensure_env_path(env_path):
+    # backward compatibility
+    if env_path.startswith(('HOME', 'SELF', 'TEMP')):
+        env_path = '$' + env_path
+    kwargs = {{
+        'SELF': str(Path(__file__).parent.parent.absolute()),
+        'TEMP': str(Path(gettempdir()).absolute()),
+        'PID': str(os.getpid()),
+        'CWD': str(Path.cwd().absolute()),
+    }}
+    try:
+        kwargs['HOME'] = str(Path.home().absolute())
+    except (RuntimeError, OSError):
+        pass
+    return Path(Template(env_path).safe_substitute(kwargs))
+
+
+def main():
+    activate()
+    activate_envs()
+    args = sys.argv
+    if len(args) == 2:
+        arg1 = args[1]
+        if arg1 == '{HANDLE_ACTIVATE_ZIPAPPS}' or arg1 == '--ensure-zipapps':
+            return
+    has_main = {has_main}
+    if has_main:
+        if {main_shell}:
+            shell_args = [sys.executable, '-c', '''{run_main}''']
+            run(shell_args, shell={shell})
+        else:
+            {run_main}
+            return
+    else:
+        if len(args) > 1:
+            arg1 = args[1]
+            if arg1 == '-c':
+                source = args[2]
+                sys.argv = [arg1] + args[3:]
+                return exec(source)
+            elif arg1 == '-':
+                source = sys.stdin.read()
+                sys.argv = [arg1] + args[2:]
+                return exec(source)
+            elif arg1 == '-m':
+                sys.argv = args[2:]
+                return run_module(args[2], run_name='__main__')
+            else:
+                arg1_path = Path(arg1)
+                if arg1_path.is_file():
+                    sys.argv = args[1:]
+                    dir_path = arg1_path.parent
+                    if dir_path.is_dir():
+                        sys.path.insert(0, dir_path.absolute().as_posix())
+                    return run_path(arg1, run_name='__main__')
+                else:
+                    # python [-bBdEhiIOqsSuvVWx?]
+                    shell_args = [sys.executable] + args[1:]
+                    run(shell_args, shell={shell})
+        else:
+            import code
+            code.interact()
+
+
+if __name__ == "__main__":
+    main()
