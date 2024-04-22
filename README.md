@@ -10,6 +10,26 @@
 2. Provide some common ideas for beginners
 3. Stay Hungry, Stay Foolish
 
+## Install
+
+From **pypi.org**
+
+> pip install -U morebuiltins
+
+Or use `pyz`(pyz file may be downloaded from [releases](https://github.com/ClericPy/morebuiltins/releases))
+
+> pip install zipapps
+> 
+> python -m zipapps -c -o morebuiltins.pyz morebuiltins
+
+```python
+import sys
+sys.path.insert(0, 'morebuiltins.pyz')
+import morebuiltins
+print(morebuiltins.__file__)
+# morebuiltins.pyz\morebuiltins\__init__.py
+```
+
 ## Doc
 
 ---
@@ -64,6 +84,8 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 2.2 `threads` - Quickly convert synchronous functions to be concurrency-able. (similar to madisonmay/Tomorrow)
 
+2.3 `background_task` - Avoid asyncio free-flying tasks, better to use the new asyncio.TaskGroup to avoid this in 3.11+. https://github.com/python/cpython/issues/91887
+
 
 ## 3. morebuiltins.ipc
 
@@ -93,7 +115,8 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 2. progress_bar
 3. http.server (upload)
 4. function parser (signature.parameters)
-5. time reaches
+5. time reach syntax
 6. quick tkinter
-7. http parser (request/response)
-8. asyncio free-flying tasks
+7. http request/response parser
+8. ~~asyncio free-flying tasks~~
+9. named lock with timeout
