@@ -111,8 +111,8 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 ## On the way
 
-- [x] add zipapps as a submodule(https://github.com/ClericPy/zipapps)
-- [x] asyncio free-flying tasks(bg_task)
+- [x] add zipapps as a submodule(https://github.com/ClericPy/zipapps) - v0.0.3
+- [x] asyncio free-flying tasks(bg_task) - v0.0.3
 - [ ] progress_bar
 - [ ] http.server (upload)
 - [ ] function parser (signature.parameters)
