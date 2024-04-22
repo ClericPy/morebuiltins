@@ -1,0 +1,232 @@
+# -*- coding: utf-8 -*-
+
+import os
+import sys
+from pathlib import Path
+from shutil import rmtree
+from string import Template
+from tempfile import gettempdir
+from zipfile import ZipFile
+
+# const
+ts_file_name = '_zip_time_{ts}'
+LAZY_PIP_DIR_NAME = {LAZY_PIP_DIR_NAME}
+pip_args = {pip_args_repr}
+pip_args_md5 = '{pip_args_md5}'
+_new_sys_paths = {sys_paths}.strip()
+# variable
+ignore_system_python_path = bool(
+    os.getenv({ignore_system_python_path_env}, {ignore_system_python_path}))
+python_version_slice = int(
+    os.getenv({python_version_slice_env}, {python_version_slice}))
+py_version = '.'.join(map(str, sys.version_info[:python_version_slice]))
+
+unzip = os.environ.get({unzip_env}, {unzip})
+unzip_exclude = os.environ.get({unzip_exclude_env}, {unzip_exclude})
+_cache_folder = os.environ.get({unzip_path_env},
+                               os.environ.get('UNZIP_PATH')) or {unzip_path}
+clear_zipapps_cache = bool(
+    os.environ.get({clear_zipapps_cache_env}, {clear_zipapps_cache}))
+clear_zipapps_self = bool(
+    os.environ.get({clear_zipapps_self_env}, {clear_zipapps_self}))
+
+unzip_chmod = os.environ.get({chmod_env}, {chmod})
+mode = int(unzip_chmod, 8) if unzip_chmod else 0
+
+
+def ensure_path(path: str):
+    # backward compatibility
+    if path.startswith(('HOME', 'SELF', 'TEMP')):
+        path = '$' + path
+    kwargs = {{
+        'SELF': str(Path(__file__).parent.parent.absolute()),
+        'TEMP': str(Path(gettempdir()).absolute()),
+        'PID': str(os.getpid()),
+        'CWD': str(Path.cwd().absolute()),
+    }}
+    try:
+        kwargs['HOME'] = str(Path.home().absolute())
+    except (RuntimeError, OSError):
+        pass
+    return Path(Template(path).safe_substitute(kwargs))
+
+
+def rm_dir_or_file(path: Path):
+    for _ in range(3):
+        try:
+            if path.is_dir():
+                rmtree(str(path.absolute()), ignore_errors=True)
+            elif path.is_file():
+                path.unlink()
+            else:
+                break
+        except FileNotFoundError:
+            break
+        except PermissionError:
+            break
+    else:
+        return False
+    return True
+
+
+def clear_old_cache(_cache_folder_path: Path, LAZY_PIP_DIR_NAME=''):
+    for path in _cache_folder_path.glob('*'):
+        if path.name == LAZY_PIP_DIR_NAME:
+            continue
+        rm_dir_or_file(path)
+
+
+def get_pip_main(ensurepip_root=None):
+    try:
+        import pip
+    except ImportError:
+        import ensurepip
+        assert ensurepip._bootstrap(root=ensurepip_root) == 0
+        if ensurepip_root:
+            for _path in Path(ensurepip_root).glob('**/pip/'):
+                if _path.is_dir():
+                    sys.path.append(str(_path.parent.absolute()))
+                    break
+        import pip
+    try:
+        from pip._internal.cli.main import main
+        return main
+    except ImportError:
+        pass
+    try:
+        from pip import main
+        return main
+    except ImportError:
+        pass
+    try:
+        from pip._internal import main
+        return main
+    except ImportError:
+        pass
+    return pip.main
+
+
+
+def try_chmod(path: Path):
+    try:
+        path.chmod(mode=mode)
+    except PermissionError:
+        pass
+
+
+def ensure_chmod(path: Path, recursion=True):
+    if unzip_chmod and os.name != 'nt':
+        if path.is_dir():
+            try_chmod(path)
+            if recursion:
+                for _path in path.rglob('*'):
+                    try_chmod(_path)
+        elif path.is_file():
+            try_chmod(path)
+
+
+def prepare_path():
+    """Template code for zipapps entry point. Run with current PYTHONPATH"""
+    # PYTHONPATH=./app.pyz
+    zip_file_path = Path(__file__).parent.absolute()
+    _zipapps_python_path_list = [str(zip_file_path)]
+    if clear_zipapps_self:
+        import atexit
+
+        atexit.register(rm_dir_or_file, zip_file_path)
+    if unzip and zip_file_path.is_file():
+        _cache_folder_path_parent = ensure_path(_cache_folder)
+        _cache_folder_path_parent.mkdir(parents=True, exist_ok=True)
+        _cache_folder_path = _cache_folder_path_parent / zip_file_path.stem
+        if clear_zipapps_cache:
+            import atexit
+
+            def _remove_cache_folder():
+                rm_dir_or_file(_cache_folder_path)
+                if not any(_cache_folder_path_parent.iterdir()):
+                    rm_dir_or_file(_cache_folder_path_parent)
+
+            atexit.register(_remove_cache_folder)
+
+        _cache_folder_path.mkdir(parents=True, exist_ok=True)
+        _cache_folder_path_str = str(_cache_folder_path.absolute())
+        _zipapps_python_path_list.insert(0, _cache_folder_path_str)
+        if not (_cache_folder_path / ts_file_name).is_file():
+            # check timestamp difference by file name, need to refresh _cache_folder
+            _need_unzip_names = set(unzip.split(','))
+            # rm the folder
+            if LAZY_PIP_DIR_NAME:
+                clear_old_cache(_cache_folder_path, LAZY_PIP_DIR_NAME)
+                _need_unzip_names.add(LAZY_PIP_DIR_NAME)
+            if unzip_exclude:
+                _exclude_unzip_names = set(unzip_exclude.split(','))
+            else:
+                _exclude_unzip_names = set()
+            _need_unzip_names.add(ts_file_name)
+            with ZipFile(zip_file_path, "r") as zf:
+                for member in zf.infolist():
+                    file_dir_name = os.path.splitext(
+                        member.filename.split('/')[0])[0]
+                    allow_unzip = unzip == '*' or member.filename in _need_unzip_names or file_dir_name in _need_unzip_names
+                    exclude_unzip = member.filename in _exclude_unzip_names or file_dir_name in _exclude_unzip_names
+                    if allow_unzip and not exclude_unzip:
+                        zf.extract(member, path=_cache_folder_path_str)
+            if unzip_chmod:
+                ensure_chmod(zip_file_path, False)
+                ensure_chmod(_cache_folder_path_parent, False)
+                ensure_chmod(_cache_folder_path)
+        if LAZY_PIP_DIR_NAME:
+            lazy_pip_dir = _cache_folder_path / LAZY_PIP_DIR_NAME
+            if lazy_pip_dir.is_dir():
+                import platform
+
+                # pip target isolation with by python version and platform
+                platform_name = (platform.system() or '-')
+                target_name = '%s_%s' % (py_version, platform_name)
+                _pip_target = lazy_pip_dir / target_name
+                _pip_target.mkdir(parents=True, exist_ok=True)
+                lazy_pip_dir_str = str(_pip_target.absolute())
+                _zipapps_python_path_list.insert(0, lazy_pip_dir_str)
+                _need_reinstall = not (_pip_target / pip_args_md5).is_file(
+                ) or '-U' in pip_args or '--upgrade' in pip_args
+                if _need_reinstall:
+                    # rm old requirements
+                    rm_dir_or_file(_pip_target)
+                    _pip_target.mkdir(parents=True, exist_ok=True)
+                    _pip_args = ['install', '-t', lazy_pip_dir_str] + pip_args
+                    cwd = os.getcwd()
+                    os.chdir(_cache_folder_path_str)
+                    try:
+                        pip_main = get_pip_main(ensurepip_root=lazy_pip_dir_str)
+                        assert pip_main(_pip_args) == 0, 'pip install failed'
+                    finally:
+                        os.chdir(cwd)
+                    # avoid duplicated installation
+                    (_pip_target / pip_args_md5).touch()
+                    ensure_chmod(lazy_pip_dir)
+    if _new_sys_paths:
+        new_sys_paths = [str(ensure_path(p)) for p in _new_sys_paths.split(',')]
+    else:
+        new_sys_paths = []
+    if ignore_system_python_path:
+        sys.path.clear()
+        # env of Popen is not valid for win32 platform, use os.environ instead.
+        _new_paths = _zipapps_python_path_list + new_sys_paths
+    else:
+        _old_path = os.environ.get('PYTHONPATH') or ''
+        _new_paths = _zipapps_python_path_list + [_old_path] + new_sys_paths
+    os.environ['PYTHONPATH'] = os.pathsep.join(_new_paths)
+    # let the dir path first
+    zipapps_paths = [
+        path for path in _zipapps_python_path_list if path not in sys.path
+    ]
+    seen_path = set()
+    result = []
+    for path in zipapps_paths + sys.path + new_sys_paths:
+        if path not in seen_path:
+            seen_path.add(path)
+            result.append(path)
+    sys.path = result
+
+
+prepare_path()

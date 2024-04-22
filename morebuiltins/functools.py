@@ -6,7 +6,7 @@ from itertools import chain
 from typing import Coroutine, Optional, OrderedDict, Set, Union
 from weakref import WeakSet
 
-__all__ = ["lru_cache_ttl", "threads", "background_task"]
+__all__ = ["lru_cache_ttl", "threads", "bg_task"]
 
 
 def lru_cache_ttl(
@@ -163,10 +163,10 @@ def threads(n: Optional[int] = None, executor_class=None, **kws):
     return decorator
 
 
-_background_tasks: Set[asyncio.Task] = set()
+_bg_tasks: Set[asyncio.Task] = set()
 
 
-def background_task(coro: Coroutine) -> asyncio.Task:
+def bg_task(coro: Coroutine) -> asyncio.Task:
     """Avoid asyncio free-flying tasks, better to use the new asyncio.TaskGroup to avoid this in 3.11+. https://github.com/python/cpython/issues/91887
 
     Args:
@@ -177,8 +177,8 @@ def background_task(coro: Coroutine) -> asyncio.Task:
 
     """
     task = asyncio.create_task(coro)
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
     return task
 
 
@@ -187,9 +187,9 @@ def test_bg_task():
         async def coro():
             return True
 
-        task = background_task(coro())
+        task = bg_task(coro())
         assert await task is True
-        result = (task.done(), len(_background_tasks))
+        result = (task.done(), len(_bg_tasks))
         assert result == (True, 0), result
 
     asyncio.get_event_loop().run_until_complete(_test_bg_task())

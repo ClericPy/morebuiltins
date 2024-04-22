@@ -111,12 +111,13 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 ## On the way
 
-1. TimeSizeRotatingHandler of logging.handlers
-2. progress_bar
-3. http.server (upload)
-4. function parser (signature.parameters)
-5. time reach syntax
-6. quick tkinter
-7. http request/response parser
-8. ~~asyncio free-flying tasks~~
-9. named lock with timeout
+- [x] add zipapps as a submodule(https://github.com/ClericPy/zipapps)
+- [x] asyncio free-flying tasks(bg_task)
+- [ ] progress_bar
+- [ ] http.server (upload)
+- [ ] function parser (signature.parameters)
+- [ ] time reach syntax
+- [ ] quick tkinter
+- [ ] http request/response parser
+- [ ] named lock with timeout
+- [ ] TimeSizeRotatingHandler of logging.handlers
