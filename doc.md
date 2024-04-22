@@ -488,6 +488,19 @@
 
 ---
 
+
+    2.3 `background_task` - Avoid asyncio free-flying tasks, better to use the new asyncio.TaskGroup to avoid this in 3.11+. https://github.com/python/cpython/issues/91887
+
+        Args:
+            coro (Coroutine)
+
+        Returns:
+            _type_: Task
+
+    
+
+---
+
 ======================
 
 ## 3. morebuiltins.ipc

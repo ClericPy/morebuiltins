@@ -1,11 +1,12 @@
+import asyncio
 import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from itertools import chain
-from typing import Optional, OrderedDict, Union
+from typing import Coroutine, Optional, OrderedDict, Set, Union
 from weakref import WeakSet
 
-__all__ = ["lru_cache_ttl", "threads"]
+__all__ = ["lru_cache_ttl", "threads", "background_task"]
 
 
 def lru_cache_ttl(
@@ -162,8 +163,45 @@ def threads(n: Optional[int] = None, executor_class=None, **kws):
     return decorator
 
 
+_background_tasks: Set[asyncio.Task] = set()
+
+
+def background_task(coro: Coroutine) -> asyncio.Task:
+    """Avoid asyncio free-flying tasks, better to use the new asyncio.TaskGroup to avoid this in 3.11+. https://github.com/python/cpython/issues/91887
+
+    Args:
+        coro (Coroutine)
+
+    Returns:
+        _type_: Task
+
+    """
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
+
+def test_bg_task():
+    async def _test_bg_task():
+        async def coro():
+            return True
+
+        task = background_task(coro())
+        assert await task is True
+        result = (task.done(), len(_background_tasks))
+        assert result == (True, 0), result
+
+    asyncio.get_event_loop().run_until_complete(_test_bg_task())
+
+
+def test():
+    test_bg_task()
+
+
 if __name__ == "__main__":
     __name__ = "morebuiltins.functools"
+    test()
     import doctest
 
     doctest.testmod()
