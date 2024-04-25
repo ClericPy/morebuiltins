@@ -86,6 +86,8 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 2.3 `bg_task` - Avoid asyncio free-flying tasks, better to use the new asyncio.TaskGroup to avoid this in 3.11+. https://github.com/python/cpython/issues/91887
 
+2.4 `NamedLock` - Reusable named locks, support for timeouts, support for multiple concurrent locks.
+
 
 ## 3. morebuiltins.ipc
 
@@ -113,11 +115,11 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 - [x] add zipapps as a submodule(https://github.com/ClericPy/zipapps) - v0.0.3
 - [x] asyncio free-flying tasks(bg_task) - v0.0.3
+- [x] named lock with timeout
 - [ ] progress_bar
 - [ ] http.server (upload)
 - [ ] function parser (signature.parameters)
 - [ ] time reach syntax
 - [ ] quick tkinter
 - [ ] http request/response parser
-- [ ] named lock with timeout
 - [ ] TimeSizeRotatingHandler of logging.handlers
