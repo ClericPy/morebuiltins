@@ -3,10 +3,11 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from itertools import chain
-from typing import Coroutine, Optional, OrderedDict, Set, Union
+from threading import Lock, Semaphore
+from typing import Callable, Coroutine, Dict, Optional, OrderedDict, Set, Union
 from weakref import WeakSet
 
-__all__ = ["lru_cache_ttl", "threads", "bg_task"]
+__all__ = ["lru_cache_ttl", "threads", "bg_task", "NamedLock"]
 
 
 def lru_cache_ttl(
@@ -182,6 +183,132 @@ def bg_task(coro: Coroutine) -> asyncio.Task:
     return task
 
 
+LockType = Union[Lock, Semaphore, asyncio.Lock, asyncio.Semaphore]
+
+
+class NamedLock:
+    """Reusable named locks, support for timeouts, support for multiple concurrent locks.
+
+        ```python
+
+def test_named_lock():
+    def test_sync():
+        import time
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Lock, Semaphore
+
+        def _test1():
+            with NamedLock("_test1", Lock, timeout=0.05) as lock:
+                time.sleep(0.1)
+                return bool(lock)
+
+        with ThreadPoolExecutor(10) as pool:
+            tasks = [pool.submit(_test1) for _ in range(3)]
+            result = [i.result() for i in tasks]
+            assert result == [True, False, False], result
+        assert len(NamedLock._SYNC_CACHE) == 1
+        NamedLock.clear_unlocked()
+        assert len(NamedLock._SYNC_CACHE) == 0
+
+        def _test2():
+            with NamedLock("_test2", lambda: Semaphore(2), timeout=0.05) as lock:
+                time.sleep(0.1)
+                return bool(lock)
+
+        with ThreadPoolExecutor(10) as pool:
+            tasks = [pool.submit(_test2) for _ in range(3)]
+            result = [i.result() for i in tasks]
+            assert result == [True, True, False], result
+
+    def test_async():
+        import asyncio
+
+        async def main():
+            async def _test1():
+                async with NamedLock("_test1", asyncio.Lock, timeout=0.05) as lock:
+                    await asyncio.sleep(0.1)
+                    return bool(lock)
+
+            tasks = [asyncio.create_task(_test1()) for _ in range(3)]
+            result = [await i for i in tasks]
+            assert result == [True, False, False], result
+            assert len(NamedLock._ASYNC_CACHE) == 1
+            NamedLock.clear_unlocked()
+            assert len(NamedLock._ASYNC_CACHE) == 0
+
+            async def _test2():
+                async with NamedLock(
+                    "_test2", lambda: asyncio.Semaphore(2), timeout=0.05
+                ) as lock:
+                    await asyncio.sleep(0.1)
+                    return bool(lock)
+
+            tasks = [asyncio.create_task(_test2()) for _ in range(3)]
+            result = [await i for i in tasks]
+            assert result == [True, True, False], result
+
+        asyncio.get_event_loop().run_until_complete(main())
+
+    test_sync()
+    test_async()
+
+        ```
+    """
+
+    _SYNC_CACHE: Dict[str, LockType] = {}
+    _ASYNC_CACHE: Dict[str, LockType] = {}
+
+    def __init__(self, name: str, default_factory: Callable, timeout=None):
+        self.name = name
+        self.default_factory = default_factory
+        self.timeout = timeout
+        self.lock = None
+
+    @classmethod
+    def clear_unlocked(cls):
+        for cache in [cls._SYNC_CACHE, cls._ASYNC_CACHE]:
+            for name, lock in list(cache.items()):
+                if hasattr(lock, "locked") and not lock.locked():
+                    cache.pop(name, None)
+                elif isinstance(lock, Semaphore) and (
+                    lock._value == 0 or not lock._cond._lock.locked()
+                ):
+                    cache.pop(name, None)
+
+    def __enter__(self):
+        if self.name in self._SYNC_CACHE:
+            lock = self._SYNC_CACHE[self.name]
+        else:
+            lock = self.default_factory()
+            self._SYNC_CACHE[self.name] = lock
+        if lock.acquire(timeout=self.timeout):
+            self.lock = lock
+            return self
+        else:
+            return None
+
+    def __exit__(self, *_):
+        if self.lock:
+            self.lock.release()
+
+    async def __aenter__(self):
+        if self.name in self._ASYNC_CACHE:
+            lock = self._ASYNC_CACHE[self.name]
+        else:
+            lock = self.default_factory()
+            self._ASYNC_CACHE[self.name] = lock
+        try:
+            await asyncio.wait_for(lock.acquire(), timeout=self.timeout)
+            self.lock = lock
+            return self
+        except asyncio.TimeoutError:
+            return None
+
+    async def __aexit__(self, *_):
+        if self.lock:
+            self.lock.release()
+
+
 def test_bg_task():
     async def _test_bg_task():
         async def coro():
@@ -195,8 +322,71 @@ def test_bg_task():
     asyncio.get_event_loop().run_until_complete(_test_bg_task())
 
 
+def test_named_lock():
+    def test_sync():
+        import time
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Lock, Semaphore
+
+        def _test1():
+            with NamedLock("_test1", Lock, timeout=0.05) as lock:
+                time.sleep(0.1)
+                return bool(lock)
+
+        with ThreadPoolExecutor(10) as pool:
+            tasks = [pool.submit(_test1) for _ in range(3)]
+            result = [i.result() for i in tasks]
+            assert result == [True, False, False], result
+        assert len(NamedLock._SYNC_CACHE) == 1
+        NamedLock.clear_unlocked()
+        assert len(NamedLock._SYNC_CACHE) == 0
+
+        def _test2():
+            with NamedLock("_test2", lambda: Semaphore(2), timeout=0.05) as lock:
+                time.sleep(0.1)
+                return bool(lock)
+
+        with ThreadPoolExecutor(10) as pool:
+            tasks = [pool.submit(_test2) for _ in range(3)]
+            result = [i.result() for i in tasks]
+            assert result == [True, True, False], result
+
+    def test_async():
+        import asyncio
+
+        async def main():
+            async def _test1():
+                async with NamedLock("_test1", asyncio.Lock, timeout=0.05) as lock:
+                    await asyncio.sleep(0.1)
+                    return bool(lock)
+
+            tasks = [asyncio.create_task(_test1()) for _ in range(3)]
+            result = [await i for i in tasks]
+            assert result == [True, False, False], result
+            assert len(NamedLock._ASYNC_CACHE) == 1
+            NamedLock.clear_unlocked()
+            assert len(NamedLock._ASYNC_CACHE) == 0
+
+            async def _test2():
+                async with NamedLock(
+                    "_test2", lambda: asyncio.Semaphore(2), timeout=0.05
+                ) as lock:
+                    await asyncio.sleep(0.1)
+                    return bool(lock)
+
+            tasks = [asyncio.create_task(_test2()) for _ in range(3)]
+            result = [await i for i in tasks]
+            assert result == [True, True, False], result
+
+        asyncio.get_event_loop().run_until_complete(main())
+
+    test_sync()
+    test_async()
+
+
 def test():
     test_bg_task()
+    test_named_lock()
 
 
 if __name__ == "__main__":
