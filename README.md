@@ -88,6 +88,8 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 2.4 `NamedLock` - Reusable named locks, support for timeouts, support for multiple concurrent locks.
 
+2.5 `FuncSchema` - Parse the parameters and types required by a function into a dictionary, and convert an incoming parameter into the appropriate type.
+
 
 ## 3. morebuiltins.ipc
 
@@ -115,10 +117,10 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 - [x] add zipapps as a submodule(https://github.com/ClericPy/zipapps) - v0.0.3
 - [x] asyncio free-flying tasks(bg_task) - v0.0.3
-- [x] named lock with timeout
+- [x] named lock with timeout - v0.0.4
+- [ ] FuncSchema (parse function to get the query-dict) - v0.0.4
 - [ ] progress_bar
 - [ ] http.server (upload)
-- [ ] function parser (signature.parameters)
 - [ ] time reach syntax
 - [ ] quick tkinter
 - [ ] http request/response parser
