@@ -214,7 +214,7 @@ class NamedLock:
 
             def _test2():
                 with NamedLock("_test2", lambda: Semaphore(2), timeout=0.05) as lock:
-                    time.sleep(0.1)
+                    time.sleep(0.2)
                     return bool(lock)
 
             with ThreadPoolExecutor(10) as pool:
@@ -396,7 +396,7 @@ def test_named_lock():
 
         def _test2():
             with NamedLock("_test2", lambda: Semaphore(2), timeout=0.05) as lock:
-                time.sleep(0.1)
+                time.sleep(0.2)
                 return bool(lock)
 
         with ThreadPoolExecutor(10) as pool:

@@ -118,7 +118,7 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 - [x] add zipapps as a submodule(https://github.com/ClericPy/zipapps) - v0.0.3
 - [x] asyncio free-flying tasks(bg_task) - v0.0.3
 - [x] named lock with timeout - v0.0.4
-- [ ] FuncSchema (parse function to get the query-dict) - v0.0.4
+- [x] FuncSchema (parse function to get the query-dict) - v0.0.4
 - [ ] progress_bar
 - [ ] http.server (upload)
 - [ ] time reach syntax
