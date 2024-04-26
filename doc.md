@@ -504,70 +504,97 @@
 
     2.4 `NamedLock` - Reusable named locks, support for timeouts, support for multiple concurrent locks.
 
-            ```python
+                ```python
 
-    def test_named_lock():
-        def test_sync():
-            import time
-            from concurrent.futures import ThreadPoolExecutor
-            from threading import Lock, Semaphore
+        def test_named_lock():
+            def test_sync():
+                import time
+                from concurrent.futures import ThreadPoolExecutor
+                from threading import Lock, Semaphore
 
-            def _test1():
-                with NamedLock("_test1", Lock, timeout=0.05) as lock:
-                    time.sleep(0.1)
-                    return bool(lock)
-
-            with ThreadPoolExecutor(10) as pool:
-                tasks = [pool.submit(_test1) for _ in range(3)]
-                result = [i.result() for i in tasks]
-                assert result == [True, False, False], result
-            assert len(NamedLock._SYNC_CACHE) == 1
-            NamedLock.clear_unlocked()
-            assert len(NamedLock._SYNC_CACHE) == 0
-
-            def _test2():
-                with NamedLock("_test2", lambda: Semaphore(2), timeout=0.05) as lock:
-                    time.sleep(0.1)
-                    return bool(lock)
-
-            with ThreadPoolExecutor(10) as pool:
-                tasks = [pool.submit(_test2) for _ in range(3)]
-                result = [i.result() for i in tasks]
-                assert result == [True, True, False], result
-
-        def test_async():
-            import asyncio
-
-            async def main():
-                async def _test1():
-                    async with NamedLock("_test1", asyncio.Lock, timeout=0.05) as lock:
-                        await asyncio.sleep(0.1)
+                def _test1():
+                    with NamedLock("_test1", Lock, timeout=0.05) as lock:
+                        time.sleep(0.1)
                         return bool(lock)
 
-                tasks = [asyncio.create_task(_test1()) for _ in range(3)]
-                result = [await i for i in tasks]
-                assert result == [True, False, False], result
-                assert len(NamedLock._ASYNC_CACHE) == 1
+                with ThreadPoolExecutor(10) as pool:
+                    tasks = [pool.submit(_test1) for _ in range(3)]
+                    result = [i.result() for i in tasks]
+                    assert result == [True, False, False], result
+                assert len(NamedLock._SYNC_CACHE) == 1
                 NamedLock.clear_unlocked()
-                assert len(NamedLock._ASYNC_CACHE) == 0
+                assert len(NamedLock._SYNC_CACHE) == 0
 
-                async def _test2():
-                    async with NamedLock(
-                        "_test2", lambda: asyncio.Semaphore(2), timeout=0.05
-                    ) as lock:
-                        await asyncio.sleep(0.1)
+                def _test2():
+                    with NamedLock("_test2", lambda: Semaphore(2), timeout=0.05) as lock:
+                        time.sleep(0.1)
                         return bool(lock)
 
-                tasks = [asyncio.create_task(_test2()) for _ in range(3)]
-                result = [await i for i in tasks]
-                assert result == [True, True, False], result
+                with ThreadPoolExecutor(10) as pool:
+                    tasks = [pool.submit(_test2) for _ in range(3)]
+                    result = [i.result() for i in tasks]
+                    assert result == [True, True, False], result
 
-            asyncio.get_event_loop().run_until_complete(main())
+            def test_async():
+                import asyncio
 
-        test_sync()
-        test_async()
+                async def main():
+                    async def _test1():
+                        async with NamedLock("_test1", asyncio.Lock, timeout=0.05) as lock:
+                            await asyncio.sleep(0.1)
+                            return bool(lock)
 
-            ```
+                    tasks = [asyncio.create_task(_test1()) for _ in range(3)]
+                    result = [await i for i in tasks]
+                    assert result == [True, False, False], result
+                    assert len(NamedLock._ASYNC_CACHE) == 1
+                    NamedLock.clear_unlocked()
+                    assert len(NamedLock._ASYNC_CACHE) == 0
+
+                    async def _test2():
+                        async with NamedLock(
+                            "_test2", lambda: asyncio.Semaphore(2), timeout=0.05
+                        ) as lock:
+                            await asyncio.sleep(0.1)
+                            return bool(lock)
+
+                    tasks = [asyncio.create_task(_test2()) for _ in range(3)]
+                    result = [await i for i in tasks]
+                    assert result == [True, True, False], result
+
+                asyncio.get_event_loop().run_until_complete(main())
+
+            test_sync()
+            test_async()
+
+                ```
+    
+
+---
+
+
+    2.5 `FuncSchema` - Parse the parameters and types required by a function into a dictionary, and convert an incoming parameter into the appropriate type.
+
+        >>> def test(a, b: str, /, c=1, *, d=["d"], e=0.1, f={"f"}, g=(1, 2), h=True, i={1}, **kws):
+        ...     return
+        >>> FuncSchema.parse(test)
+        {'b': {'type': <class 'str'>, 'default': <class 'inspect._empty'>}, 'c': {'type': <class 'int'>, 'default': 1}, 'd': {'type': <class 'list'>, 'default': ['d']}, 'e': {'type': <class 'float'>, 'default': 0.1}, 'f': {'type': <class 'set'>, 'default': {'f'}}, 'g': {'type': <class 'tuple'>, 'default': (1, 2)}, 'h': {'type': <class 'bool'>, 'default': True}, 'i': {'type': <class 'set'>, 'default': {1}}}
+        >>> FuncSchema.convert("1", int)
+        1
+        >>> FuncSchema.convert("1", str)
+        '1'
+        >>> FuncSchema.convert("1", float)
+        1.0
+        >>> FuncSchema.convert(0, bool)
+        False
+        >>> FuncSchema.convert('1', bool)
+        True
+        >>> FuncSchema.convert('[[1, 1]]', dict)
+        {1: 1}
+        >>> FuncSchema.convert('[1, 1]', set)
+        {1}
+        >>> FuncSchema.convert('[1, 1]', tuple)
+        (1, 1)
     
 
 ---
