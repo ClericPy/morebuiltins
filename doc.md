@@ -794,7 +794,7 @@
 ======================
 
 
-    5.1 `download_python` - Usage: python -m morebuiltins.download_python
+    5.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m morebuiltins.download_python`
 
         λ python -m morebuiltins.download_python
         View the rules:
