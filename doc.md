@@ -514,7 +514,7 @@
 
                 def _test1():
                     with NamedLock("_test1", Lock, timeout=0.05) as lock:
-                        time.sleep(0.1)
+                        time.sleep(0.2)
                         return bool(lock)
 
                 with ThreadPoolExecutor(10) as pool:
@@ -541,7 +541,7 @@
                 async def main():
                     async def _test1():
                         async with NamedLock("_test1", asyncio.Lock, timeout=0.05) as lock:
-                            await asyncio.sleep(0.1)
+                            await asyncio.sleep(0.2)
                             return bool(lock)
 
                     tasks = [asyncio.create_task(_test1()) for _ in range(3)]
@@ -555,7 +555,7 @@
                         async with NamedLock(
                             "_test2", lambda: asyncio.Semaphore(2), timeout=0.05
                         ) as lock:
-                            await asyncio.sleep(0.1)
+                            await asyncio.sleep(0.2)
                             return bool(lock)
 
                     tasks = [asyncio.create_task(_test2()) for _ in range(3)]
