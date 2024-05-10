@@ -125,7 +125,7 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 - [x] named lock with timeout - v0.0.4
 - [x] functools.FuncSchema (parse function to get the query-dict) - v0.0.4
 - [x] morebuiltins.download_python [standalone python](https://github.com/indygreg/python-build-standalone/releases/latest) downloader - v0.0.4
-- [ ] pip.pip_install - v0.0.4
+- [ ] pip.pip_install
 - [ ] progress_bar
 - [ ] http.server (upload)
 - [ ] time reach syntax
