@@ -685,6 +685,25 @@
 
 ---
 
+
+    3.7 `find_free_port` - Finds and returns an available port number.
+
+        Parameters:
+        - host: The host address to bind, default is "127.0.0.1".
+        - port: The port number to attempt binding, default is 0 (for OS allocation).
+
+        Returns:
+        - If a free port is found, it returns the port number; otherwise, returns None.
+
+        Demo:
+
+        >>> free_port = find_free_port()
+        >>> isinstance(free_port, int)
+        True
+    
+
+---
+
 ======================
 
 ## 4. morebuiltins.request

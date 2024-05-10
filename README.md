@@ -99,6 +99,8 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 3.5 `SocketServer` - To see an example in action, view the test code: morebuiltins/ipc.py:_test_ipc.
 
+3.7 `find_free_port` - Finds and returns an available port number.
+
 
 ## 4. morebuiltins.request
 

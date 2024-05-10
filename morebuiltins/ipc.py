@@ -1,5 +1,6 @@
 import asyncio
 import pickle
+import socket
 import sys
 from abc import ABC, abstractmethod
 from logging import LogRecord
@@ -13,6 +14,7 @@ __all__ = [
     "SocketLogHandlerEncoder",
     "SocketServer",
     "SocketClient",
+    "find_free_port",
 ]
 
 
@@ -310,6 +312,35 @@ class SocketClient:
             return self.encoder.loads(head)
 
 
+def find_free_port(host="127.0.0.1", port=0):
+    """Finds and returns an available port number.
+
+    Parameters:
+    - host: The host address to bind, default is "127.0.0.1".
+    - port: The port number to attempt binding, default is 0 (for OS allocation).
+
+    Returns:
+    - If a free port is found, it returns the port number; otherwise, returns None.
+
+    Demo:
+
+    >>> free_port = find_free_port()
+    >>> isinstance(free_port, int)
+    True
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Create an IPv4 TCP socket
+    try:
+        s.bind((host, port))  # Try to bind the socket to the specified host and port
+        result = s.getsockname()[1]  # Get the bound port number
+        s.close()  # Close the socket
+        return result
+    except socket.error:
+        # Catch socket errors (e.g., port already in use) and proceed without returning
+        pass
+    finally:
+        s.close()  # Ensure the socket is closed before exiting
+
+
 async def test_client(host="127.0.0.1", port=8090, encoder=None, cases=None):
     async with SocketClient(host=host, port=port, encoder=encoder) as c:
         for case in cases:
@@ -350,7 +381,9 @@ async def _test_ipc_logging():
 
     host = "127.0.0.1"
     port = 8090
+    assert find_free_port(host, port) == port
     async with SocketServer(host=host, port=port, encoder=SocketLogHandlerEncoder()):
+        assert find_free_port(host, port) is None
         # socket logger demo
         # ==================
         logger = logging.getLogger("test_logger")
