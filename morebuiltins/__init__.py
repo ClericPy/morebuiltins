@@ -4,4 +4,5 @@ __all__ = [
     "morebuiltins.functools",
     "morebuiltins.ipc",
     "morebuiltins.request",
+    "morebuiltins.download_python",
 ]

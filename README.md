@@ -111,6 +111,11 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 4.4 `update_url` - Organizes the query arguments within a URL to standardize its format.
 
 
+## 5. morebuiltins.download_python
+
+5.1 `download_python` - Usage: python -m morebuiltins.download_python
+
+
 <!-- end -->
 
 ## On the way
@@ -118,7 +123,9 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 - [x] add zipapps as a submodule(https://github.com/ClericPy/zipapps) - v0.0.3
 - [x] asyncio free-flying tasks(bg_task) - v0.0.3
 - [x] named lock with timeout - v0.0.4
-- [x] FuncSchema (parse function to get the query-dict) - v0.0.4
+- [x] functools.FuncSchema (parse function to get the query-dict) - v0.0.4
+- [x] morebuiltins.download_python [standalone python](https://github.com/indygreg/python-build-standalone/releases/latest) downloader - v0.0.4
+- [ ] pip.pip_install - v0.0.4
 - [ ] progress_bar
 - [ ] http.server (upload)
 - [ ] time reach syntax
