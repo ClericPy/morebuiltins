@@ -328,17 +328,12 @@ def find_free_port(host="127.0.0.1", port=0):
     >>> isinstance(free_port, int)
     True
     """
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Create an IPv4 TCP socket
     try:
-        s.bind((host, port))  # Try to bind the socket to the specified host and port
-        result = s.getsockname()[1]  # Get the bound port number
-        s.close()  # Close the socket
-        return result
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind((host, port))
+            return s.getsockname()[1]
     except socket.error:
-        # Catch socket errors (e.g., port already in use) and proceed without returning
         pass
-    finally:
-        s.close()  # Ensure the socket is closed before exiting
 
 
 async def test_client(host="127.0.0.1", port=8090, encoder=None, cases=None):
