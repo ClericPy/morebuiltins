@@ -126,8 +126,9 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 - [x] asyncio free-flying tasks(bg_task) - v0.0.3
 - [x] named lock with timeout - v0.0.4
 - [x] functools.FuncSchema (parse function to get the query-dict) - v0.0.4
-- [x] morebuiltins.download_python [standalone python](https://github.com/indygreg/python-build-standalone/releases/latest) downloader - v0.0.4
-- [ ] pip.pip_install
+- [x] `python -m morebuiltins.download_python` [standalone python](https://github.com/indygreg/python-build-standalone/releases/latest) downloader - v0.0.4
+- [x] `from morebuiltins.zipapps import pip_install_target;pip_install_target("./mock_dir", ["six"], force=False, sys_path=0); import six;print(six.__file__)` - v0.0.5
+- [ ] changelog.md
 - [ ] progress_bar
 - [ ] http.server (upload)
 - [ ] time reach syntax
