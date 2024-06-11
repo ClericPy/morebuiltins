@@ -391,8 +391,37 @@
     1.19 `GuessExt` - Determines whether the input bytes of a file prefix indicate a compressed file format.
 
         >>> cg = GuessExt()
-        >>> cg.get_ext(b"PKzipfiledemo")
+        >>> cg.get_ext(b"PK\x05\x06zipfiledemo")
         '.zip'
+    
+
+---
+
+
+    1.20 `xor_encode_decode` - 
+        Perform XOR encryption or decryption on the given data using a provided key.
+
+        This function encrypts or decrypts the data by performing an XOR operation
+        between each byte of the data and the corresponding byte of the key. The key
+        is repeated if necessary to cover the entire length of the data.
+
+        Parameters:
+        - data: The byte data to be encrypted or decrypted.
+        - key: The key used for encryption or decryption, also a sequence of bytes.
+
+        Returns:
+        - The resulting byte data after encryption or decryption.
+
+        Example:
+
+            >>> original_data = b'Hello, World!'
+            >>> key = b'secret'
+            >>> encrypted_data = xor_encode_decode(original_data, key)
+            >>> encrypted_data
+            b';\x00\x0f\x1e\nXS2\x0c\x00\t\x10R'
+            >>> decrypted_data = xor_encode_decode(encrypted_data, key)
+            >>> decrypted_data == original_data
+            True
     
 
 ---
@@ -792,4 +821,56 @@
 
 
 ======================
+
+
+    5.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m morebuiltins.download_python`
+
+        λ python -m morebuiltins.download_python
+        [10:56:17] Checking https://api.github.com/repos/indygreg/python-build-standalone/releases/latest
+        [10:56:19] View the rules:
+        https://gregoryszorc.com/docs/python-build-standalone/main/running.html#obtaining-distributions
+
+        [10:56:19] Got 290 urls from github.
+
+        [290] Enter keywords (can be int index or partial match, defaults to 0):
+        0. windows
+        1. linux
+        2. darwin
+        0
+        [10:56:24] Filt with keyword: "windows". 290 => 40
+
+        [40] Enter keywords (can be int index or partial match, defaults to 0):
+        0. 3.12.3
+        1. 3.11.9
+        2. 3.10.14
+        3. 3.9.19
+        4. 3.8.19
+
+        [10:56:25] Filt with keyword: "3.12.3". 40 => 8
+
+        [8] Enter keywords (can be int index or partial match, defaults to 0):
+        0. x86_64
+        1. i686
+
+        [10:56:28] Filt with keyword: "x86_64". 8 => 4
+
+        [4] Enter keywords (can be int index or partial match, defaults to 0):
+        0. shared-pgo-full.tar.zst
+        1. shared-install_only.tar.gz
+        2. pgo-full.tar.zst
+        3. install_only.tar.gz
+        3
+        [10:56:33] Filt with keyword: "install_only.tar.gz". 4 => 1
+        [10:56:33] Download URL: 39.1 MB
+        https://github.com/indygreg/python-build-standalone/releases/download/20240415/cpython-3.12.3%2B20240415-x86_64-pc-windows-msvc-install_only.tar.gz
+        File path to save(defaults to `./cpython-3.12.3+20240415-x86_64-pc-windows-msvc-install_only.tar.gz`)?
+        or `q` to exit.
+
+        [10:56:38] Start downloading...
+        https://github.com/indygreg/python-build-standalone/releases/download/20240415/cpython-3.12.3%2B20240415-x86_64-pc-windows-msvc-install_only.tar.gz
+        D:\github\morebuiltins\morebuiltins\download_python\cpython-3.12.3+20240415-x86_64-pc-windows-msvc-install_only.tar.gz
+        [10:56:44] Downloading: 39.12 / 39.12 MB | 100.00% | 11.3 MB/s | 0s
+        [10:56:44] Download complete.
+
+---
 

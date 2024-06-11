@@ -77,6 +77,8 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 1.19 `GuessExt` - Determines whether the input bytes of a file prefix indicate a compressed file format.
 
+1.20 `xor_encode_decode` - 
+
 
 ## 2. morebuiltins.functools
 
@@ -114,6 +116,8 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 
 ## 5. morebuiltins.download_python
+
+5.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m morebuiltins.download_python`
 
 
 <!-- end -->

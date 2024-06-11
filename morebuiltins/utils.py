@@ -45,6 +45,7 @@ __all__ = [
     "format_error",
     "Trie",
     "GuessExt",
+    "xor_encode_decode",
 ]
 
 
@@ -757,7 +758,7 @@ class Trie(UserDict):
 
 
 class GuessExt(object):
-    """Determines whether the input bytes of a file prefix indicate a compressed file format.
+    r"""Determines whether the input bytes of a file prefix indicate a compressed file format.
 
     >>> cg = GuessExt()
     >>> cg.get_ext(b"PK\x05\x06zipfiledemo")
@@ -801,6 +802,39 @@ class GuessExt(object):
             return default
         else:
             return value
+
+
+def xor_encode_decode(data, key):
+    r"""
+    Perform XOR encryption or decryption on the given data using a provided key.
+
+    This function encrypts or decrypts the data by performing an XOR operation
+    between each byte of the data and the corresponding byte of the key. The key
+    is repeated if necessary to cover the entire length of the data.
+
+    Parameters:
+    - data: The byte data to be encrypted or decrypted.
+    - key: The key used for encryption or decryption, also a sequence of bytes.
+
+    Returns:
+    - The resulting byte data after encryption or decryption.
+
+    Example:
+
+        >>> original_data = b'Hello, World!'
+        >>> key = b'secret'
+        >>> encrypted_data = xor_encode_decode(original_data, key)
+        >>> encrypted_data
+        b';\x00\x0f\x1e\nXS2\x0c\x00\t\x10R'
+        >>> decrypted_data = xor_encode_decode(encrypted_data, key)
+        >>> decrypted_data == original_data
+        True
+    """
+    # Extend the key to ensure its length is at least as long as the data
+    extended_key = key * (len(data) // len(key) + 1)
+    # Perform XOR operation between each byte of the data and the extended key,
+    # and return the new sequence of bytes
+    return bytes([b ^ k for b, k in zip(data, extended_key)])
 
 
 if __name__ == "__main__":
