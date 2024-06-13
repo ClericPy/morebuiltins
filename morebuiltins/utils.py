@@ -3,13 +3,16 @@ import base64
 import gzip
 import hashlib
 import json
+import os
 import re
+import sys
 import traceback
 from collections import UserDict
 from enum import IntEnum
 from functools import wraps
 from itertools import groupby, islice
 from os.path import basename
+from pathlib import Path
 from time import gmtime, mktime, strftime, strptime, time, timezone
 from typing import (
     Any,
@@ -46,6 +49,8 @@ __all__ = [
     "Trie",
     "GuessExt",
     "xor_encode_decode",
+    "is_running",
+    "set_pid_file",
 ]
 
 
@@ -835,6 +840,86 @@ def xor_encode_decode(data, key):
     # Perform XOR operation between each byte of the data and the extended key,
     # and return the new sequence of bytes
     return bytes([b ^ k for b, k in zip(data, extended_key)])
+
+
+def is_running(pid):
+    """Check if the given process ID is running.
+
+    Parameters:
+    pid -- The process ID to check.
+
+    Returns:
+    True if the process is running; False otherwise.
+
+    Examples:
+    >>> is_running(os.getpid() * 10)  # Assume process is not running
+    False
+    >>> is_running(os.getpid())  # Check if the current process is running
+    True
+    >>> is_running("not_a_pid")  # Invalid PID input should be handled and return False
+    False
+
+    """
+    try:
+        pid = int(pid)
+    except ValueError:
+        return False
+    if sys.platform == "win32":
+        with os.popen('tasklist /fo csv /fi "pid eq %s"' % int(pid)) as f:
+            f.readline()
+            text = f.readline()
+            return bool(text)
+    else:
+        try:
+            os.kill(int(pid), 0)
+            return True
+        except OSError:
+            return False
+        except SystemError:
+            # maybe windows?
+            return True
+
+
+def set_pid_file(path: Union[str, Path], raise_error=False):
+    """Attempt to lock a PID file to ensure only one instance is running, like a singleton-lock.
+
+    Args:
+    - path (Union[str, Path]): The path to the PID file.
+    - raise_error (bool): If True, raise an exception when the PID file exists and
+                          corresponds to a running process. Defaults to True.
+
+    Returns:
+    - bool: True if the PID file is successfully locked, otherwise, based on
+            `raise_error`, either raises an exception or returns False indicating
+            the lock could not be acquired.
+
+    Examples:
+
+    >>> set_pid_file("myapp.pid")  # Assuming this is the first run, should succeed
+    True
+    >>> set_pid_file("myapp.pid")  # Simulating second instance trying to start, should raise error if raise_error=True
+    False
+    >>> os.unlink("myapp.pid")
+    """
+    if isinstance(path, str):
+        path = Path(path)
+    running = False
+    if path.is_file():
+        try:
+            old_pid = int(path.read_text().strip())
+            running = is_running(old_pid)
+        except ValueError:
+            # non-int pid, NaN
+            pass
+
+    if running:
+        if raise_error:
+            raise RuntimeError(f"{path.as_posix()} is locked by {old_pid}")
+        else:
+            return False
+    else:
+        path.write_text(f"{os.getpid()}")
+        return True
 
 
 if __name__ == "__main__":

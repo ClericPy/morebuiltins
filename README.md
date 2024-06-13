@@ -32,6 +32,8 @@ print(morebuiltins.__file__)
 
 ## Doc
 
+[Changelog](https://github.com/ClericPy/morebuiltins/blob/master/doc.md) comes after v0.0.6(2024-06-14)
+
 ---
 
 Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
@@ -78,6 +80,10 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 1.19 `GuessExt` - Determines whether the input bytes of a file prefix indicate a compressed file format.
 
 1.20 `xor_encode_decode` - 
+
+1.21 `is_running` - Check if the given process ID is running.
+
+1.22 `set_pid_file` - Attempt to lock a PID file to ensure only one instance is running, like a singleton-lock.
 
 
 ## 2. morebuiltins.functools
