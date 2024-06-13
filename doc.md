@@ -426,6 +426,51 @@
 
 ---
 
+
+    1.21 `is_running` - Check if the given process ID is running.
+
+        Parameters:
+        pid -- The process ID to check.
+
+        Returns:
+        True if the process is running; False otherwise.
+
+        Examples:
+        >>> is_running(os.getpid() * 10)  # Assume process is not running
+        False
+        >>> is_running(os.getpid())  # Check if the current process is running
+        True
+        >>> is_running("not_a_pid")  # Invalid PID input should be handled and return False
+        False
+
+    
+
+---
+
+
+    1.22 `set_pid_file` - Attempt to lock a PID file to ensure only one instance is running, like a singleton-lock.
+
+        Args:
+        - path (Union[str, Path]): The path to the PID file.
+        - raise_error (bool): If True, raise an exception when the PID file exists and
+                              corresponds to a running process. Defaults to True.
+
+        Returns:
+        - bool: True if the PID file is successfully locked, otherwise, based on
+                `raise_error`, either raises an exception or returns False indicating
+                the lock could not be acquired.
+
+        Examples:
+
+        >>> set_pid_file("myapp.pid")  # Assuming this is the first run, should succeed
+        True
+        >>> set_pid_file("myapp.pid")  # Simulating second instance trying to start, should raise error if raise_error=True
+        False
+        >>> os.unlink("myapp.pid")
+    
+
+---
+
 ======================
 
 ## 2. morebuiltins.functools

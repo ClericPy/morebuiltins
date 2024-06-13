@@ -47,6 +47,7 @@ def test_all():
                 module.__name__,
                 flush=True,
             )
+            time.sleep(1)
         print("all test ok", flush=True)
 
 
