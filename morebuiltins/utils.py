@@ -5,7 +5,9 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
 import traceback
 from collections import UserDict
 from enum import IntEnum
@@ -953,9 +955,13 @@ def get_paste() -> Union[str, None]:
 
     Usage Note:
         While this function handles basic clipboard retrieval, for more advanced scenarios such as setting clipboard content or maintaining a persistent application interface, consider using libraries like `pyperclip` or running `Tkinter.mainloop` which keeps the GUI event loop active.
-
+        Set clipboard with tkinter:
+            _tk.clipboard_clear()
+            _tk.clipboard_append(text)
+            _tk.update()
+            _tk.mainloop() # this is needed
     """
-    from tkinter import Tk, TclError
+    from tkinter import TclError, Tk
 
     _tk = Tk()
     _tk.withdraw()
@@ -967,6 +973,29 @@ def get_paste() -> Union[str, None]:
     finally:
         _tk.destroy()
         return text
+
+
+def set_clip(text: str):
+    """Copies the given text to the clipboard using a temporary file in a Windows environment.
+
+    This function writes the provided text into a temporary file and then uses the `clip.exe` command-line utility
+    to read from this file and copy its content into the clipboard.
+
+    Parameters:
+    text: str - The text content to be copied to the clipboard.
+    """
+    if sys.platform != "win32":
+        raise RuntimeError("set_clip is only supported on Windows")
+    try:
+        path = Path(tempfile.gettempdir()) / "set_clip.txt"
+        path.write_text(text)
+        subprocess.run(
+            f'clip.exe < "{path.name}"',
+            cwd=path.parent.absolute(),
+            shell=True,
+        )
+    finally:
+        path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
