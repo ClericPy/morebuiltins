@@ -922,6 +922,53 @@ def set_pid_file(path: Union[str, Path], raise_error=False):
         return True
 
 
+# def tk_clipboard(text: Optional[str] = None, tk=None) -> str:
+#     if text is None:
+#         if tk:
+#             _tk = tk
+#         else:
+#             from tkinter import Tk
+
+
+#             _tk = Tk()
+#             _tk.withdraw()
+#         text = _tk.clipboard_get()
+#         if tk is None:
+#             _tk.destroy()
+#         return text
+#     else:
+#         if tk is None:
+#             raise RuntimeError("set paste should use Tk() object and start mainloop")
+#         tk.clipboard_clear()
+#         tk.clipboard_append(text)
+#         tk.update()
+#         return text
+
+
+def get_paste() -> Union[str, None]:
+    """This module offers a simple utility for retrieving text from the system clipboard with tkinter.
+
+    Function:
+        get_paste() -> Union[str, None]
+
+    Usage Note:
+        While this function handles basic clipboard retrieval, for more advanced scenarios such as setting clipboard content or maintaining a persistent application interface, consider using libraries like `pyperclip` or running `Tkinter.mainloop` which keeps the GUI event loop active.
+
+    """
+    from tkinter import Tk, TclError
+
+    _tk = Tk()
+    _tk.withdraw()
+    text = None
+    try:
+        text = _tk.clipboard_get()
+    except TclError:
+        pass
+    finally:
+        _tk.destroy()
+        return text
+
+
 if __name__ == "__main__":
     __name__ = "morebuiltins.utils"
     import doctest
