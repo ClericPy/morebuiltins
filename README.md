@@ -1,14 +1,18 @@
 # [morebuiltins](https://github.com/ClericPy/morebuiltins)
 
-> I need much more built-ins
-
 [![PyPI](https://img.shields.io/pypi/v/morebuiltins?style=plastic)](https://pypi.org/project/morebuiltins/)[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/clericpy/morebuiltins/pythonpackage.yml)](https://github.com/ClericPy/morebuiltins/actions)![PyPI - Wheel](https://img.shields.io/pypi/wheel/morebuiltins?style=plastic)![PyPI - Python Version](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fgithub.com%2FClericPy%2Fmorebuiltins%2Fraw%2Fmaster%2Fpyproject.toml
 )![PyPI - Downloads](https://img.shields.io/pypi/dm/morebuiltins?style=plastic)![PyPI - License](https://img.shields.io/pypi/l/morebuiltins?style=plastic)
-## Purpose
 
-1. Collect commonly used code snippets to make up for the lack of built-in functions
-2. Provide some common ideas for beginners
-3. Stay Hungry, Stay Foolish
+
+## Project Overview:
+
+This project enhances Python’s built-ins with extra functionality, prioritizing no third-party dependencies, performance, reusability, and MIT Licensing for flexible use.
+
+- Minimal Dependencies: Designed to avoid third-party libraries for seamless integration, conflict prevention, and easy packaging via zipapp for pyz distribution.
+- Performance-Driven: It prioritizes efficiency, ensuring enhanced built-ins maintain Python's performance standards.
+- Self-Contained Modules: Functions and modules are standalone for simple reuse without dependencies.
+- MIT Licensed: The open-source code is freely usable, modifiable, and distributable.
+- Enhanced Built-ins: The project adds tools to Python's core functionality, simplifying and accelerating development.
 
 ## Install
 
