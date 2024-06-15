@@ -79,7 +79,7 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 1.19 `GuessExt` - Determines whether the input bytes of a file prefix indicate a compressed file format.
 
-1.20 `xor_encode_decode` - 
+1.20 `xor_encode_decode` - Perform XOR encryption or decryption on the given data using a provided key.
 
 1.21 `is_running` - Check if the given process ID is running.
 
@@ -119,6 +119,8 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 4.3 `unparse_qsl` - Provides the inverse operation of parse_qsl, converting query string lists back into a URL-encoded string.
 
 4.4 `update_url` - Organizes the query arguments within a URL to standardize its format.
+
+4.6 `make_response` - Generates an HTTP response based on the provided parameters.
 
 
 ## 5. morebuiltins.download_python

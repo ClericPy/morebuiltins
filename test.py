@@ -73,6 +73,7 @@ def make_docs():
                 member = vars(module)[name]
                 doc = member.__doc__
                 if doc:
+                    doc = doc.lstrip()
                     title = f"{index1}.{index2} `{name}`"
                     lines = re.split("\n", doc, maxsplit=1)
                     head = "%s - %s" % (title, lines[0])
