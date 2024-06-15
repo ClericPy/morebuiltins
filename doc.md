@@ -398,8 +398,7 @@
 ---
 
 
-    1.20 `xor_encode_decode` - 
-        Perform XOR encryption or decryption on the given data using a provided key.
+    1.20 `xor_encode_decode` - Perform XOR encryption or decryption on the given data using a provided key.
 
         This function encrypts or decrypts the data by performing an XOR operation
         between each byte of the data and the corresponding byte of the key. The key
@@ -856,6 +855,19 @@
         'http://www.new_host.com?b=1&c=1&a=1'
 
         replace_kwargs is a dict to update attributes before sorting  (such as scheme / netloc...).
+    
+
+---
+
+
+    4.6 `make_response` - Generates an HTTP response based on the provided parameters.
+
+        :param body: The response body which can be a string, bytes, list, or dictionary. Default is an empty string.
+        :param status: The HTTP status code. Default is 200.
+        :param protocol: The HTTP protocol version. Default is "HTTP/1.1".
+        :param headers: A dictionary of HTTP response headers. Default is None.
+        :param encoding: The encoding to use. Default is "utf-8".
+        :return: A byte sequence representing the constructed HTTP response.
     
 
 ---

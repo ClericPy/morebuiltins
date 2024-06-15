@@ -1,11 +1,13 @@
 import json as _json
 import re
 import ssl
+import time
 from functools import lru_cache, partial
+from http import HTTPStatus
 from http.client import HTTPResponse
 from pathlib import Path
 from tempfile import gettempdir
-from typing import Optional
+from typing import Optional, Union
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote_plus, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
@@ -16,8 +18,7 @@ __all__ = [
     "unparse_qsl",
     "update_url",
     "get_lan_ip",
-    # "curlparse",
-    # "curlrequests",
+    "make_response",
 ]
 
 
@@ -335,6 +336,47 @@ def get_lan_ip():
     except Exception:
         pass
     return ""
+
+
+def make_response(
+    body: Union[str, bytes, list, dict] = "",
+    status: int = 200,
+    protocol="HTTP/1.1",
+    headers=None,
+    encoding="utf-8",
+) -> bytes:
+    """Generates an HTTP response based on the provided parameters.
+
+    :param body: The response body which can be a string, bytes, list, or dictionary. Default is an empty string.
+    :param status: The HTTP status code. Default is 200.
+    :param protocol: The HTTP protocol version. Default is "HTTP/1.1".
+    :param headers: A dictionary of HTTP response headers. Default is None.
+    :param encoding: The encoding to use. Default is "utf-8".
+    :return: A byte sequence representing the constructed HTTP response.
+    """
+    # b'HTTP/1.1 200 OK\r\nDate: Fri, 21 Oct 2022 01:04:34 GMT\r\nContent-Length: 2\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nok'
+    if headers:
+        headers_string = ""
+        for k, v in headers.items():
+            headers_string += f"\r\n{k.title()}: {v}"
+    else:
+        headers_string = ""
+    struct_time = time.gmtime(time.time())
+    now = time.strftime("%a, %d %b %Y %H:%M:%S GMT", struct_time)
+
+    if isinstance(body, bytes):
+        _body = body
+    elif isinstance(body, str):
+        _body = body.encode(encoding, errors="replace")
+    else:
+        _body = _json.dumps(body, default=str, ensure_ascii=False).encode(
+            encoding, errors="replace"
+        )
+    http_status = HTTPStatus(status)
+    head = f"{protocol} {http_status.numerator} {http_status.name}\r\nDate: {now}\r\nContent-Length: {len(_body)}{headers_string}\r\n\r\n".encode(
+        encoding, errors="replace"
+    )
+    return head + _body
 
 
 if __name__ == "__main__":
