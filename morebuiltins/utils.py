@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import base64
 import gzip
 import hashlib
@@ -53,6 +54,8 @@ __all__ = [
     "xor_encode_decode",
     "is_running",
     "set_pid_file",
+    "get_paste",
+    "set_clip",
 ]
 
 
@@ -882,28 +885,71 @@ def is_running(pid):
             return True
 
 
-def set_pid_file(path: Union[str, Path], raise_error=False):
-    """Attempt to lock a PID file to ensure only one instance is running, like a singleton-lock.
+def set_pid_file(
+    path: Optional[Union[str, Path]] = None,
+    raise_error=False,
+    default_dir="",
+    default_name="",
+    default_level=2,
+):
+    """Sets a PID file to prevent multiple instances of a script or process from running concurrently.
+    If no path is specified, it constructs a default based on the calling script's location and naming convention.
 
-    Args:
-    - path (Union[str, Path]): The path to the PID file.
-    - raise_error (bool): If True, raise an exception when the PID file exists and
-                          corresponds to a running process. Defaults to True.
+    The function checks for an existing PID file and verifies if the process is still running.
+
+    If the process is running and `raise_error` is True, it raises a RuntimeError; otherwise, it returns False.
+    Upon successful setup, it writes the current process ID (PID) to the file and schedules the file for deletion upon exit.
+
+    Parameters:
+    - path (Optional[Union[str, Path]]): The desired path for the PID file. Defaults to a generated path based on caller.
+    - raise_error (bool): Determines whether to raise an error if the PID file is already locked. Defaults to False.
+    - default_dir (str): The default directory for the PID file if none is provided. Defaults to "/dev/shm" or temp dir.
+    - default_name (str): The default base name for the PID file. Automatically generated with the caller filename if not provided.
+    - default_level (int): The number of directory levels to include in the default name from the caller's path.
 
     Returns:
-    - bool: True if the PID file is successfully locked, otherwise, based on
-            `raise_error`, either raises an exception or returns False indicating
-            the lock could not be acquired.
+    - Path: The path of the PID file if successfully created or updated.
+    - False: If the PID file exists and the associated process is running, and `raise_error` is False.
+
+    Raises:
+    - ValueError: If unable to determine the caller's path or set a default name for the PID file.
+    - RuntimeError: If `raise_error` is True and the PID file is locked by another process.
 
     Examples:
 
-    >>> set_pid_file("myapp.pid")  # Assuming this is the first run, should succeed
-    True
-    >>> set_pid_file("myapp.pid")  # Simulating second instance trying to start, should raise error if raise_error=True
+    >>> set_pid_file().name  # Assuming this is the first run, should succeed
+    'Lib__doctest.py.pid'
+    >>> set_pid_file()  # Simulating second instance trying to start, should raise error if raise_error=True
     False
-    >>> os.unlink("myapp.pid")
     """
-    if isinstance(path, str):
+    if path is None:
+        if not default_name:
+            try:
+                stack = traceback.extract_stack()
+                for index in range(len(stack) - 2, -1, -1):
+                    caller_path = Path(stack[index].filename)
+                    # print(caller_path)
+                    if caller_path.is_file():
+                        break
+                else:
+                    raise ValueError("Could not find caller path")
+                if not caller_path.is_file():
+                    pass
+                parts: list = []
+                for index, part in enumerate(caller_path.as_posix().split("/")[::-1]):
+                    if index < default_level:
+                        parts.insert(0, part)
+                    else:
+                        break
+                default_name = "__".join(parts) + ".pid"
+            except Exception as e:
+                raise ValueError("Could not set default name for PID file: %s" % e)
+        if not default_dir:
+            default_dir = Path("/dev/shm")
+            if not default_dir.is_dir():
+                default_dir = Path(tempfile.gettempdir())
+        path = Path(default_dir) / default_name
+    if not isinstance(path, Path):
         path = Path(path)
     running = False
     if path.is_file():
@@ -911,7 +957,7 @@ def set_pid_file(path: Union[str, Path], raise_error=False):
             old_pid = int(path.read_text().strip())
             running = is_running(old_pid)
         except ValueError:
-            # non-int pid, NaN
+            # NaN pid
             pass
 
     if running:
@@ -920,31 +966,15 @@ def set_pid_file(path: Union[str, Path], raise_error=False):
         else:
             return False
     else:
-        path.write_text(f"{os.getpid()}")
-        return True
+        pid_str = str(os.getpid())
+        path.write_text(pid_str)
 
+        def _release_file():
+            if path.is_file() and path.read_text() == pid_str:
+                path.unlink()
 
-# def tk_clipboard(text: Optional[str] = None, tk=None) -> str:
-#     if text is None:
-#         if tk:
-#             _tk = tk
-#         else:
-#             from tkinter import Tk
-
-
-#             _tk = Tk()
-#             _tk.withdraw()
-#         text = _tk.clipboard_get()
-#         if tk is None:
-#             _tk.destroy()
-#         return text
-#     else:
-#         if tk is None:
-#             raise RuntimeError("set paste should use Tk() object and start mainloop")
-#         tk.clipboard_clear()
-#         tk.clipboard_append(text)
-#         tk.update()
-#         return text
+        atexit.register(_release_file)
+        return path
 
 
 def get_paste() -> Union[str, None]:
