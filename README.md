@@ -83,7 +83,11 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 1.21 `is_running` - Check if the given process ID is running.
 
-1.22 `set_pid_file` - Attempt to lock a PID file to ensure only one instance is running, like a singleton-lock.
+1.22 `set_pid_file` - Sets a PID file to prevent multiple instances of a script or process from running concurrently.
+
+1.23 `get_paste` - This module offers a simple utility for retrieving text from the system clipboard with tkinter.
+
+1.24 `set_clip` - Copies the given text to the clipboard using a temporary file in a Windows environment.
 
 
 ## 2. morebuiltins.functools

@@ -447,25 +447,64 @@
 ---
 
 
-    1.22 `set_pid_file` - Attempt to lock a PID file to ensure only one instance is running, like a singleton-lock.
+    1.22 `set_pid_file` - Sets a PID file to prevent multiple instances of a script or process from running concurrently.
+        If no path is specified, it constructs a default based on the calling script's location and naming convention.
 
-        Args:
-        - path (Union[str, Path]): The path to the PID file.
-        - raise_error (bool): If True, raise an exception when the PID file exists and
-                              corresponds to a running process. Defaults to True.
+        The function checks for an existing PID file and verifies if the process is still running.
+
+        If the process is running and `raise_error` is True, it raises a RuntimeError; otherwise, it returns False.
+        Upon successful setup, it writes the current process ID (PID) to the file and schedules the file for deletion upon exit.
+
+        Parameters:
+        - path (Optional[Union[str, Path]]): The desired path for the PID file. Defaults to a generated path based on caller.
+        - raise_error (bool): Determines whether to raise an error if the PID file is already locked. Defaults to False.
+        - default_dir (str): The default directory for the PID file if none is provided. Defaults to "/dev/shm" or temp dir.
+        - default_name (str): The default base name for the PID file. Automatically generated with the caller filename if not provided.
+        - default_level (int): The number of directory levels to include in the default name from the caller's path.
 
         Returns:
-        - bool: True if the PID file is successfully locked, otherwise, based on
-                `raise_error`, either raises an exception or returns False indicating
-                the lock could not be acquired.
+        - Path: The path of the PID file if successfully created or updated.
+        - False: If the PID file exists and the associated process is running, and `raise_error` is False.
+
+        Raises:
+        - ValueError: If unable to determine the caller's path or set a default name for the PID file.
+        - RuntimeError: If `raise_error` is True and the PID file is locked by another process.
 
         Examples:
 
-        >>> set_pid_file("myapp.pid")  # Assuming this is the first run, should succeed
-        True
-        >>> set_pid_file("myapp.pid")  # Simulating second instance trying to start, should raise error if raise_error=True
+        >>> set_pid_file().name  # Assuming this is the first run, should succeed
+        'Lib__doctest.py.pid'
+        >>> set_pid_file()  # Simulating second instance trying to start, should raise error if raise_error=True
         False
-        >>> os.unlink("myapp.pid")
+    
+
+---
+
+
+    1.23 `get_paste` - This module offers a simple utility for retrieving text from the system clipboard with tkinter.
+
+        Function:
+            get_paste() -> Union[str, None]
+
+        Usage Note:
+            While this function handles basic clipboard retrieval, for more advanced scenarios such as setting clipboard content or maintaining a persistent application interface, consider using libraries like `pyperclip` or running `Tkinter.mainloop` which keeps the GUI event loop active.
+            Set clipboard with tkinter:
+                _tk.clipboard_clear()
+                _tk.clipboard_append(text)
+                _tk.update()
+                _tk.mainloop() # this is needed
+    
+
+---
+
+
+    1.24 `set_clip` - Copies the given text to the clipboard using a temporary file in a Windows environment.
+
+        This function writes the provided text into a temporary file and then uses the `clip.exe` command-line utility
+        to read from this file and copy its content into the clipboard.
+
+        Parameters:
+        text: str - The text content to be copied to the clipboard.
     
 
 ---
