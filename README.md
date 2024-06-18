@@ -16,15 +16,17 @@ This project enhances Python’s built-ins with extra functionality, prioritizin
 
 ## Install
 
-From **pypi.org**
+From [pypi.org](https://pypi.org/project/morebuiltins/)
 
-> pip install -U morebuiltins
+> `pip install -U morebuiltins`
 
-Or use `pyz`(pyz file may be downloaded from [releases](https://github.com/ClericPy/morebuiltins/releases))
-
-> pip install zipapps
+From [Github Tags](https://github.com/ClericPy/morebuiltins/tags):
 > 
-> python -m zipapps -c -o morebuiltins.pyz morebuiltins
+> `pip install git+https://github.com/ClericPy/morebuiltins.git@master`
+>
+> `pip install git+https://github.com/ClericPy/morebuiltins.git@0.0.6`
+
+Use `pyz`(downloaded from [releases](https://github.com/ClericPy/morebuiltins/releases))
 
 ```python
 import sys

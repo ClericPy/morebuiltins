@@ -1,4 +1,4 @@
-### v0.0.6
+### 0.0.6 (2024-06-19)
 1. add `utils.xor_encode_decode`
 2. add `utils.is_running`, `utils.lock_pid_file`
 3. add `request.make_response`
