@@ -1,13 +1,15 @@
 import json as _json
 import re
+import socket
 import ssl
+import threading
 import time
 from functools import lru_cache, partial
 from http import HTTPStatus
 from http.client import HTTPResponse
 from pathlib import Path
 from tempfile import gettempdir
-from typing import Optional, Union
+from typing import Dict, Optional, Tuple, Union
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote_plus, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
@@ -326,8 +328,6 @@ def update_url(
 
 
 def get_lan_ip():
-    if not globals().get("socket"):
-        import socket
     try:
         # 获取本机主机名
         hostname = socket.gethostname()
@@ -377,6 +377,50 @@ def make_response(
         encoding, errors="replace"
     )
     return head + _body
+
+
+original_getaddrinfo = socket.getaddrinfo
+
+
+def custom_dns(custom: Dict[Union[str, Tuple[str, int]], Tuple[str, int]], thread=True):
+    """Custom the DNS of socket.getaddrinfo, only effect current thread.
+
+    [WARNING] This will modify the global socket.getaddrinfo.
+
+    >>> from concurrent.futures import ThreadPoolExecutor
+    >>> # this only effect current thread
+    >>> custom_dns({"1.1.1.1": ("127.0.0.1", 80), ("1.1.1.1", 80): ("192.168.0.1", 443)})
+    >>> socket.getaddrinfo('1.1.1.1', 80)[0][-1]
+    ('192.168.0.1', 443)
+    >>> socket.getaddrinfo('1.1.1.1', 8888)[0][-1]
+    ('127.0.0.1', 80)
+    >>> ThreadPoolExecutor().submit(lambda : socket.getaddrinfo('1.1.1.1', 8888)[0][-1]).result()
+    ('1.1.1.1', 8888)
+    >>> # this effect global socket.getaddrinfo
+    >>> custom_dns({"1.1.1.1": ("127.0.0.1", 80), ("1.1.1.1", 80): ("192.168.0.1", 443)}, thread=False)
+    >>> ThreadPoolExecutor().submit(lambda : socket.getaddrinfo('1.1.1.1', 8888)[0][-1]).result()
+    ('127.0.0.1', 80)
+
+    Demo:
+
+        custom_dns(custom={("MY_PROXY_HOST", 80): ("xxxxxxxxx", 43532)})
+        print(
+            requests.get(
+                "https://www.github.com/", proxies={"all": "http://MY_PROXY_HOST"}
+            ).text
+        )
+    """
+    if thread:
+        thread = threading.current_thread()
+    else:
+        thread = None
+
+    def wrapper(host, port=80, family=0, type=0, proto=0, flags=0):
+        if not thread or thread is threading.current_thread():
+            host, port = custom.get((host, port)) or custom.get(host) or (host, port)
+        return original_getaddrinfo(host, port, family, type, proto, flags)
+
+    socket.getaddrinfo = wrapper
 
 
 if __name__ == "__main__":
