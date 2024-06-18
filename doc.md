@@ -323,42 +323,49 @@
         ...     1 / 0
         ... except Exception as e:
         ...     format_error(e)
-        '[<doctest morebuiltins.utils.format_error[0]>:<module>:3] 1 / 0 >>> ZeroDivisionError(division by zero)'
+        '[<doctest>:<module>:3] 1 / 0 >>> ZeroDivisionError(division by zero)'
         >>> try:
         ...     # test in function
         ...     def func1(): 1 / 0
         ...     func1()
         ... except Exception as e:
         ...     format_error(e)
-        '[<doctest morebuiltins.utils.format_error[1]>:func1:3] def func1(): 1 / 0 >>> ZeroDivisionError(division by zero)'
+        '[<doctest>:<module>:4 | <doctest>:func1:3] def func1(): 1 / 0 >>> ZeroDivisionError(division by zero)'
         >>> try:
         ...     # test index
         ...     def func2(): 1 / 0
         ...     func2()
         ... except Exception as e:
         ...     format_error(e, index=0)
-        '[<doctest morebuiltins.utils.format_error[2]>:<module>:4] func2() >>> ZeroDivisionError(division by zero)'
+        '[<doctest>:<module>:4] func2() >>> ZeroDivisionError(division by zero)'
+        >>> try:
+        ...     # test slice index
+        ...     def func2(): 1 / 0
+        ...     func2()
+        ... except Exception as e:
+        ...     format_error(e, index=slice(-1, None, None))
+        '[<doctest>:func2:3] def func2(): 1 / 0 >>> ZeroDivisionError(division by zero)'
         >>> try:
         ...     # test with default filter(filename skip site-packages)
         ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
         ...     version_info_to_nodot(0)
         ... except Exception as e:
         ...     format_error(e)
-        "[<doctest morebuiltins.utils.format_error[3]>:<module>:4] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
+        "[<doctest>:<module>:4] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
         >>> try:
         ...     # test without filter
         ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
         ...     version_info_to_nodot(0)
         ... except Exception as e:
         ...     format_error(e, filter=None)
-        '[compatibility_tags.py:version_info_to_nodot:23] return "".join(map(str, version_info[:2])) >>> TypeError(\'int\' object is not subscriptable)'
+        '[<doctest>:<module>:4 | compatibility_tags.py:version_info_to_nodot:23] return "".join(map(str, version_info[:2])) >>> TypeError(\'int\' object is not subscriptable)'
         >>> try:
         ...     # test with custom filter.
         ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
         ...     version_info_to_nodot(0)
         ... except Exception as e:
         ...     format_error(e, filter=lambda i: '<doctest' in str(i))
-        "[<doctest morebuiltins.utils.format_error[5]>:<module>:4] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
+        "[<doctest>:<module>:4] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
     
 
 ---
@@ -472,10 +479,12 @@
 
         Examples:
 
-        >>> set_pid_file().name  # Assuming this is the first run, should succeed
+        >>> path = set_pid_file()  # Assuming this is the first run, should succeed
+        >>> path.name
         'Lib__doctest.py.pid'
         >>> set_pid_file()  # Simulating second instance trying to start, should raise error if raise_error=True
         False
+        >>> path.unlink()
     
 
 ---
@@ -907,6 +916,37 @@
         :param headers: A dictionary of HTTP response headers. Default is None.
         :param encoding: The encoding to use. Default is "utf-8".
         :return: A byte sequence representing the constructed HTTP response.
+    
+
+---
+
+
+    4.7 `custom_dns` - Custom the DNS of socket.getaddrinfo, only effect current thread.
+
+        [WARNING] This will modify the global socket.getaddrinfo.
+
+        >>> from concurrent.futures import ThreadPoolExecutor
+        >>> # this only effect current thread
+        >>> custom_dns({"1.1.1.1": ("127.0.0.1", 80), ("1.1.1.1", 80): ("192.168.0.1", 443)})
+        >>> socket.getaddrinfo('1.1.1.1', 80)[0][-1]
+        ('192.168.0.1', 443)
+        >>> socket.getaddrinfo('1.1.1.1', 8888)[0][-1]
+        ('127.0.0.1', 80)
+        >>> ThreadPoolExecutor().submit(lambda : socket.getaddrinfo('1.1.1.1', 8888)[0][-1]).result()
+        ('1.1.1.1', 8888)
+        >>> # this effect global socket.getaddrinfo
+        >>> custom_dns({"1.1.1.1": ("127.0.0.1", 80), ("1.1.1.1", 80): ("192.168.0.1", 443)}, thread=False)
+        >>> ThreadPoolExecutor().submit(lambda : socket.getaddrinfo('1.1.1.1', 8888)[0][-1]).result()
+        ('127.0.0.1', 80)
+
+        Demo:
+
+            custom_dns(custom={("MY_PROXY_HOST", 80): ("xxxxxxxxx", 43532)})
+            print(
+                requests.get(
+                    "https://www.github.com/", proxies={"all": "http://MY_PROXY_HOST"}
+                ).text
+            )
     
 
 ---

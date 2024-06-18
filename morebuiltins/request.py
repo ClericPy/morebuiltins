@@ -21,6 +21,7 @@ __all__ = [
     "update_url",
     "get_lan_ip",
     "make_response",
+    "custom_dns",
 ]
 
 

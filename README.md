@@ -130,6 +130,8 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 4.6 `make_response` - Generates an HTTP response based on the provided parameters.
 
+4.7 `custom_dns` - Custom the DNS of socket.getaddrinfo, only effect current thread.
+
 
 ## 5. morebuiltins.download_python
 
