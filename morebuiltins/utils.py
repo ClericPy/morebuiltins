@@ -14,7 +14,7 @@ from collections import UserDict
 from enum import IntEnum
 from functools import wraps
 from itertools import groupby, islice
-from os.path import basename
+from os.path import basename, exists
 from pathlib import Path
 from time import gmtime, mktime, strftime, strptime, time, timezone
 from typing import (
@@ -635,63 +635,89 @@ def _tb_filter(tb: traceback.FrameSummary):
 
 def format_error(
     error: BaseException,
-    index=-1,
+    index: Union[int, slice] = slice(-3, None, None),
     filter: Optional[Callable] = _tb_filter,
-    template="[{filename}:{tb.name}:{tb.lineno}] {tb.line} >>> {error.__class__.__name__}({error!s})",
+    template="[{trace_routes}] {error_line} >>> {error.__class__.__name__}({error!s:.100})",
     **kwargs,
 ) -> str:
-    """Extracts frame information from an exception, with an option to filter out “site-packages” details by default.
+    r"""Extracts frame information from an exception, with an option to filter out “site-packages” details by default.
 
     >>> try:
     ...     # test default
     ...     1 / 0
     ... except Exception as e:
     ...     format_error(e)
-    '[<doctest morebuiltins.utils.format_error[0]>:<module>:3] 1 / 0 >>> ZeroDivisionError(division by zero)'
+    '[<doctest>:<module>:3] 1 / 0 >>> ZeroDivisionError(division by zero)'
     >>> try:
     ...     # test in function
     ...     def func1(): 1 / 0
     ...     func1()
     ... except Exception as e:
     ...     format_error(e)
-    '[<doctest morebuiltins.utils.format_error[1]>:func1:3] def func1(): 1 / 0 >>> ZeroDivisionError(division by zero)'
+    '[<doctest>:<module>:4 | <doctest>:func1:3] def func1(): 1 / 0 >>> ZeroDivisionError(division by zero)'
     >>> try:
     ...     # test index
     ...     def func2(): 1 / 0
     ...     func2()
     ... except Exception as e:
     ...     format_error(e, index=0)
-    '[<doctest morebuiltins.utils.format_error[2]>:<module>:4] func2() >>> ZeroDivisionError(division by zero)'
+    '[<doctest>:<module>:4] func2() >>> ZeroDivisionError(division by zero)'
+    >>> try:
+    ...     # test slice index
+    ...     def func2(): 1 / 0
+    ...     func2()
+    ... except Exception as e:
+    ...     format_error(e, index=slice(-1, None, None))
+    '[<doctest>:func2:3] def func2(): 1 / 0 >>> ZeroDivisionError(division by zero)'
     >>> try:
     ...     # test with default filter(filename skip site-packages)
     ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
     ...     version_info_to_nodot(0)
     ... except Exception as e:
     ...     format_error(e)
-    "[<doctest morebuiltins.utils.format_error[3]>:<module>:4] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
+    "[<doctest>:<module>:4] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
     >>> try:
     ...     # test without filter
     ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
     ...     version_info_to_nodot(0)
     ... except Exception as e:
     ...     format_error(e, filter=None)
-    '[compatibility_tags.py:version_info_to_nodot:23] return "".join(map(str, version_info[:2])) >>> TypeError(\\'int\\' object is not subscriptable)'
+    '[<doctest>:<module>:4 | compatibility_tags.py:version_info_to_nodot:23] return "".join(map(str, version_info[:2])) >>> TypeError(\'int\' object is not subscriptable)'
     >>> try:
     ...     # test with custom filter.
     ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
     ...     version_info_to_nodot(0)
     ... except Exception as e:
     ...     format_error(e, filter=lambda i: '<doctest' in str(i))
-    "[<doctest morebuiltins.utils.format_error[5]>:<module>:4] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
+    "[<doctest>:<module>:4] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
     """
     try:
         filter = filter or always_return_value(True)
         tbs = [tb for tb in traceback.extract_tb(error.__traceback__) if filter(tb)]
-        tb = tbs[index]
-        _kwargs = dict(locals())
+        if isinstance(index, slice):
+            tbs = tbs[index]
+        elif isinstance(index, int):
+            tbs = [tbs[index]]
+        else:
+            raise ValueError("Invalid index type")
+        trace_route_list = []
+        for tb in tbs:
+            filename = tb.filename
+            if exists(filename):
+                _basename = basename(filename)
+            elif filename[0] == "<":
+                _basename = f"{filename.split()[0]}>"
+            else:
+                _basename = filename
+            trace_route_list.append(f"{_basename}:{tb.name}:{tb.lineno}")
+        trace_routes = " | ".join(trace_route_list)
+        _kwargs = {
+            "tbs": tbs,
+            "error": error,
+            "error_line": tbs[-1].line,
+            "trace_routes": trace_routes,
+        }
         _kwargs.update(kwargs)
-        if "filename" not in _kwargs:
-            _kwargs["filename"] = basename(tb.filename)
         return template.format_map(_kwargs)
     except IndexError:
         return ""
@@ -917,10 +943,12 @@ def set_pid_file(
 
     Examples:
 
-    >>> set_pid_file().name  # Assuming this is the first run, should succeed
+    >>> path = set_pid_file()  # Assuming this is the first run, should succeed
+    >>> path.name
     'Lib__doctest.py.pid'
     >>> set_pid_file()  # Simulating second instance trying to start, should raise error if raise_error=True
     False
+    >>> path.unlink()
     """
     if path is None:
         if not default_name:

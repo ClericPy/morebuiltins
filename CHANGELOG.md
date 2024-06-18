@@ -3,5 +3,6 @@
 2. add `utils.is_running`, `utils.lock_pid_file`
 3. add `request.make_response`
 4. add `utils.get_paste`(tk), `utils.set_clip`(win32)
-5. add `custom_dns`
-6. 
+5. add `utils.custom_dns`
+6. update `utils.format_error` support slice index
+7. 
