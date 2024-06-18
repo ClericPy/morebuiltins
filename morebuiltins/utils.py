@@ -642,6 +642,20 @@ def format_error(
 ) -> str:
     r"""Extracts frame information from an exception, with an option to filter out “site-packages” details by default.
 
+    Parameters:
+
+    - `error` (`BaseException`): The exception instance for which the stack trace information is to be extracted and formatted.
+    - `index` (`Union[int, slice]`, optional): Specifies which frames to include in the output. By default, it's set to `slice(-3, None, None)`, showing the last three frames. Can be an integer for a single frame or a slice object for a range of frames.
+    - `filter` (`Optional[Callable]`, optional): A callable that determines whether a given frame should be included. Defaults to `_tb_filter`, which typically filters out frames from "site-packages". If set to `None`, no filtering occurs.
+    - `template` (`str`, optional): A string template defining how the error message should be formatted. It can include placeholders like `{trace_routes}`, `{error_line}`, and `{error.__class__.__name__}`. The default template provides a concise summary of the error location and type.
+    - `**kwargs`: Additional keyword arguments to be used within the formatting template.
+
+    Returns:
+
+    A string representing the formatted error message based on the provided parameters and template.
+
+    Demo:
+
     >>> try:
     ...     # test default
     ...     1 / 0
@@ -944,8 +958,8 @@ def set_pid_file(
     Examples:
 
     >>> path = set_pid_file()  # Assuming this is the first run, should succeed
-    >>> path.name
-    'Lib__doctest.py.pid'
+    >>> path.name.endswith('doctest.py.pid')
+    True
     >>> set_pid_file()  # Simulating second instance trying to start, should raise error if raise_error=True
     False
     >>> path.unlink()
