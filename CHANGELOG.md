@@ -5,4 +5,3 @@
 4. add `utils.get_paste`(tk), `utils.set_clip`(win32)
 5. add `utils.custom_dns`
 6. update `utils.format_error` support slice index
-7. 
