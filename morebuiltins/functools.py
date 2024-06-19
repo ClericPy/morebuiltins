@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import json
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from itertools import chain
@@ -9,7 +10,7 @@ from threading import Lock, Semaphore
 from typing import Callable, Coroutine, Dict, Optional, OrderedDict, Set, Union
 from weakref import WeakSet
 
-__all__ = ["lru_cache_ttl", "threads", "bg_task", "NamedLock", "FuncSchema"]
+__all__ = ["lru_cache_ttl", "threads", "bg_task", "NamedLock", "FuncSchema", "InlinePB"]
 
 
 def lru_cache_ttl(
@@ -360,6 +361,92 @@ class FuncSchema:
             return target_type(json.loads(obj))
         else:
             return target_type(obj)
+
+
+class InlinePB(object):
+    """Inline progress bar.
+
+    ```python
+    with InlinePB(100) as pb:
+        for i in range(100):
+            pb.add(1)
+            time.sleep(0.03)
+    # Progress:  41 / 100  41% [||||||         ] |   33 units/s
+    with InlinePB(100) as pb:
+        for i in range(1, 101):
+            pb.update(i)
+            time.sleep(0.03)
+    # Progress:  45 / 100  45% [||||||         ] |   33 units/s
+
+    ```
+    """
+
+    def __init__(
+        self,
+        total,
+        start=0,
+        maxlen=50,
+        fresh_interval=0.1,
+        timer=time.time,
+        sig="|",
+        sig_len=15,
+    ):
+        self.total = total
+        self.done = start
+        self.maxlen = maxlen
+        self.cache = deque([], maxlen=maxlen)
+        self.timer = timer
+        self.last_fresh = self.timer()
+        self.fresh_interval = fresh_interval
+        self.sig = sig
+        self.sig_len = sig_len
+
+    def update(self, done):
+        self.add(done - self.done)
+
+    def add(self, num=1):
+        self.done += num
+        self.cache.append((self.done, self.timer()))
+        if self.need_fresh():
+            self.fresh()
+            self.last_fresh = self.timer()
+
+    def need_fresh(self):
+        if self.timer() - self.last_fresh > self.fresh_interval:
+            return True
+        else:
+            return False
+
+    def speed(self) -> int:
+        if len(self.cache) > 1:
+            a, b = self.cache[0], self.cache[-1]
+            return round((b[0] - a[0]) / (b[1] - a[1]))
+        elif self.cache:
+            return round(self.done / (self.timer() - self.cache[0][1]))
+        else:
+            return 0
+
+    def __enter__(self):
+        self._fill = len(str(self.total))
+        self._end = f'{" " * 10}\r'
+        return self
+
+    def __exit__(self, *_):
+        if not any(_):
+            self.fresh()
+            print(flush=True)
+
+    def sig_string(self, percent):
+        return f"[{self.sig * int(self.sig_len * percent / 100)}{' ' * (self.sig_len - int(self.sig_len * percent / 100))}]"
+
+    def fresh(self):
+        percent = int(100 * self.done / self.total)
+        done = f"{self.done}".rjust(self._fill, " ")
+        print(
+            f"Progress: {done} / {self.total} {percent: >3}% {self.sig_string(percent)} | {self.speed(): >4} units/s",
+            end=self._end,
+            flush=True,
+        )
 
 
 def test_bg_task():

@@ -734,6 +734,26 @@
 
 ---
 
+
+    2.6 `InlinePB` - Inline progress bar.
+
+        ```python
+        with InlinePB(100) as pb:
+            for i in range(100):
+                pb.add(1)
+                time.sleep(0.03)
+        # Progress:  41 / 100  41% [||||||         ] |   33 units/s
+        with InlinePB(100) as pb:
+            for i in range(1, 101):
+                pb.update(i)
+                time.sleep(0.03)
+        # Progress:  45 / 100  45% [||||||         ] |   33 units/s
+
+        ```
+    
+
+---
+
 ======================
 
 ## 3. morebuiltins.ipc
