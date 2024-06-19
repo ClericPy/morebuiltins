@@ -887,6 +887,23 @@ def xor_encode_decode(data, key):
     return bytes([b ^ k for b, k in zip(data, extended_key)])
 
 
+def is_running_win32(pid: int):
+    with os.popen('tasklist /fo csv /fi "pid eq %s"' % int(pid)) as f:
+        f.readline()
+        text = f.readline()
+        return bool(text)
+
+
+def is_running_linux(pid: int):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except OSError:
+        return False
+    except SystemError:
+        return True
+
+
 def is_running(pid):
     """Check if the given process ID is running.
 
@@ -910,19 +927,9 @@ def is_running(pid):
     except ValueError:
         return False
     if sys.platform == "win32":
-        with os.popen('tasklist /fo csv /fi "pid eq %s"' % int(pid)) as f:
-            f.readline()
-            text = f.readline()
-            return bool(text)
+        return is_running_win32(pid)
     else:
-        try:
-            os.kill(int(pid), 0)
-            return True
-        except OSError:
-            return False
-        except SystemError:
-            # maybe windows?
-            return True
+        return is_running_linux(pid)
 
 
 def set_pid_file(
