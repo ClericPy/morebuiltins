@@ -108,6 +108,8 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 2.5 `FuncSchema` - Parse the parameters and types required by a function into a dictionary, and convert an incoming parameter into the appropriate type.
 
+2.6 `InlinePB` - Inline progress bar.
+
 
 ## 3. morebuiltins.ipc
 
