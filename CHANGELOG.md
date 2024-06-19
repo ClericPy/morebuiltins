@@ -1,3 +1,7 @@
+### 0.0.7 (2024-06-19)
+1. add `utils.is_running_linux`, `utils.is_running_win32`
+
+
 ### 0.0.6 (2024-06-19)
 1. add `utils.xor_encode_decode`
 2. add `utils.is_running`, `utils.lock_pid_file`
