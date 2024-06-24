@@ -96,50 +96,57 @@ Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 1.24 `set_clip` - Copies the given text to the clipboard using a temporary file in a Windows environment.
 
 
-## 2. morebuiltins.functools
+## 2. morebuiltins.date
 
-2.1 `lru_cache_ttl` - A Least Recently Used (LRU) cache with a Time To Live (TTL) feature.
+2.1 `ScheduleTimer` - The ScheduleTimer class facilitates the creation and evaluation of datetime patterns for scheduling purposes.
 
-2.2 `threads` - Quickly convert synchronous functions to be concurrency-able. (similar to madisonmay/Tomorrow)
-
-2.3 `bg_task` - Avoid asyncio free-flying tasks, better to use the new asyncio.TaskGroup to avoid this in 3.11+. https://github.com/python/cpython/issues/91887
-
-2.4 `NamedLock` - Reusable named locks, support for timeouts, support for multiple concurrent locks.
-
-2.5 `FuncSchema` - Parse the parameters and types required by a function into a dictionary, and convert an incoming parameter into the appropriate type.
-
-2.6 `InlinePB` - Inline progress bar.
+2.2 `Crontab` - Crontab python parser.
 
 
-## 3. morebuiltins.ipc
+## 3. morebuiltins.functools
 
-3.1 `IPCEncoder` - An abstract base class for all encoders; implementing the necessary communication protocol requires only the definition of two abstract methods. Be mindful that varying header lengths will impact the maximum packaging size.
+3.1 `lru_cache_ttl` - A Least Recently Used (LRU) cache with a Time To Live (TTL) feature.
 
-3.4 `SocketLogHandlerEncoder` - For a practical demonstration, refer to the test code: morebuiltins/ipc.py:_test_ipc_logging.
+3.2 `threads` - Quickly convert synchronous functions to be concurrency-able. (similar to madisonmay/Tomorrow)
 
-3.5 `SocketServer` - To see an example in action, view the test code: morebuiltins/ipc.py:_test_ipc.
+3.3 `bg_task` - Avoid asyncio free-flying tasks, better to use the new asyncio.TaskGroup to avoid this in 3.11+. https://github.com/python/cpython/issues/91887
 
-3.7 `find_free_port` - Finds and returns an available port number.
+3.4 `NamedLock` - Reusable named locks, support for timeouts, support for multiple concurrent locks.
 
+3.5 `FuncSchema` - Parse the parameters and types required by a function into a dictionary, and convert an incoming parameter into the appropriate type.
 
-## 4. morebuiltins.request
-
-4.1 `req` - A basic mock for requests, performant albeit simplistic.
-
-4.2 `DomainParser` - Extracts the Second-level domain (SLD) from a provided hostname or URL.
-
-4.3 `unparse_qsl` - Provides the inverse operation of parse_qsl, converting query string lists back into a URL-encoded string.
-
-4.4 `update_url` - Organizes the query arguments within a URL to standardize its format.
-
-4.6 `make_response` - Generates an HTTP response based on the provided parameters.
-
-4.7 `custom_dns` - Custom the DNS of socket.getaddrinfo, only effect current thread.
+3.6 `InlinePB` - Inline progress bar.
 
 
-## 5. morebuiltins.download_python
+## 4. morebuiltins.ipc
 
-5.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m morebuiltins.download_python`
+4.1 `IPCEncoder` - An abstract base class for all encoders; implementing the necessary communication protocol requires only the definition of two abstract methods. Be mindful that varying header lengths will impact the maximum packaging size.
+
+4.4 `SocketLogHandlerEncoder` - For a practical demonstration, refer to the test code: morebuiltins/ipc.py:_test_ipc_logging.
+
+4.5 `SocketServer` - To see an example in action, view the test code: morebuiltins/ipc.py:_test_ipc.
+
+4.7 `find_free_port` - Finds and returns an available port number.
+
+
+## 5. morebuiltins.request
+
+5.1 `req` - A basic mock for requests, performant albeit simplistic.
+
+5.2 `DomainParser` - Extracts the Second-level domain (SLD) from a provided hostname or URL.
+
+5.3 `unparse_qsl` - Provides the inverse operation of parse_qsl, converting query string lists back into a URL-encoded string.
+
+5.4 `update_url` - Organizes the query arguments within a URL to standardize its format.
+
+5.6 `make_response` - Generates an HTTP response based on the provided parameters.
+
+5.7 `custom_dns` - Custom the DNS of socket.getaddrinfo, only effect current thread.
+
+
+## 6. morebuiltins.download_python
+
+6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m morebuiltins.download_python`
 
 
 <!-- end -->
