@@ -38,11 +38,12 @@ print(morebuiltins.__file__)
 
 ## Doc
 
-[Changelog](https://github.com/ClericPy/morebuiltins/blob/master/CHANGELOG.md) comes after v0.0.6(2024-06-14)
+[Module Docs](https://github.com/ClericPy/morebuiltins/blob/master/doc.md)
+
+[Changelog](https://github.com/ClericPy/morebuiltins/blob/master/CHANGELOG.md)
+
 
 ---
-
-Module Docs - https://github.com/ClericPy/morebuiltins/blob/master/doc.md
 
 <!-- start -->
 ## 1. morebuiltins.utils
