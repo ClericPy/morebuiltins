@@ -61,14 +61,11 @@ def make_docs():
 
     short_doc = ""
     with open("doc.md", "w", encoding="u8") as f:
-        indent_text = " " * 4
         for index1, name in enumerate(morebuiltins.__all__, 1):
             module = importlib.import_module(name)
-            print("=" * 22, file=f, end="\n\n")
             name1 = f"## {index1}. {name}\n\n"
             short_doc += name1
             print(name1, file=f)
-            print("=" * 22, file=f, end="\n\n")
             for index2, name in enumerate(module.__all__, 1):
                 member = vars(module)[name]
                 doc = member.__doc__
@@ -82,10 +79,10 @@ def make_docs():
                         tail = lines[1]
                     else:
                         tail = ""
-                    line = f"\n{head}\n{tail}\n"
+                    line = f"\n{head}\n\n```python{tail}\n```\n"
                     print(
-                        indent(line, indent_text),
-                        "\n---\n",
+                        line,
+                        "\n---\n\n",
                         sep="",
                         file=f,
                     )
