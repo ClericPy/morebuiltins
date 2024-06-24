@@ -534,13 +534,95 @@
 
 ======================
 
-## 2. morebuiltins.functools
+## 2. morebuiltins.date
 
 
 ======================
 
 
-    2.1 `lru_cache_ttl` - A Least Recently Used (LRU) cache with a Time To Live (TTL) feature.
+    2.1 `ScheduleTimer` - The ScheduleTimer class facilitates the creation and evaluation of datetime patterns for scheduling purposes.
+
+        It includes mechanisms to parse patterns involving logical operations (AND, OR) and comparison checks (equality, inequality, arithmetic, and custom range checks).
+
+        Comparison Operators:
+
+            Equality (= or ==): Tests for equality between datetime parts.
+                Example: "hour=12" checks if it's exactly 12 o'clock.
+            Inequality (!=): Ensures inequality between datetime parts.
+                Example: "minute!=30" for minutes not being 30.
+            Less Than (<): Requires the left datetime part to be less than the right.
+                Example: "day<15" for days before the 15th.
+            Less Than or Equal (<=): Allows the left datetime part to be less or equal to the right.
+                Example: "month<=6" covers January to June.
+            Greater Than (>): Ensures the left datetime part is greater than the right.
+                Example: "hour>18" for evenings after 6 PM.
+            Greater Than or Equal (>=): Allows the left datetime part to be greater or equal to the right.
+                Example: "weekday>=MO" starts from Monday.
+            Division Modulo (/): Divisibility check for the left digit by the right digit in datetime format.
+                Example: "minute/15" checks for quarter hours.
+            Range Inclusion (@): Confirms if the left time falls within any defined ranges in the right string.
+                Example: "hour@9-11,13-15" for office hours.
+
+        Logical Operators:
+            AND (&): Both conditions must hold true.
+                Example: "hour=12&minute=30" for exactly 12:30 PM.
+            OR (; or |): At least one of the conditions must be true.
+                Example: "hour=12;hour=18" for noon or 6 PM.
+            Negation (!): Inverts the truth of the following condition. At the start of the pattern, the condition is negated.
+                Example: "!hour=12" excludes noon.
+
+        Demo:
+
+        >>> start_date = datetime.strptime("2023-02-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+        >>> list(ScheduleTimer.iter_datetimes("%M=05|%M=15", count=3, start_date=start_date, callback=str))
+        ['2023-02-01 00:05:00', '2023-02-01 00:15:00', '2023-02-01 01:05:00']
+        >>> list(ScheduleTimer.iter_datetimes("%H:%M=15:30", count=3, start_date=start_date, callback=str))
+        ['2023-02-01 15:30:00', '2023-02-02 15:30:00', '2023-02-03 15:30:00']
+        >>> list(ScheduleTimer.iter_datetimes("%H:%M=15:30&%d=15", count=3, start_date=start_date, callback=str))
+        ['2023-02-15 15:30:00', '2023-03-15 15:30:00', '2023-04-15 15:30:00']
+        >>> list(ScheduleTimer.iter_datetimes("%H:%M=15:30&%d>=15", count=3, start_date=start_date, callback=str))
+        ['2023-02-15 15:30:00', '2023-02-16 15:30:00', '2023-02-17 15:30:00']
+        >>> list(ScheduleTimer.iter_datetimes("%M@15-16&%d>=15", count=3, start_date=start_date, callback=str))
+        ['2023-02-15 00:15:00', '2023-02-15 00:16:00', '2023-02-15 01:15:00']
+        >>> list(ScheduleTimer.iter_datetimes("%M/15", count=5, start_date=start_date, callback=str))
+        ['2023-02-01 00:00:00', '2023-02-01 00:15:00', '2023-02-01 00:30:00', '2023-02-01 00:45:00', '2023-02-01 01:00:00']
+    
+
+---
+
+
+    2.2 `Crontab` - Crontab python parser.
+
+        Demo:
+
+        >>> start_date = datetime.strptime("2023-02-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+        >>> list(Crontab.iter_datetimes("*/15 * * * *", count=10, start_date=start_date, callback=lambda i: i.strftime("%M")))
+        ['00', '15', '30', '45', '00', '15', '30', '45', '00', '15']
+        >>> list(Crontab.iter_datetimes("* * * * 2,4,6", count=10, start_date=start_date, callback=lambda i: i.strftime("%a")))
+        ['Thu', 'Sat', 'Tue', 'Thu', 'Sat', 'Tue', 'Thu', 'Sat', 'Tue', 'Thu']
+        >>> list(Crontab.iter_datetimes("0 0 11-19/4,8,30 * *", count=10, start_date=start_date, callback=lambda i: i.strftime("%m-%d")))
+        ['02-08', '02-11', '02-15', '02-19', '03-08', '03-11', '03-15', '03-19', '03-30', '04-08']
+        >>> list(Crontab.iter_datetimes("* * * * *", count=1, start_date=start_date))
+        [datetime.datetime(2023, 2, 1, 0, 0)]
+        >>> list(Crontab.iter_datetimes("5 4-5,6-9/2 5,6 * 3,5", count=3, start_date=start_date, callback=str))
+        ['2023-04-05 04:05:00', '2023-04-05 05:05:00', '2023-04-05 06:05:00']
+        >>> list(Crontab.iter_datetimes("0 0 1 8,9,10 *", count=3, start_date=start_date, callback=str, yield_tries=True))
+        [(7, '2023-08-01 00:00:00'), (120, '2023-09-01 00:00:00'), (232, '2023-10-01 00:00:00')]
+        >>> list(Crontab.iter_datetimes("0 0 1 11 *", count=3, start_date=start_date, callback=str, yield_tries=True))
+        [(10, '2023-11-01 00:00:00'), (133, '2024-11-01 00:00:00'), (256, '2025-11-01 00:00:00')]
+    
+
+---
+
+======================
+
+## 3. morebuiltins.functools
+
+
+======================
+
+
+    3.1 `lru_cache_ttl` - A Least Recently Used (LRU) cache with a Time To Live (TTL) feature.
 
         Args:
             maxsize (int): maxsize of cache
@@ -594,7 +676,7 @@
 ---
 
 
-    2.2 `threads` - Quickly convert synchronous functions to be concurrency-able. (similar to madisonmay/Tomorrow)
+    3.2 `threads` - Quickly convert synchronous functions to be concurrency-able. (similar to madisonmay/Tomorrow)
 
         >>> @threads(10)
         ... def test(i):
@@ -624,7 +706,7 @@
 ---
 
 
-    2.3 `bg_task` - Avoid asyncio free-flying tasks, better to use the new asyncio.TaskGroup to avoid this in 3.11+. https://github.com/python/cpython/issues/91887
+    3.3 `bg_task` - Avoid asyncio free-flying tasks, better to use the new asyncio.TaskGroup to avoid this in 3.11+. https://github.com/python/cpython/issues/91887
 
         Args:
             coro (Coroutine)
@@ -637,7 +719,7 @@
 ---
 
 
-    2.4 `NamedLock` - Reusable named locks, support for timeouts, support for multiple concurrent locks.
+    3.4 `NamedLock` - Reusable named locks, support for timeouts, support for multiple concurrent locks.
 
                 ```python
 
@@ -708,7 +790,7 @@
 ---
 
 
-    2.5 `FuncSchema` - Parse the parameters and types required by a function into a dictionary, and convert an incoming parameter into the appropriate type.
+    3.5 `FuncSchema` - Parse the parameters and types required by a function into a dictionary, and convert an incoming parameter into the appropriate type.
 
         >>> def test(a, b: str, /, c=1, *, d=["d"], e=0.1, f={"f"}, g=(1, 2), h=True, i={1}, **kws):
         ...     return
@@ -735,7 +817,7 @@
 ---
 
 
-    2.6 `InlinePB` - Inline progress bar.
+    3.6 `InlinePB` - Inline progress bar.
 
         ```python
         with InlinePB(100) as pb:
@@ -756,19 +838,19 @@
 
 ======================
 
-## 3. morebuiltins.ipc
+## 4. morebuiltins.ipc
 
 
 ======================
 
 
-    3.1 `IPCEncoder` - An abstract base class for all encoders; implementing the necessary communication protocol requires only the definition of two abstract methods. Be mindful that varying header lengths will impact the maximum packaging size.
+    4.1 `IPCEncoder` - An abstract base class for all encoders; implementing the necessary communication protocol requires only the definition of two abstract methods. Be mindful that varying header lengths will impact the maximum packaging size.
 
 
 ---
 
 
-    3.4 `SocketLogHandlerEncoder` - For a practical demonstration, refer to the test code: morebuiltins/ipc.py:_test_ipc_logging.
+    4.4 `SocketLogHandlerEncoder` - For a practical demonstration, refer to the test code: morebuiltins/ipc.py:_test_ipc_logging.
 
         ```
         async def _test_ipc_logging():
@@ -797,7 +879,7 @@
 ---
 
 
-    3.5 `SocketServer` - To see an example in action, view the test code: morebuiltins/ipc.py:_test_ipc.
+    4.5 `SocketServer` - To see an example in action, view the test code: morebuiltins/ipc.py:_test_ipc.
 
             ```
         async def test_client(host="127.0.0.1", port=8090, encoder=None, cases=None):
@@ -841,7 +923,7 @@
 ---
 
 
-    3.7 `find_free_port` - Finds and returns an available port number.
+    4.7 `find_free_port` - Finds and returns an available port number.
 
         Parameters:
         - host: The host address to bind, default is "127.0.0.1".
@@ -861,13 +943,13 @@
 
 ======================
 
-## 4. morebuiltins.request
+## 5. morebuiltins.request
 
 
 ======================
 
 
-    4.1 `req` - A basic mock for requests, performant albeit simplistic.
+    5.1 `req` - A basic mock for requests, performant albeit simplistic.
 
         >>> import time
         >>> r = req.get("https://postman-echo.com/get?a=2", timeout=3, params={"b": "3"})
@@ -892,7 +974,7 @@
 ---
 
 
-    4.2 `DomainParser` - Extracts the Second-level domain (SLD) from a provided hostname or URL.
+    5.2 `DomainParser` - Extracts the Second-level domain (SLD) from a provided hostname or URL.
 
         >>> domain_parser = DomainParser()
         >>> domain_parser.parse_hostname("github.com")
@@ -917,13 +999,13 @@
 ---
 
 
-    4.3 `unparse_qsl` - Provides the inverse operation of parse_qsl, converting query string lists back into a URL-encoded string.
+    5.3 `unparse_qsl` - Provides the inverse operation of parse_qsl, converting query string lists back into a URL-encoded string.
 
 
 ---
 
 
-    4.4 `update_url` - Organizes the query arguments within a URL to standardize its format.
+    5.4 `update_url` - Organizes the query arguments within a URL to standardize its format.
 
         >>> update_url('http://www.github.com?b=1&c=1&a=1', {"b": None, "c": None})  # remove params
         'http://www.github.com?a=1'
@@ -942,7 +1024,7 @@
 ---
 
 
-    4.6 `make_response` - Generates an HTTP response based on the provided parameters.
+    5.6 `make_response` - Generates an HTTP response based on the provided parameters.
 
         :param body: The response body which can be a string, bytes, list, or dictionary. Default is an empty string.
         :param status: The HTTP status code. Default is 200.
@@ -955,7 +1037,7 @@
 ---
 
 
-    4.7 `custom_dns` - Custom the DNS of socket.getaddrinfo, only effect current thread.
+    5.7 `custom_dns` - Custom the DNS of socket.getaddrinfo, only effect current thread.
 
         [WARNING] This will modify the global socket.getaddrinfo.
 
@@ -987,13 +1069,13 @@
 
 ======================
 
-## 5. morebuiltins.download_python
+## 6. morebuiltins.download_python
 
 
 ======================
 
 
-    5.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m morebuiltins.download_python`
+    6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m morebuiltins.download_python`
 
         λ python -m morebuiltins.download_python
         [10:56:17] Checking https://api.github.com/repos/indygreg/python-build-standalone/releases/latest
