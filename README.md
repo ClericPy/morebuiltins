@@ -118,6 +118,8 @@ print(morebuiltins.__file__)
 
 3.6 `InlinePB` - Inline progress bar.
 
+3.7 `SizedTimedRotatingFileHandler` - TimedRotatingFileHandler with maxSize, to avoid files that are too large.
+
 
 ## 4. morebuiltins.ipc
 

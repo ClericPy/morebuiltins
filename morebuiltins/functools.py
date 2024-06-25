@@ -1,16 +1,26 @@
 import asyncio
 import inspect
 import json
+import re
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from itertools import chain
+from logging.handlers import TimedRotatingFileHandler
 from threading import Lock, Semaphore
 from typing import Callable, Coroutine, Dict, Optional, OrderedDict, Set, Union
 from weakref import WeakSet
 
-__all__ = ["lru_cache_ttl", "threads", "bg_task", "NamedLock", "FuncSchema", "InlinePB"]
+__all__ = [
+    "lru_cache_ttl",
+    "threads",
+    "bg_task",
+    "NamedLock",
+    "FuncSchema",
+    "InlinePB",
+    "SizedTimedRotatingFileHandler",
+]
 
 
 def lru_cache_ttl(
@@ -447,6 +457,85 @@ class InlinePB(object):
             end=self._end,
             flush=True,
         )
+
+
+class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
+    """TimedRotatingFileHandler with maxSize, to avoid files that are too large.
+
+    no test.
+
+    Usage:
+        ```python
+        import logging
+        import time
+
+        logger = logging.getLogger("test")
+        h = SizedTimedRotatingFileHandler("test.log", "d", 1, 3, maxBytes=1)
+        h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        logger.addHandler(h)
+
+        for i in range(5):
+            logger.warning(str(i) * 100)
+            time.sleep(1)
+        # 2024/06/25 22:47   134     test.log.20240625_224717
+        # 2024/06/25 22:47   134     test.log.20240625_224718
+        # 2024/06/25 22:47   134     test.log.20240625_224719
+            ```"""
+
+    def __init__(
+        self,
+        filename,
+        when="h",
+        interval=1,
+        backupCount=0,
+        maxBytes=0,
+        encoding=None,
+        delay=False,
+        utc=False,
+    ):
+        """
+        Initialize the timed backup file handler.
+
+        :param filename: The name of the log file.
+        :param when: The time unit for timed backups, can be "h" (hours) or "d" (days)
+        :param interval: The interval for timed backups, with the unit determined by the 'when' parameter
+        :param backupCount: The maximum number of backup files to keep
+        :param maxBytes: The file size limit before triggering a backup (0 means no limit)
+        :param encoding: The encoding of the file
+        :param delay: Whether to delay opening the file until the first write
+        :param utc: Whether to use UTC time for naming backups
+        """
+        super().__init__(filename, when, interval, backupCount, encoding, delay, utc)
+        self.maxBytes = maxBytes
+        self.suffix = "%Y%m%d_%H%M%S"
+        self.extMatch = re.compile(
+            r"^\d{4}\d{2}\d{2}_\d{2}\d{2}\d{2}(\.\w+)?$", re.ASCII
+        )
+
+    def shouldRollover(self, record):
+        """
+        Determine if rollover should occur.
+        Basically, see if the supplied record would cause the file to exceed
+        the size limit we have.
+        """
+        if super().shouldRollover(record):
+            return True
+
+        if self.maxBytes > 0:
+            if self.stream.tell() >= self.maxBytes:
+                return True
+        return False
+
+    def doRollover(self):
+        """
+        Do a rollover, as described by the base class documentation.
+        However, also check for the maxBytes parameter and rollover if needed.
+        """
+        super().doRollover()
+
+        if self.maxBytes > 0:
+            self.stream.close()
+            self.stream = self._open()
 
 
 def test_bg_task():
