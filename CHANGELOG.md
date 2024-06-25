@@ -1,5 +1,6 @@
 ### 0.0.8 (2024-06-25)
 1. update default format of `utils.format_error`
+2. add `functools.SizedTimedRotatingFileHandler`, TimedRotatingFileHandler with maxSize
 
 ### 0.0.7 (2024-06-19)
 1. add `utils.is_running_linux`, `utils.is_running_win32`
