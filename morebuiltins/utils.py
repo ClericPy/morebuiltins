@@ -661,49 +661,49 @@ def format_error(
     ...     1 / 0
     ... except Exception as e:
     ...     format_error(e)
-    '[<doctest>:<module>:3] 1 / 0 >>> ZeroDivisionError(division by zero)'
+    '[<doctest>:<module>(3)] 1 / 0 >>> ZeroDivisionError(division by zero)'
     >>> try:
     ...     # test in function
     ...     def func1(): 1 / 0
     ...     func1()
     ... except Exception as e:
     ...     format_error(e)
-    '[<doctest>:<module>:4 | <doctest>:func1:3] def func1(): 1 / 0 >>> ZeroDivisionError(division by zero)'
+    '[<doctest>:<module>(4)|<doctest>:func1(3)] def func1(): 1 / 0 >>> ZeroDivisionError(division by zero)'
     >>> try:
     ...     # test index
     ...     def func2(): 1 / 0
     ...     func2()
     ... except Exception as e:
     ...     format_error(e, index=0)
-    '[<doctest>:<module>:4] func2() >>> ZeroDivisionError(division by zero)'
+    '[<doctest>:<module>(4)] func2() >>> ZeroDivisionError(division by zero)'
     >>> try:
     ...     # test slice index
     ...     def func2(): 1 / 0
     ...     func2()
     ... except Exception as e:
     ...     format_error(e, index=slice(-1, None, None))
-    '[<doctest>:func2:3] def func2(): 1 / 0 >>> ZeroDivisionError(division by zero)'
+    '[<doctest>:func2(3)] def func2(): 1 / 0 >>> ZeroDivisionError(division by zero)'
     >>> try:
     ...     # test with default filter(filename skip site-packages)
     ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
     ...     version_info_to_nodot(0)
     ... except Exception as e:
     ...     format_error(e)
-    "[<doctest>:<module>:4] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
+    "[<doctest>:<module>(4)] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
     >>> try:
     ...     # test without filter
     ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
     ...     version_info_to_nodot(0)
     ... except Exception as e:
     ...     format_error(e, filter=None)
-    '[<doctest>:<module>:4 | compatibility_tags.py:version_info_to_nodot:23] return "".join(map(str, version_info[:2])) >>> TypeError(\'int\' object is not subscriptable)'
+    '[<doctest>:<module>(4)|compatibility_tags.py:version_info_to_nodot(23)] return "".join(map(str, version_info[:2])) >>> TypeError(\'int\' object is not subscriptable)'
     >>> try:
     ...     # test with custom filter.
     ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
     ...     version_info_to_nodot(0)
     ... except Exception as e:
     ...     format_error(e, filter=lambda i: '<doctest' in str(i))
-    "[<doctest>:<module>:4] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
+    "[<doctest>:<module>(4)] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
     """
     try:
         filter = filter or always_return_value(True)
@@ -723,8 +723,8 @@ def format_error(
                 _basename = f"{filename.split()[0]}>"
             else:
                 _basename = filename
-            trace_route_list.append(f"{_basename}:{tb.name}:{tb.lineno}")
-        trace_routes = " | ".join(trace_route_list)
+            trace_route_list.append(f"{_basename}:{tb.name}({tb.lineno})")
+        trace_routes = "|".join(trace_route_list)
         _kwargs = {
             "tbs": tbs,
             "error": error,
