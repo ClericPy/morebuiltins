@@ -6,4 +6,5 @@ __all__ = [
     "morebuiltins.ipc",
     "morebuiltins.request",
     "morebuiltins.download_python",
+    "morebuiltins.tk",
 ]

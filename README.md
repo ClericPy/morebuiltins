@@ -154,4 +154,9 @@ print(morebuiltins.__file__)
 6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m morebuiltins.download_python`
 
 
+## 7. morebuiltins.tk
+
+7.1 `TKit` - Tkinter kit for dialog usages.
+
+
 <!-- end -->
