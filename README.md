@@ -96,6 +96,8 @@ print(morebuiltins.__file__)
 
 1.24 `set_clip` - Copies the given text to the clipboard using a temporary file in a Windows environment.
 
+1.25 `switch_flush_print` - Set builtins.print default flush=True.
+
 
 ## 2. morebuiltins.date
 

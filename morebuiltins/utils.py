@@ -56,6 +56,7 @@ __all__ = [
     "set_pid_file",
     "get_paste",
     "set_clip",
+    "switch_flush_print",
 ]
 
 
@@ -1075,6 +1076,39 @@ def set_clip(text: str):
         )
     finally:
         path.unlink(missing_ok=True)
+
+
+def switch_flush_print():
+    """Set builtins.print default flush=True.
+
+    >>> print.__name__
+    'print'
+    >>> switch_flush_print()
+    >>> print.__name__
+    'flush_print'
+    >>> switch_flush_print()
+    >>> print.__name__
+    'print'
+    """
+    import builtins
+
+    if hasattr(builtins, "orignal_print"):
+        orignal_print = builtins.orignal_print
+        if builtins.print is not orignal_print:
+            # back to orignal_print
+            builtins.print = orignal_print
+            return
+    else:
+        orignal_print = builtins.print
+        builtins.orignal_print = orignal_print
+
+    def flush_print(*args, **kwargs):
+        if "flush" not in kwargs:
+            kwargs["flush"] = True
+        return orignal_print(*args, **kwargs)
+
+    # set new flush_print
+    builtins.print = flush_print
 
 
 if __name__ == "__main__":
