@@ -89,6 +89,7 @@ class TKit(tk.Tk):
             root = tk.Tk()
             root.withdraw()
             root.attributes("-topmost", True)
+            root.focus_force()
             return methods[arg](title=title, message=message)
         except IndexError:
             return methods[-1](title=title, message=message)
@@ -102,6 +103,7 @@ class TKit(tk.Tk):
             root = tk.Tk()
             root.withdraw()
             root.attributes("-topmost", True)
+            root.focus_force()
             return tkinter.messagebox.askyesno(
                 title=title, message=message, default=kwargs.get("default")
             )
@@ -115,8 +117,7 @@ class TKit(tk.Tk):
         root.title(title)
         root.resize(topmost=True, toolwindow=True, **kwargs)
         results = [None]
-        arg_list = list(arg)
-        max_col = max([len(i) for i in arg_list if isinstance(i, (tuple, list))])
+        max_col = max([len(i) for i in arg if isinstance(i, (tuple, list))])
         tk.Label(root, text=message, background="#ffffff").grid(
             row=0, column=0, sticky="ewns", columnspan=max_col
         )
@@ -130,19 +131,22 @@ class TKit(tk.Tk):
 
             return add_result
 
-        for row, texts in enumerate(arg_list, 1):
+        for row, texts in enumerate(arg, 1):
             root.grid_rowconfigure(row, weight=1)
             if not isinstance(texts, (tuple, list)):
                 texts = [texts]
             for col, text in enumerate(texts, 0):
                 root.grid_columnconfigure(col, weight=1)
-                tk.Button(
+                b = tk.Button(
                     root,
                     text=str(text),
                     borderwidth=1,
                     relief="ridge",
                     command=cb(text),
-                ).grid(row=row, column=col, sticky="ewns")
+                )
+                b.grid(row=row, column=col, sticky="ewns")
+                if (row, col) == (1, 0):
+                    b.focus_force()
         root.mainloop()
         return results[-1]
 
@@ -152,40 +156,78 @@ class TKit(tk.Tk):
         root = cls()
         root.title(title)
         root.resize(topmost=True, toolwindow=True, **kwargs)
-        arg_list = list(arg)
-        max_col = max([len(i) for i in arg_list if isinstance(i, (tuple, list))])
+        max_col = max([len(i) for i in arg if isinstance(i, (tuple, list))])
         tk.Label(root, text=message, background="#ffffff").grid(
             row=0, column=0, sticky="ewns", columnspan=max_col
         )
         root.grid_columnconfigure(0, weight=1)
         results: Dict[str, tk.IntVar] = {}
-        for row, texts in enumerate(arg_list, 1):
+        for row, texts in enumerate(arg, 1):
             root.grid_rowconfigure(row, weight=1)
             if not isinstance(texts, (tuple, list)):
                 texts = [texts]
             for col, text in enumerate(texts, 0):
                 root.grid_columnconfigure(col, weight=1)
-                tk.Checkbutton(
+                c = tk.Checkbutton(
                     root,
                     text=str(text),
                     variable=results.setdefault(text, tk.IntVar()),
                     borderwidth=1,
                     relief="ridge",
-                ).grid(row=row, column=col, sticky="ewns")
+                )
+                c.grid(row=row, column=col, sticky="ewns")
+                if (row, col) == (1, 0):
+                    c.focus_force()
         tk.Button(
             root,
             text="Submit",
             background="#ffffff",
             command=lambda: root.destroy(),
             height=2,
-        ).grid(row=len(arg_list) + 1, column=0, columnspan=max_col, sticky="ewns")
+        ).grid(row=len(arg) + 1, column=0, columnspan=max_col, sticky="ewns")
         root.mainloop()
         return sorted((k for k, v in results.items() if v.get()))
 
     @classmethod
     def ask_text(cls, arg: str, message="", title="", **kwargs):
+        textarea = bool(kwargs.pop("textarea", None))
         message = message or arg
-        return tkinter.messagebox.showinfo(title=title, message=message)
+        root = cls()
+        root.title(title)
+        root.resize(topmost=True, toolwindow=True, **kwargs)
+
+        tk.Label(root, text=message, background="#ffffff").pack(
+            expand=True, fill="both"
+        )
+
+        text_var = tk.StringVar()
+
+        if textarea:
+            text_box: Any = tk.Text(root, height=2)
+
+            def submit(event=None):
+                # remove \n
+                text = text_box.get("1.0", tk.END)
+                if text[-1] == "\n":
+                    text = text[:-1]
+                text_var.set(text)
+                root.destroy()
+
+        else:
+            text_box = tk.Entry(root, textvariable=text_var)
+
+            def submit(event=None):
+                root.destroy()
+
+            text_box.bind("<Return>", submit)
+        text_box.bind("<Control-Return>", submit)
+        text_box.pack(expand=True, fill="both")
+        text_box.focus_force()
+        tk.Button(root, text="Submit", background="#ffffff", command=submit).pack(
+            expand=True, fill="both"
+        )
+        root.mainloop()
+        return text_var.get()
 
 
 def examples():
@@ -193,7 +235,7 @@ def examples():
         TKit.ask(0, "0")
         TKit.ask(1, "1")
         TKit.ask(2, "2")
-        if TKit.ask(True, "Choose NO") is True:
+        if TKit.ask(True, "Choose NO", default="no") is True:
             TKit.ask(0, "Wrong choice")
             continue
         if (
@@ -208,6 +250,14 @@ def examples():
             width=400,
         ) != ["3", "6"]:
             TKit.ask(2, "Wrong choice")
+            continue
+        result = TKit.ask("Input text 1 (press Enter to submit):")
+        if result != "1":
+            TKit.ask(2, "Wrong text %s" % repr(result))
+            continue
+        result = TKit.ask("Input text 1\\n (press Ctrl-Enter to submit):", textarea=1)
+        if result != "1\n":
+            TKit.ask(2, "Wrong text %s" % repr(result))
             continue
         break
 
