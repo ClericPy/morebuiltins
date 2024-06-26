@@ -1,3 +1,7 @@
+### 0.0.9 (2024-06-26)
+1. add `tk.TKit.ask_text`
+2. focus_force for `tk.TKit`
+
 ### 0.0.8 (2024-06-25)
 1. update default format of `utils.format_error`
 2. add `functools.SizedTimedRotatingFileHandler`
