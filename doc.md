@@ -600,6 +600,24 @@
 ---
 
 
+
+1.25 `switch_flush_print` - Set builtins.print default flush=True.
+
+```python
+    >>> print.__name__
+    'print'
+    >>> switch_flush_print()
+    >>> print.__name__
+    'flush_print'
+    >>> switch_flush_print()
+    >>> print.__name__
+    'print'
+    
+```
+
+---
+
+
 ## 2. morebuiltins.date
 
 
