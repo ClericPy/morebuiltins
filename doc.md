@@ -1277,3 +1277,15 @@
 ---
 
 
+## 7. morebuiltins.tk
+
+
+
+7.1 `TKit` - Tkinter kit for dialog usages.
+
+```python
+```
+
+---
+
+
