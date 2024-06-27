@@ -11,7 +11,6 @@ def zipapp_module():
 
     create_app(
         "./morebuiltins",
-        main="morebuiltins",
         output="./morebuiltins.pyz",
         compressed=True,
     )
