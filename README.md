@@ -35,6 +35,10 @@ import morebuiltins
 print(morebuiltins.__file__)
 # morebuiltins.pyz/morebuiltins/__init__.py
 ```
+**morebuiltins.pyz command-line**
+> zipapps: `python morebuiltins.pyz -m morebuiltins.zipapps -o morebuiltins.pyz -c morebuiltins`
+>
+> download_python: `python morebuiltins.pyz -m morebuiltins.download_python`
 
 ## Doc
 
