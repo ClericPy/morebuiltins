@@ -1,5 +1,8 @@
+import builtins
 import tkinter as tk
 import tkinter.messagebox
+from threading import Thread
+from tkinter import scrolledtext
 from typing import Any, Dict
 
 __all__ = ["TKit"]
@@ -46,6 +49,7 @@ class TKit(tk.Tk):
         fullscreen=False,
         toolwindow=False,
         disabled=False,
+        title=None,
     ):
         """Resize and Move the window to the given position, default to the center of the screen."""
         screen_width = tk_obj.winfo_screenwidth()
@@ -62,6 +66,8 @@ class TKit(tk.Tk):
         tk_obj.attributes("-fullscreen", fullscreen)
         tk_obj.attributes("-toolwindow", toolwindow)
         tk_obj.attributes("-disabled", disabled)
+        if title is not None:
+            tk_obj.title(title)
 
     @classmethod
     def ask(cls, arg: Any, message="", title="", **kwargs):
@@ -77,6 +83,18 @@ class TKit(tk.Tk):
             return cls.ask_text(arg, message, title, **kwargs)
         else:
             raise TypeError()
+
+    @classmethod
+    def info(cls, message="", title="", **kwargs):
+        return cls.ask_msgbox(0, message, title, **kwargs)
+
+    @classmethod
+    def warn(cls, message="", title="", **kwargs):
+        return cls.ask_msgbox(1, message, title, **kwargs)
+
+    @classmethod
+    def error(cls, message="", title="", **kwargs):
+        return cls.ask_msgbox(2, message, title, **kwargs)
 
     @classmethod
     def ask_msgbox(cls, arg: int, message="", title="", **kwargs):
@@ -229,6 +247,76 @@ class TKit(tk.Tk):
         root.mainloop()
         return text_var.get()
 
+    @classmethod
+    def text_context(cls, function, *args, **kwargs):
+        return TextWindow(function, *args, **kwargs)
+
+
+class TextWindow:
+    def __init__(self, function, *args, **kwargs):
+        self.print = print
+        self.function = function
+        self.args = args
+        self.kwargs = kwargs
+
+        self.result = None
+        self.error = None
+        self._shutdown = False
+
+    def print_text(self, *args, end="\n", sep=" ", file=None, flush=False):
+        if flush:
+            self.text_box.delete("1.0", tk.END)
+        self.text_box.insert(tk.END, f"{sep.join(map(str, args))}{end}")
+        self.text_box.see(tk.END)
+
+    def patch_print(self):
+        builtins.print = self.print_text
+
+    def restore_print(self):
+        if builtins.print is not self.print:
+            builtins.print = self.print
+
+    def run(self):
+        try:
+            self.result = self.function(*self.args, **self.kwargs)
+        except Exception as e:
+            self.error = e
+        finally:
+            self.shutdown()
+
+    def __enter__(self):
+        try:
+            self.root = tk.Tk()
+            __resize_kwargs = self.kwargs.pop("__resize_kwargs", {})
+            TKit.resize_tk(self.root, **__resize_kwargs)
+            __text_kwargs = self.kwargs.pop("__text_kwargs", {})
+            self.text_box = scrolledtext.ScrolledText(self.root, **__text_kwargs)
+            self.text_box.pack(expand=True, fill="both")
+            self.text_box.focus_force()
+            self.patch_print()
+            t = Thread(target=self.run, daemon=True)
+            t.start()
+            self.root.mainloop()
+        finally:
+            self.shutdown()
+            if self.error:
+                raise self.error
+
+        return self.result
+
+    def shutdown(self):
+        try:
+            if not self._shutdown:
+                self._shutdown = True
+                self.restore_print()
+                self.root.quit()
+        except (tk.TclError, AttributeError):
+            pass
+
+    def __exit__(self, *_):
+        self.root.withdraw()
+        self.shutdown()
+
 
 def examples():
     while True:
@@ -259,6 +347,30 @@ def examples():
         if result != "1\n":
             TKit.ask(2, "Wrong text %s" % repr(result))
             continue
+
+        def test_text(flush=False):
+            import time
+
+            for i in range(50):
+                print(f"Test print flush={flush} -- {i}", flush=flush)
+                time.sleep(0.02)
+            return "OK"
+
+        with TKit.text_context(
+            test_text,
+            flush=True,
+            __resize_kwargs={"title": "The Title", "toolwindow": True},
+            __text_kwargs={"font": "_ 15"},
+        ) as result:
+            TKit.info("result=%s" % result)
+
+        with TKit.text_context(
+            test_text,
+            flush=False,
+            __resize_kwargs={"title": "The Title", "toolwindow": True},
+            __text_kwargs={"font": "_ 15"},
+        ) as result:
+            TKit.warn("result=%s" % result)
         break
 
 

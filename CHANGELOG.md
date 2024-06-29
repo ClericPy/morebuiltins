@@ -1,3 +1,7 @@
+### 0.1.0 (2024-06-29)
+1. add `tk.TextWindow`
+2. 
+
 ### 0.0.9 (2024-06-26)
 1. add `tk.TKit.ask_text`
 2. focus_force for `tk.TKit`
