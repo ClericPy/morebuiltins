@@ -1,3 +1,7 @@
+### 1.0.1 (2024-06-30)
+1. `functools.FuncSchema.parse` default strict=True
+2. 
+
 ### 1.0.0 (2024-06-29)
 1. add `tk.TextWindow`
 2. add `utils.unix_rlimit`

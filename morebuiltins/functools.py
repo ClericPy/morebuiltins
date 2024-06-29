@@ -327,8 +327,23 @@ class FuncSchema:
 
     >>> def test(a, b: str, /, c=1, *, d=["d"], e=0.1, f={"f"}, g=(1, 2), h=True, i={1}, **kws):
     ...     return
-    >>> FuncSchema.parse(test)
+    >>> FuncSchema.parse(test, strict=False)
     {'b': {'type': <class 'str'>, 'default': <class 'inspect._empty'>}, 'c': {'type': <class 'int'>, 'default': 1}, 'd': {'type': <class 'list'>, 'default': ['d']}, 'e': {'type': <class 'float'>, 'default': 0.1}, 'f': {'type': <class 'set'>, 'default': {'f'}}, 'g': {'type': <class 'tuple'>, 'default': (1, 2)}, 'h': {'type': <class 'bool'>, 'default': True}, 'i': {'type': <class 'set'>, 'default': {1}}}
+    >>> def test(a):
+    ...     return
+    >>> try:FuncSchema.parse(test, strict=True)
+    ... except TypeError as e: e
+    TypeError('Parameter `a` has no type and no default value.')
+    >>> def test(**kws):
+    ...     return
+    >>> try:FuncSchema.parse(test, strict=True)
+    ... except TypeError as e: e
+    TypeError('Parameter `kws` has no type and no default value.')
+    >>> def test(*args):
+    ...     return
+    >>> try:FuncSchema.parse(test, strict=True)
+    ... except TypeError as e: e
+    TypeError('Parameter `args` has no type and no default value.')
     >>> FuncSchema.convert("1", int)
     1
     >>> FuncSchema.convert("1", str)
@@ -351,13 +366,18 @@ class FuncSchema:
     JSON_TYPES = {tuple, set, dict, bool}
 
     @classmethod
-    def parse(cls, function: Callable):
+    def parse(cls, function: Callable, strict=True):
         sig = inspect.signature(function)
         result = {}
         for param in sig.parameters.values():
             if param.annotation is param.empty:
                 if param.default is param.empty:
-                    continue
+                    if strict:
+                        raise TypeError(
+                            f"Parameter `{param.name}` has no type and no default value."
+                        )
+                    else:
+                        continue
                 tp = type(param.default)
             else:
                 tp = param.annotation
