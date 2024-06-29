@@ -57,6 +57,7 @@ __all__ = [
     "get_paste",
     "set_clip",
     "switch_flush_print",
+    "unix_rlimit",
 ]
 
 
@@ -1109,6 +1110,16 @@ def switch_flush_print():
 
     # set new flush_print
     builtins.print = flush_print
+
+
+def unix_rlimit(max_mem, max_file_size):
+    "Unix only. RLIMIT_RSS, RLIMIT_FSIZE to limit the max_memory and max_file_size"
+    import resource
+
+    if max_mem:
+        resource.setrlimit(resource.RLIMIT_RSS, (max_mem, max_mem))
+    if max_file_size:
+        resource.setrlimit(resource.RLIMIT_FSIZE, (max_file_size, max_file_size))
 
 
 if __name__ == "__main__":

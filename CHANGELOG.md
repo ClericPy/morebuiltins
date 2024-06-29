@@ -1,6 +1,7 @@
-### 0.1.0 (2024-06-29)
+### 1.0.0 (2024-06-29)
 1. add `tk.TextWindow`
-2. 
+2. add `utils.unix_rlimit`
+3. release as the first stable version
 
 ### 0.0.9 (2024-06-26)
 1. add `tk.TKit.ask_text`
