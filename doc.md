@@ -618,6 +618,15 @@
 ---
 
 
+
+1.26 `unix_rlimit` - Unix only. RLIMIT_RSS, RLIMIT_FSIZE to limit the max_memory and max_file_size
+
+```python
+```
+
+---
+
+
 ## 2. morebuiltins.date
 
 
