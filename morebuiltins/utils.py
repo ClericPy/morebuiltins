@@ -31,6 +31,7 @@ from typing import (
     Union,
 )
 
+
 __all__ = [
     "ttime",
     "ptime",
@@ -565,16 +566,20 @@ class Validator:
     #     }
 
 
-def stagger_sort(items, group_key, sort_key=None):
+def stagger_sort(items, group_key, sort_key=None, sort_reverse=False):
     """Ensures that identical groups are ordered and evenly distributed, mitigating data skew. The function does not alter the original list and returns a generator.
 
     >>> items = [('a', 0), ('a', 2), ('a', 1), ('b', 0), ('b', 1)]
     >>> list(stagger_sort(items, sort_key=lambda i: (i[0], i[1]), group_key=lambda i: i[0]))
     [('a', 0), ('b', 0), ('a', 1), ('b', 1), ('a', 2)]
-
+    >>> items = ['a-a', 'a-b', 'b-b', 'b-c', 'b-a', 'b-d', 'c-a', 'c-a']
+    >>> list(stagger_sort(items, sort_key=lambda i: (i[0], i[2]), group_key=lambda i: i[0]))
+    ['a-a', 'b-a', 'c-a', 'a-b', 'b-b', 'c-a', 'b-c', 'b-d']
     """
     if sort_key:
-        items = sorted(items, key=sort_key)
+        items = sorted(items, key=sort_key, reverse=sort_reverse)
+    else:
+        items = list(items)
     buckets = [list(group[1]) for group in groupby(items, group_key)]
     while True:
         next_buckets = []
@@ -588,6 +593,54 @@ def stagger_sort(items, group_key, sort_key=None):
             buckets = next_buckets
         else:
             break
+
+
+def iter_weights(
+    weight_dict: Dict[Any, Union[int, float]], loop_length=100, round_int=round
+):
+    """Generates an element sequence based on weights.
+
+    This function produces a sequence of elements where each element's frequency of occurrence
+    is proportional to its weight from the provided dictionary. Elements with higher weights
+    appear more frequently in the sequence. The total cycle length can be adjusted via the
+    `loop_length` parameter. The `round_int` parameter allows customization of the rounding
+    function to control the precision of weight calculations.
+
+    Keys with weights greater than 0 will be yielded.
+
+    Parameters:
+    - weight_dict: A dictionary where keys are elements and values are their respective weights.
+    - loop_length: An integer defining the total length of the repeating cycle, defaulting to 100.
+    - round_int: A function used for rounding, defaulting to Python's built-in `round`.
+
+    Yields:
+    A generator that yields a sequence of elements distributed according to their weights.
+
+    Examples:
+    >>> list(iter_weights({"6": 6, "3": 3, "1": 0.4}, 10))
+    ['6', '3', '6', '3', '6', '3', '6', '6', '6']
+    >>> list(iter_weights({"6": 6, "3": 3, "1": 0.9}, 10))
+    ['6', '3', '1', '6', '3', '6', '3', '6', '6', '6']
+    >>> list(iter_weights({"6": 6, "3": 3, "1": 0.9}, 10, round_int=int))
+    ['6', '3', '6', '3', '6', '3', '6', '6', '6']
+    >>> from itertools import cycle
+    >>> c = cycle(iter_weights({"6": 6, "3": 3, "1": 1}, loop_length=10))
+    >>> [next(c) for i in range(20)]
+    ['6', '3', '1', '6', '3', '6', '3', '6', '6', '6', '6', '3', '1', '6', '3', '6', '3', '6', '6', '6']
+    """
+    keys = list(weight_dict.keys())
+    items = []
+    total = sum(weight_dict.values())
+    for key, value in weight_dict.items():
+        length = round_int(loop_length * value / total) if value > 0 else 0
+        items.extend([key] * length)
+    for item in stagger_sort(
+        items,
+        group_key=lambda x: keys.index(x),
+        sort_key=lambda x: weight_dict[x],
+        sort_reverse=True,
+    ):
+        yield item
 
 
 def default_dict(cls: Type[dict], **kwargs) -> dict:
