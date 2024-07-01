@@ -1112,13 +1112,13 @@ def switch_flush_print():
     builtins.print = flush_print
 
 
-def unix_rlimit(max_mem, max_file_size):
+def unix_rlimit(max_mem: Optional[int] = None, max_file_size: Optional[int] = None):
     "Unix only. RLIMIT_RSS, RLIMIT_FSIZE to limit the max_memory and max_file_size"
     import resource
 
-    if max_mem:
+    if max_mem is not None:
         resource.setrlimit(resource.RLIMIT_RSS, (max_mem, max_mem))
-    if max_file_size:
+    if max_file_size is not None:
         resource.setrlimit(resource.RLIMIT_FSIZE, (max_file_size, max_file_size))
 
 
