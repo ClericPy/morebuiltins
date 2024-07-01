@@ -1,6 +1,6 @@
-### 1.0.1 (2024-07-01)
-1. `utils.unix_rlimit` default to None
-2. 
+### 1.0.2 (2024-07-01)
+1. update `utils.unix_rlimit` default to None
+2. add `utils.weight_dict`
 
 ### 1.0.1 (2024-06-30)
 1. `functools.FuncSchema.parse` default strict=True

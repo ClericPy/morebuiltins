@@ -317,7 +317,9 @@
     >>> items = [('a', 0), ('a', 2), ('a', 1), ('b', 0), ('b', 1)]
     >>> list(stagger_sort(items, sort_key=lambda i: (i[0], i[1]), group_key=lambda i: i[0]))
     [('a', 0), ('b', 0), ('a', 1), ('b', 1), ('a', 2)]
-
+    >>> items = ['a-a', 'a-b', 'b-b', 'b-c', 'b-a', 'b-d', 'c-a', 'c-a']
+    >>> list(stagger_sort(items, sort_key=lambda i: (i[0], i[2]), group_key=lambda i: i[0]))
+    ['a-a', 'b-a', 'c-a', 'a-b', 'b-b', 'c-a', 'b-c', 'b-d']
     
 ```
 
