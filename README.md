@@ -104,6 +104,8 @@ print(morebuiltins.__file__)
 
 1.26 `unix_rlimit` - Unix only. RLIMIT_RSS, RLIMIT_FSIZE to limit the max_memory and max_file_size
 
+1.27 `SimpleFilter` - Simple dup-filter with pickle file.
+
 
 ## 2. morebuiltins.date
 

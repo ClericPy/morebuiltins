@@ -5,6 +5,7 @@ import gzip
 import hashlib
 import json
 import os
+import pickle
 import re
 import subprocess
 import sys
@@ -16,6 +17,7 @@ from functools import wraps
 from itertools import groupby, islice
 from os.path import basename, exists
 from pathlib import Path
+from threading import Lock, Timer, current_thread
 from time import gmtime, mktime, strftime, strptime, time, timezone
 from typing import (
     Any,
@@ -30,7 +32,6 @@ from typing import (
     Type,
     Union,
 )
-
 
 __all__ = [
     "ttime",
@@ -59,6 +60,7 @@ __all__ = [
     "set_clip",
     "switch_flush_print",
     "unix_rlimit",
+    "SimpleFilter",
 ]
 
 
@@ -1173,6 +1175,92 @@ def unix_rlimit(max_mem: Optional[int] = None, max_file_size: Optional[int] = No
         resource.setrlimit(resource.RLIMIT_RSS, (max_mem, max_mem))
     if max_file_size is not None:
         resource.setrlimit(resource.RLIMIT_FSIZE, (max_file_size, max_file_size))
+
+
+class SimpleFilter:
+    """Simple dup-filter with pickle file.
+
+    >>> for r in range(1, 5):
+    ...     try:
+    ...         done = 0
+    ...         with SimpleFilter("1.proc", 0, success_unlink=True) as sf:
+    ...             for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
+    ...                 if sf.exist(i):
+    ...                     continue
+    ...                 if done > 2:
+    ...                     print("crash!")
+    ...                     raise ValueError
+    ...                 print('[round %s]' % r, i, 'done', flush=True)
+    ...                 sf.add(i)
+    ...                 done += 1
+    ...             break
+    ...     except ValueError:
+    ...         continue
+    ...
+    [round 1] 1 done
+    [round 1] 2 done
+    [round 1] 3 done
+    crash!
+    [round 2] 4 done
+    [round 2] 5 done
+    [round 2] 6 done
+    crash!
+    [round 3] 7 done
+    [round 3] 8 done
+    [round 3] 9 done
+    crash!
+    [round 4] 10 done
+    """
+
+    def __init__(self, path: Union[Path, str], delay=2, success_unlink=False):
+        self.path = Path(path)
+        self.delay = delay
+        self.success_unlink = success_unlink
+
+        self.timer = None
+        self.has_new = False
+        self.w_lock = Lock()
+        self.current_thread = current_thread()
+
+    def add(self, key):
+        self.has_new = True
+        self.cache.add(key)
+        if not self.timer:
+            self.timer = Timer(self.delay, self.save_cache)
+            self.timer.start()
+
+    def exist(self, key):
+        return key in self.cache
+
+    def save_cache(self):
+        with self.w_lock:
+            if self.has_new:
+                self.path.write_bytes(pickle.dumps(self.cache))
+            if self.timer:
+                if current_thread() is not self.current_thread:
+                    # timer finished
+                    self.timer = None
+
+    def __enter__(self):
+        try:
+            self.cache = pickle.loads(self.path.read_bytes())
+        except Exception:
+            self.cache = set()
+            self.save_cache()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.timer and not self.timer.is_alive():
+            self.timer.cancel()
+        if exc_type is None:
+            # success & finish
+            if self.success_unlink:
+                self.has_new = False
+                with self.w_lock:
+                    # remove cache file
+                    self.path.unlink(missing_ok=True)
+                return
+        self.save_cache()
 
 
 if __name__ == "__main__":
