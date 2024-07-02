@@ -629,6 +629,46 @@
 ---
 
 
+
+1.27 `SimpleFilter` - Simple dup-filter with pickle file.
+
+```python
+    >>> for r in range(1, 5):
+    ...     try:
+    ...         done = 0
+    ...         with SimpleFilter("1.proc", 0, success_unlink=True) as sf:
+    ...             for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
+    ...                 if sf.exist(i):
+    ...                     continue
+    ...                 if done > 2:
+    ...                     print("crash!")
+    ...                     raise ValueError
+    ...                 print('[round %s]' % r, i, 'done', flush=True)
+    ...                 sf.add(i)
+    ...                 done += 1
+    ...             break
+    ...     except ValueError:
+    ...         continue
+    ...
+    [round 1] 1 done
+    [round 1] 2 done
+    [round 1] 3 done
+    crash!
+    [round 2] 4 done
+    [round 2] 5 done
+    [round 2] 6 done
+    crash!
+    [round 3] 7 done
+    [round 3] 8 done
+    [round 3] 9 done
+    crash!
+    [round 4] 10 done
+    
+```
+
+---
+
+
 ## 2. morebuiltins.date
 
 
