@@ -949,6 +949,12 @@
     >>> try:FuncSchema.parse(test, strict=True)
     ... except TypeError as e: e
     TypeError('Parameter `a` has no type and no default value.')
+    >>> def test(b: str):
+    ...     return
+    >>> FuncSchema.parse(test, strict=True)
+    {'b': {'type': <class 'str'>, 'default': <class 'inspect._empty'>}}
+    >>> FuncSchema.parse(test, strict=True, fill_default=True)
+    {'b': {'type': <class 'str'>, 'default': ''}}
     >>> def test(**kws):
     ...     return
     >>> try:FuncSchema.parse(test, strict=True)
@@ -971,10 +977,14 @@
     True
     >>> FuncSchema.convert('[[1, 1]]', dict)
     {1: 1}
+    >>> FuncSchema.convert('{"1": "1"}', dict)
+    {'1': '1'}
     >>> FuncSchema.convert('[1, 1]', set)
     {1}
     >>> FuncSchema.convert('[1, 1]', tuple)
     (1, 1)
+    >>> FuncSchema.convert('[1, "1"]', list)
+    [1, '1']
     
 ```
 
@@ -1027,6 +1037,77 @@
         # 2024/06/25 22:47   134     test.log.20240625_224718
         # 2024/06/25 22:47   134     test.log.20240625_224719
             ```
+```
+
+---
+
+
+
+3.8 `get_type_default` - Get the default value for a type. {int: 0, float: 0.0, bytes: b"", str: "", list: [], tuple: (), set: set(), dict: {}}
+
+```python
+```
+
+---
+
+
+
+3.9 `func_cmd` - Handle function with argparse, typing-hint is nessessary.
+
+```python
+    Demo::
+
+        ```python
+        def test(str: str, /, int=1, *, list=["d"], float=0.1, set={"f"}, tuple=(1, 2), bool=True, dict={"k": 1}):
+            """Test demo function.
+
+            Args:
+                str (str): str.
+                int (int, optional): int. Defaults to 1.
+                list (list, optional): list. Defaults to ["d"].
+                float (float, optional): float. Defaults to 0.1.
+                set (dict, optional): set. Defaults to {"f"}.
+                tuple (tuple, optional): tuple. Defaults to (1, 2).
+                bool (bool, optional): bool. Defaults to True.
+                dict (dict, optional): dict. Defaults to {"k": 1}.
+            """
+            print(locals())
+
+        # raise ValueError if auto_default is False and user do not input nessessary args.
+        func_cmd(test, auto_default=False)
+        ```
+        CMD args:
+
+        ```bash
+        > python app.py
+        ValueError: `str` has no default value.
+
+        > python app.py --str 1 --int 2 --float 1.0 --list "[1,"a"]" --tuple "[2,"b"]" --set "[1,1,2]" --dict "{"k":"v"}"
+        {'str': '1', 'int': 2, 'list': [1, 'a'], 'float': 1.0, 'set': {1, 2}, 'tuple': (2, 'b'), 'bool': True, 'dict': {'k': 'v'}}
+
+        > python app.py -s 1 -i 2 -f 1.0 -l "[1,"a"]" -t "[2,"b"]" -s "[1,1,2]" -d "{"k":"v"}"
+        {'str': '[1,1,2]', 'int': 2, 'list': [1, 'a'], 'float': 1.0, 'set': {'f'}, 'tuple': (2, 'b'), 'bool': True, 'dict': {'k': 'v'}}
+
+        > python app.py -h
+        usage: temp5.py [-h] [-s STR] [-i INT] [-l LIST] [-f FLOAT] [-se SET] [-t TUPLE] [-b BOOL] [-d DICT]
+
+        Test demo function. Args: str (str): str. int (int, optional): int. Defaults to 1. list (list, optional): list. Defaults to ["d"]. float (float, optional): float. Defaults to 0.1. set (dict,
+        optional): set. Defaults to {"f"}. tuple (tuple, optional): tuple. Defaults to (1, 2). bool (bool, optional): bool. Defaults to True. dict (dict, optional): dict. Defaults to {"k": 1}.
+
+        options:
+        -h, --help            show this help message and exit
+        -s STR, --str STR     {'type': <class 'str'>, 'default': <class 'inspect._empty'>}
+        -i INT, --int INT     {'type': <class 'int'>, 'default': 1}
+        -l LIST, --list LIST  {'type': <class 'list'>, 'default': ['d']}
+        -f FLOAT, --float FLOAT
+                                {'type': <class 'float'>, 'default': 0.1}
+        -se SET, --set SET    {'type': <class 'set'>, 'default': {'f'}}
+        -t TUPLE, --tuple TUPLE
+                                {'type': <class 'tuple'>, 'default': (1, 2)}
+        -b BOOL, --bool BOOL  {'type': <class 'bool'>, 'default': True}
+        -d DICT, --dict DICT  {'type': <class 'dict'>, 'default': {'k': 1}}
+        ```
+    
 ```
 
 ---

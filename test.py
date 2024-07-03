@@ -54,7 +54,6 @@ def make_docs():
     import importlib
     import re
     from pathlib import Path
-    from textwrap import indent
 
     import morebuiltins
 
