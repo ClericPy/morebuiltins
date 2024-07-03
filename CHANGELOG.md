@@ -1,3 +1,7 @@
+### 1.0.3 (2024-07-03)
+1. add `functools.get_type_default`
+2. add `functools.func_cmd`
+
 ### 1.0.2 (2024-07-01)
 1. update `utils.unix_rlimit` default to None
 2. add `utils.weight_dict`

@@ -130,6 +130,10 @@ print(morebuiltins.__file__)
 
 3.7 `SizedTimedRotatingFileHandler` - TimedRotatingFileHandler with maxSize, to avoid files that are too large.
 
+3.8 `get_type_default` - Get the default value for a type. {int: 0, float: 0.0, bytes: b"", str: "", list: [], tuple: (), set: set(), dict: {}}
+
+3.9 `func_cmd` - Handle function with argparse, typing-hint is nessessary.
+
 
 ## 4. morebuiltins.ipc
 

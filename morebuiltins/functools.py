@@ -20,6 +20,8 @@ __all__ = [
     "FuncSchema",
     "InlinePB",
     "SizedTimedRotatingFileHandler",
+    "get_type_default",
+    "func_cmd",
 ]
 
 
@@ -334,6 +336,12 @@ class FuncSchema:
     >>> try:FuncSchema.parse(test, strict=True)
     ... except TypeError as e: e
     TypeError('Parameter `a` has no type and no default value.')
+    >>> def test(b: str):
+    ...     return
+    >>> FuncSchema.parse(test, strict=True)
+    {'b': {'type': <class 'str'>, 'default': <class 'inspect._empty'>}}
+    >>> FuncSchema.parse(test, strict=True, fill_default=True)
+    {'b': {'type': <class 'str'>, 'default': ''}}
     >>> def test(**kws):
     ...     return
     >>> try:FuncSchema.parse(test, strict=True)
@@ -356,17 +364,21 @@ class FuncSchema:
     True
     >>> FuncSchema.convert('[[1, 1]]', dict)
     {1: 1}
+    >>> FuncSchema.convert('{"1": "1"}', dict)
+    {'1': '1'}
     >>> FuncSchema.convert('[1, 1]', set)
     {1}
     >>> FuncSchema.convert('[1, 1]', tuple)
     (1, 1)
+    >>> FuncSchema.convert('[1, "1"]', list)
+    [1, '1']
     """
 
     ALLOW_TYPES = {int, float, str, tuple, list, set, dict, bool}
-    JSON_TYPES = {tuple, set, dict, bool}
+    JSON_TYPES = {tuple, list, set, dict, bool}
 
     @classmethod
-    def parse(cls, function: Callable, strict=True):
+    def parse(cls, function: Callable, strict=True, fill_default=False):
         sig = inspect.signature(function)
         result = {}
         for param in sig.parameters.values():
@@ -382,7 +394,10 @@ class FuncSchema:
             else:
                 tp = param.annotation
             if tp in cls.ALLOW_TYPES:
-                result[param.name] = {"type": tp, "default": param.default}
+                default = param.default
+                if fill_default and default is inspect._empty:
+                    default = get_type_default(tp, default)
+                result[param.name] = {"type": tp, "default": default}
         return result
 
     @classmethod
@@ -556,6 +571,118 @@ class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
         if self.maxBytes > 0:
             self.stream.close()
             self.stream = self._open()
+
+
+def get_type_default(tp, default=None):
+    """Get the default value for a type. {int: 0, float: 0.0, bytes: b"", str: "", list: [], tuple: (), set: set(), dict: {}}"""
+    return {
+        int: 0,
+        float: 0.0,
+        bytes: b"",
+        str: "",
+        list: [],
+        tuple: (),
+        set: set(),
+        dict: {},
+    }.get(tp, default)
+
+
+def func_cmd(function: Callable, run=True, auto_default=False):
+    """Handle function with argparse, typing-hint is nessessary.
+
+    Demo::
+
+        ```python
+        def test(str: str, /, int=1, *, list=["d"], float=0.1, set={"f"}, tuple=(1, 2), bool=True, dict={"k": 1}):
+            \"\"\"Test demo function.
+
+            Args:
+                str (str): str.
+                int (int, optional): int. Defaults to 1.
+                list (list, optional): list. Defaults to ["d"].
+                float (float, optional): float. Defaults to 0.1.
+                set (dict, optional): set. Defaults to {"f"}.
+                tuple (tuple, optional): tuple. Defaults to (1, 2).
+                bool (bool, optional): bool. Defaults to True.
+                dict (dict, optional): dict. Defaults to {"k": 1}.
+            \"\"\"
+            print(locals())
+
+        # raise ValueError if auto_default is False and user do not input nessessary args.
+        func_cmd(test, auto_default=False)
+        ```
+        CMD args:
+
+        ```bash
+        > python app.py
+        ValueError: `str` has no default value.
+
+        > python app.py --str 1 --int 2 --float 1.0 --list "[1,\"a\"]" --tuple "[2,\"b\"]" --set "[1,1,2]" --dict "{\"k\":\"v\"}"
+        {'str': '1', 'int': 2, 'list': [1, 'a'], 'float': 1.0, 'set': {1, 2}, 'tuple': (2, 'b'), 'bool': True, 'dict': {'k': 'v'}}
+
+        > python app.py -s 1 -i 2 -f 1.0 -l "[1,\"a\"]" -t "[2,\"b\"]" -s "[1,1,2]" -d "{\"k\":\"v\"}"
+        {'str': '[1,1,2]', 'int': 2, 'list': [1, 'a'], 'float': 1.0, 'set': {'f'}, 'tuple': (2, 'b'), 'bool': True, 'dict': {'k': 'v'}}
+
+        > python app.py -h
+        usage: temp5.py [-h] [-s STR] [-i INT] [-l LIST] [-f FLOAT] [-se SET] [-t TUPLE] [-b BOOL] [-d DICT]
+
+        Test demo function. Args: str (str): str. int (int, optional): int. Defaults to 1. list (list, optional): list. Defaults to ["d"]. float (float, optional): float. Defaults to 0.1. set (dict,
+        optional): set. Defaults to {"f"}. tuple (tuple, optional): tuple. Defaults to (1, 2). bool (bool, optional): bool. Defaults to True. dict (dict, optional): dict. Defaults to {"k": 1}.
+
+        options:
+        -h, --help            show this help message and exit
+        -s STR, --str STR     {'type': <class 'str'>, 'default': <class 'inspect._empty'>}
+        -i INT, --int INT     {'type': <class 'int'>, 'default': 1}
+        -l LIST, --list LIST  {'type': <class 'list'>, 'default': ['d']}
+        -f FLOAT, --float FLOAT
+                                {'type': <class 'float'>, 'default': 0.1}
+        -se SET, --set SET    {'type': <class 'set'>, 'default': {'f'}}
+        -t TUPLE, --tuple TUPLE
+                                {'type': <class 'tuple'>, 'default': (1, 2)}
+        -b BOOL, --bool BOOL  {'type': <class 'bool'>, 'default': True}
+        -d DICT, --dict DICT  {'type': <class 'dict'>, 'default': {'k': 1}}
+        ```
+    """
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser(description=function.__doc__)
+    schema = FuncSchema.parse(function, strict=True, fill_default=False)
+    seen_shorten = {"h"}
+    for key, value in schema.items():
+        args = [f"--{key}"]
+        for i in range(1, 4):
+            if i > len(key):
+                break
+            short = key[:i]
+            if short not in seen_shorten:
+                seen_shorten.add(short)
+                args.insert(0, f"-{short}")
+                break
+        kwargs = dict(dest=key, help=str(value))
+        if value["type"] in {int, float, str}:
+            kwargs["type"] = value["type"]
+        else:
+            kwargs["type"] = str
+        if value["default"] is inspect._empty:
+            kwargs["default"] = get_type_default(value["type"])
+        else:
+            kwargs["default"] = value["default"]
+        parser.add_argument(*args, **kwargs)
+    parsed = parser.parse_args()
+    kwargs = {}
+    args = []
+    for key, value in schema.items():
+        if value["default"] is inspect._empty:
+            if auto_default:
+                args.append(FuncSchema.convert(getattr(parsed, key), value["type"]))
+            else:
+                raise ValueError(f"`{key}` has no default value.")
+        else:
+            kwargs[key] = FuncSchema.convert(getattr(parsed, key), value["type"])
+    if run:
+        return function(*args, **kwargs)
+    else:
+        return args, kwargs
 
 
 def test_bg_task():
