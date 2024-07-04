@@ -75,9 +75,10 @@ def make_docs():
                     short_doc += head + "\n\n"
                     if len(lines) > 1:
                         tail = lines[1]
+                        tail = f'```python\n{tail}\n```'
                     else:
                         tail = ""
-                    line = f"\n{head}\n\n```python{tail}\n```\n"
+                    line = f"\n{head}\n\n\n{tail}\n\n"
                     print(
                         line,
                         "\n---\n\n",

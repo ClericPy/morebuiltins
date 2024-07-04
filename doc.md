@@ -4,7 +4,9 @@
 
 1.1 `ttime` - Converts a timestamp to a human-readable timestring formatted as %Y-%m-%d %H:%M:%S.
 
+
 ```python
+
     >>> ttime(1486572818.421858323, tzone=8)
     '2017-02-09 00:53:38'
 
@@ -18,13 +20,16 @@
     
 ```
 
+
 ---
 
 
 
 1.2 `ptime` - Converts a timestring formatted as %Y-%m-%d %H:%M:%S back into a timestamp.
 
+
 ```python
+
     >>> ptime("2018-03-15 01:27:56", tzone=8)
     1521048476
 
@@ -38,13 +43,16 @@
     
 ```
 
+
 ---
 
 
 
 1.3 `slice_into_pieces` - Divides a sequence into “n” segments, returning a generator that yields “n” pieces.
 
+
 ```python
+
     >>> for chunk in slice_into_pieces(range(10), 3):
     ...     print(chunk)
     (0, 1, 2, 3)
@@ -63,13 +71,16 @@
     
 ```
 
+
 ---
 
 
 
 1.4 `slice_by_size` - Slices a sequence into chunks of a specified “size”, returning a generator that produces tuples of chunks.
 
+
 ```python
+
     >>> for chunk in slice_by_size(range(10), 3):
     ...     print(chunk)
     (0, 1, 2)
@@ -89,13 +100,16 @@
     
 ```
 
+
 ---
 
 
 
 1.5 `unique` - Removes duplicate elements from a sequence while preserving the original order efficiently.
 
+
 ```python
+
     >>> a = ['01', '1', '2']
     >>> list(unique(a, int))
     [1, 2]
@@ -114,13 +128,16 @@
     
 ```
 
+
 ---
 
 
 
 1.6 `retry` - A decorator that retries the decorated function up to “tries” times if the specified exceptions are raised.
 
+
 ```python
+
     >>> func = lambda items: 1/items.pop(0)
     >>> items = [0, 1]
     >>> new_func = retry(tries=2, exceptions=(ZeroDivisionError,))(func)
@@ -134,13 +151,16 @@
     
 ```
 
+
 ---
 
 
 
 1.7 `guess_interval` - Analyzes a sequence of numbers and returns the median, calculating intervals only if they are greater than or equal to the specified accuracy.
 
+
 ```python
+
     >>> # sorted_seq: [2, 10, 12, 19, 19, 29, 30, 32, 38, 40, 41, 54, 62]
     >>> # diffs: [8, 7, 10, 6, 13, 8]
     >>> # median: 8
@@ -151,13 +171,16 @@
     
 ```
 
+
 ---
 
 
 
 1.8 `get_hash` - Generates an MD5 hash string from the given input string.
 
+
 ```python
+
     >>> get_hash(123456, 10)
     'a59abbe56e'
     >>> get_hash('test')
@@ -171,13 +194,16 @@
     
 ```
 
+
 ---
 
 
 
 1.9 `find_jsons` - A generator that locates valid JSON strings, supporting only dictionaries and lists.
 
+
 ```python
+
     >>> list(find_jsons('string["123"]123{"a": 1}[{"a": 1, "b": [1,2,3]}]'))
     ['["123"]', '{"a": 1}', '[{"a": 1, "b": [1,2,3]}]']
     >>> list(find_jsons('string[]{}{"a": 1}'))
@@ -189,13 +215,16 @@
     
 ```
 
+
 ---
 
 
 
 1.10 `code_inline` - Minifies Python source code into a single line.
 
+
 ```python
+
     >>> code1 = ''
     >>> code2 = code_inline("variable=12345")
     >>> # import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY8mBl+`0{<&ZEXqtw%1N~~G%_|Z1ptx!(o_xr000".encode("u8"))))
@@ -211,13 +240,16 @@
     
 ```
 
+
 ---
 
 
 
 1.11 `read_size` - Converts byte counts into a human-readable string. Setting shorten=True and precision=0.99 will trim unnecessary decimal places from the tail of floating-point numbers.
 
+
 ```python
+
     >>> (read_size(1023), read_size(1024))
     ('1023 B', '1 KB')
     >>> (read_size(400.5, 1), read_size(400.5, 1, True), read_size(400.5, 1, True, 0.99))
@@ -253,13 +285,16 @@
     
 ```
 
+
 ---
 
 
 
 1.12 `read_time` - Converts seconds into a more readable time duration string.
 
+
 ```python
+
     >>> read_time(0)
     '0 secs'
     >>> read_time(60)
@@ -286,13 +321,16 @@
     
 ```
 
+
 ---
 
 
 
 1.13 `Validator` - Validator for dataclasses.
 
-```python    >>> from dataclasses import dataclass, field
+
+```python
+    >>> from dataclasses import dataclass, field
     >>>
     >>>
     >>> @dataclass
@@ -307,13 +345,16 @@
     
 ```
 
+
 ---
 
 
 
 1.14 `stagger_sort` - Ensures that identical groups are ordered and evenly distributed, mitigating data skew. The function does not alter the original list and returns a generator.
 
+
 ```python
+
     >>> items = [('a', 0), ('a', 2), ('a', 1), ('b', 0), ('b', 1)]
     >>> list(stagger_sort(items, sort_key=lambda i: (i[0], i[1]), group_key=lambda i: i[0]))
     [('a', 0), ('b', 0), ('a', 1), ('b', 1), ('a', 2)]
@@ -323,13 +364,16 @@
     
 ```
 
+
 ---
 
 
 
 1.15 `default_dict` - Initializes a dictionary with default zero values based on a subclass of TypedDict.
 
+
 ```python
+
     >>> class Demo(dict):
     ...     int_obj: int
     ...     float_obj: float
@@ -344,13 +388,16 @@
     
 ```
 
+
 ---
 
 
 
 1.16 `always_return_value` - Got a function always return the given value.
 
-```python    >>> func = always_return_value(1)
+
+```python
+    >>> func = always_return_value(1)
     >>> func(1, 2, 3)
     1
     >>> func(1, 2, c=3)
@@ -358,13 +405,16 @@
     
 ```
 
+
 ---
 
 
 
 1.17 `format_error` - Extracts frame information from an exception, with an option to filter out “site-packages” details by default.
 
+
 ```python
+
     Parameters:
 
     - `error` (`BaseException`): The exception instance for which the stack trace information is to be extracted and formatted.
@@ -430,13 +480,16 @@
     
 ```
 
+
 ---
 
 
 
 1.18 `Trie` - Transforms a standard dictionary into a trie structure that supports prefix matching.
 
+
 ```python
+
     >>> trie = Trie({"ab": 1, "abc": 2, b"aa": 3, ("e", "e"): 4, (1, 2): 5})
     >>> trie
     {'a': {'b': {'_VALUE': 1, 'c': {'_VALUE': 2}}}, 97: {97: {'_VALUE': 3}}, 'e': {'e': {'_VALUE': 4}}, 1: {2: {'_VALUE': 5}}}
@@ -457,18 +510,22 @@
     
 ```
 
+
 ---
 
 
 
 1.19 `GuessExt` - Determines whether the input bytes of a file prefix indicate a compressed file format.
 
+
 ```python
+
     >>> cg = GuessExt()
     >>> cg.get_ext(b"PK\x05\x06zipfiledemo")
     '.zip'
     
 ```
+
 
 ---
 
@@ -476,7 +533,9 @@
 
 1.20 `xor_encode_decode` - Perform XOR encryption or decryption on the given data using a provided key.
 
+
 ```python
+
     This function encrypts or decrypts the data by performing an XOR operation
     between each byte of the data and the corresponding byte of the key. The key
     is repeated if necessary to cover the entire length of the data.
@@ -501,13 +560,16 @@
     
 ```
 
+
 ---
 
 
 
 1.21 `is_running` - Check if the given process ID is running.
 
+
 ```python
+
     Parameters:
     pid -- The process ID to check.
 
@@ -525,13 +587,16 @@
     
 ```
 
+
 ---
 
 
 
 1.22 `set_pid_file` - Sets a PID file to prevent multiple instances of a script or process from running concurrently.
 
-```python    If no path is specified, it constructs a default based on the calling script's location and naming convention.
+
+```python
+    If no path is specified, it constructs a default based on the calling script's location and naming convention.
 
     The function checks for an existing PID file and verifies if the process is still running.
 
@@ -564,13 +629,16 @@
     
 ```
 
+
 ---
 
 
 
 1.23 `get_paste` - This module offers a simple utility for retrieving text from the system clipboard with tkinter.
 
+
 ```python
+
     Function:
         get_paste() -> Union[str, None]
 
@@ -584,13 +652,16 @@
     
 ```
 
+
 ---
 
 
 
 1.24 `set_clip` - Copies the given text to the clipboard using a temporary file in a Windows environment.
 
+
 ```python
+
     This function writes the provided text into a temporary file and then uses the `clip.exe` command-line utility
     to read from this file and copy its content into the clipboard.
 
@@ -599,13 +670,16 @@
     
 ```
 
+
 ---
 
 
 
 1.25 `switch_flush_print` - Set builtins.print default flush=True.
 
+
 ```python
+
     >>> print.__name__
     'print'
     >>> switch_flush_print()
@@ -617,14 +691,16 @@
     
 ```
 
+
 ---
 
 
 
 1.26 `unix_rlimit` - Unix only. RLIMIT_RSS, RLIMIT_FSIZE to limit the max_memory and max_file_size
 
-```python
-```
+
+
+
 
 ---
 
@@ -632,7 +708,9 @@
 
 1.27 `SimpleFilter` - Simple dup-filter with pickle file.
 
+
 ```python
+
     >>> for r in range(1, 5):
     ...     try:
     ...         done = 0
@@ -666,6 +744,7 @@
     
 ```
 
+
 ---
 
 
@@ -675,7 +754,9 @@
 
 2.1 `ScheduleTimer` - The ScheduleTimer class facilitates the creation and evaluation of datetime patterns for scheduling purposes.
 
+
 ```python
+
     It includes mechanisms to parse patterns involving logical operations (AND, OR) and comparison checks (equality, inequality, arithmetic, and custom range checks).
 
     Comparison Operators:
@@ -723,13 +804,16 @@
     
 ```
 
+
 ---
 
 
 
 2.2 `Crontab` - Crontab python parser.
 
+
 ```python
+
     Demo:
 
     >>> start_date = datetime.strptime("2023-02-01 00:00:00", "%Y-%m-%d %H:%M:%S")
@@ -750,6 +834,7 @@
     
 ```
 
+
 ---
 
 
@@ -759,7 +844,9 @@
 
 3.1 `lru_cache_ttl` - A Least Recently Used (LRU) cache with a Time To Live (TTL) feature.
 
+
 ```python
+
     Args:
         maxsize (int): maxsize of cache
         ttl (Optional[Union[int, float]], optional): time to live. Defaults to None.
@@ -810,13 +897,16 @@
     
 ```
 
+
 ---
 
 
 
 3.2 `threads` - Quickly convert synchronous functions to be concurrency-able. (similar to madisonmay/Tomorrow)
 
+
 ```python
+
     >>> @threads(10)
     ... def test(i):
     ...     time.sleep(i)
@@ -843,13 +933,16 @@
     
 ```
 
+
 ---
 
 
 
 3.3 `bg_task` - Avoid asyncio free-flying tasks, better to use the new asyncio.TaskGroup to avoid this in 3.11+. https://github.com/python/cpython/issues/91887
 
+
 ```python
+
     Args:
         coro (Coroutine)
 
@@ -859,79 +952,81 @@
     
 ```
 
+
 ---
 
 
 
 3.4 `NamedLock` - Reusable named locks, support for timeouts, support for multiple concurrent locks.
 
+
 ```python
-            ```python
 
-    def test_named_lock():
-        def test_sync():
-            import time
-            from concurrent.futures import ThreadPoolExecutor
-            from threading import Lock, Semaphore
+    Demo::
 
-            def _test1():
-                with NamedLock("_test1", Lock, timeout=0.05) as lock:
-                    time.sleep(0.2)
-                    return bool(lock)
+        def test_named_lock():
+            def test_sync():
+                import time
+                from concurrent.futures import ThreadPoolExecutor
+                from threading import Lock, Semaphore
 
-            with ThreadPoolExecutor(10) as pool:
-                tasks = [pool.submit(_test1) for _ in range(3)]
-                result = [i.result() for i in tasks]
-                assert result == [True, False, False], result
-            assert len(NamedLock._SYNC_CACHE) == 1
-            NamedLock.clear_unlocked()
-            assert len(NamedLock._SYNC_CACHE) == 0
-
-            def _test2():
-                with NamedLock("_test2", lambda: Semaphore(2), timeout=0.05) as lock:
-                    time.sleep(0.2)
-                    return bool(lock)
-
-            with ThreadPoolExecutor(10) as pool:
-                tasks = [pool.submit(_test2) for _ in range(3)]
-                result = [i.result() for i in tasks]
-                assert result == [True, True, False], result
-
-        def test_async():
-            import asyncio
-
-            async def main():
-                async def _test1():
-                    async with NamedLock("_test1", asyncio.Lock, timeout=0.05) as lock:
-                        await asyncio.sleep(0.2)
+                def _test1():
+                    with NamedLock("_test1", Lock, timeout=0.05) as lock:
+                        time.sleep(0.2)
                         return bool(lock)
 
-                tasks = [asyncio.create_task(_test1()) for _ in range(3)]
-                result = [await i for i in tasks]
-                assert result == [True, False, False], result
-                assert len(NamedLock._ASYNC_CACHE) == 1
+                with ThreadPoolExecutor(10) as pool:
+                    tasks = [pool.submit(_test1) for _ in range(3)]
+                    result = [i.result() for i in tasks]
+                    assert result == [True, False, False], result
+                assert len(NamedLock._SYNC_CACHE) == 1
                 NamedLock.clear_unlocked()
-                assert len(NamedLock._ASYNC_CACHE) == 0
+                assert len(NamedLock._SYNC_CACHE) == 0
 
-                async def _test2():
-                    async with NamedLock(
-                        "_test2", lambda: asyncio.Semaphore(2), timeout=0.05
-                    ) as lock:
-                        await asyncio.sleep(0.2)
+                def _test2():
+                    with NamedLock("_test2", lambda: Semaphore(2), timeout=0.05) as lock:
+                        time.sleep(0.2)
                         return bool(lock)
 
-                tasks = [asyncio.create_task(_test2()) for _ in range(3)]
-                result = [await i for i in tasks]
-                assert result == [True, True, False], result
+                with ThreadPoolExecutor(10) as pool:
+                    tasks = [pool.submit(_test2) for _ in range(3)]
+                    result = [i.result() for i in tasks]
+                    assert result == [True, True, False], result
 
-            asyncio.get_event_loop().run_until_complete(main())
+            def test_async():
+                import asyncio
 
-        test_sync()
-        test_async()
+                async def main():
+                    async def _test1():
+                        async with NamedLock("_test1", asyncio.Lock, timeout=0.05) as lock:
+                            await asyncio.sleep(0.2)
+                            return bool(lock)
 
-            ```
+                    tasks = [asyncio.create_task(_test1()) for _ in range(3)]
+                    result = [await i for i in tasks]
+                    assert result == [True, False, False], result
+                    assert len(NamedLock._ASYNC_CACHE) == 1
+                    NamedLock.clear_unlocked()
+                    assert len(NamedLock._ASYNC_CACHE) == 0
+
+                    async def _test2():
+                        async with NamedLock(
+                            "_test2", lambda: asyncio.Semaphore(2), timeout=0.05
+                        ) as lock:
+                            await asyncio.sleep(0.2)
+                            return bool(lock)
+
+                    tasks = [asyncio.create_task(_test2()) for _ in range(3)]
+                    result = [await i for i in tasks]
+                    assert result == [True, True, False], result
+
+                asyncio.get_event_loop().run_until_complete(main())
+
+            test_sync()
+            test_async()
     
 ```
+
 
 ---
 
@@ -939,7 +1034,9 @@
 
 3.5 `FuncSchema` - Parse the parameters and types required by a function into a dictionary, and convert an incoming parameter into the appropriate type.
 
+
 ```python
+
     >>> def test(a, b: str, /, c=1, *, d=["d"], e=0.1, f={"f"}, g=(1, 2), h=True, i={1}, **kws):
     ...     return
     >>> FuncSchema.parse(test, strict=False)
@@ -988,28 +1085,32 @@
     
 ```
 
+
 ---
 
 
 
 3.6 `InlinePB` - Inline progress bar.
 
-```python
-    ```python
-    with InlinePB(100) as pb:
-        for i in range(100):
-            pb.add(1)
-            time.sleep(0.03)
-    # Progress:  41 / 100  41% [||||||         ] |   33 units/s
-    with InlinePB(100) as pb:
-        for i in range(1, 101):
-            pb.update(i)
-            time.sleep(0.03)
-    # Progress:  45 / 100  45% [||||||         ] |   33 units/s
 
-    ```
+```python
+
+    Demo::
+
+        with InlinePB(100) as pb:
+            for i in range(100):
+                pb.add(1)
+                time.sleep(0.03)
+        # Progress:  41 / 100  41% [||||||         ] |   33 units/s
+        with InlinePB(100) as pb:
+            for i in range(1, 101):
+                pb.update(i)
+                time.sleep(0.03)
+        # Progress:  45 / 100  45% [||||||         ] |   33 units/s
+
     
 ```
+
 
 ---
 
@@ -1017,11 +1118,13 @@
 
 3.7 `SizedTimedRotatingFileHandler` - TimedRotatingFileHandler with maxSize, to avoid files that are too large.
 
+
 ```python
+
     no test.
 
-    Usage:
-        ```python
+    Demo::
+
         import logging
         import time
 
@@ -1036,8 +1139,9 @@
         # 2024/06/25 22:47   134     test.log.20240625_224717
         # 2024/06/25 22:47   134     test.log.20240625_224718
         # 2024/06/25 22:47   134     test.log.20240625_224719
-            ```
+    
 ```
+
 
 ---
 
@@ -1045,8 +1149,9 @@
 
 3.8 `get_type_default` - Get the default value for a type. {int: 0, float: 0.0, bytes: b"", str: "", list: [], tuple: (), set: set(), dict: {}}
 
-```python
-```
+
+
+
 
 ---
 
@@ -1054,10 +1159,11 @@
 
 3.9 `func_cmd` - Handle function with argparse, typing-hint is nessessary.
 
+
 ```python
+
     Demo::
 
-        ```python
         def test(str: str, /, int=1, *, list=["d"], float=0.1, set={"f"}, tuple=(1, 2), bool=True, dict={"k": 1}):
             """Test demo function.
 
@@ -1075,10 +1181,9 @@
 
         # raise ValueError if auto_default is False and user do not input nessessary args.
         func_cmd(test, auto_default=False)
-        ```
+
         CMD args:
 
-        ```bash
         > python app.py
         ValueError: `str` has no default value.
 
@@ -1106,9 +1211,9 @@
                                 {'type': <class 'tuple'>, 'default': (1, 2)}
         -b BOOL, --bool BOOL  {'type': <class 'bool'>, 'default': True}
         -d DICT, --dict DICT  {'type': <class 'dict'>, 'default': {'k': 1}}
-        ```
     
 ```
+
 
 ---
 
@@ -1119,8 +1224,9 @@
 
 4.1 `IPCEncoder` - An abstract base class for all encoders; implementing the necessary communication protocol requires only the definition of two abstract methods. Be mindful that varying header lengths will impact the maximum packaging size.
 
-```python
-```
+
+
+
 
 ---
 
@@ -1128,31 +1234,34 @@
 
 4.4 `SocketLogHandlerEncoder` - For a practical demonstration, refer to the test code: morebuiltins/ipc.py:_test_ipc_logging.
 
+
 ```python
-    ```
-    async def _test_ipc_logging():
-        import logging
 
-        host = "127.0.0.1"
-        port = 8090
-        async with SocketServer(host=host, port=port, encoder=SocketLogHandlerEncoder()):
-            # socket logger demo
-            # ==================
-            logger = logging.getLogger("test_logger")
-            logger.setLevel(logging.DEBUG)
-            h = SocketHandler(host, port)
-            h.setLevel(logging.DEBUG)
-            logger.addHandler(h)
-            logger.info("test socket")
-            # ==================
+    Demo::
 
-            # ensure test case
-            await asyncio.sleep(0.1)
-            assert pickle.loads(h.sock.recv(100000)[4:])["name"] == logger.name
-    ```
+        async def _test_ipc_logging():
+            import logging
+
+            host = "127.0.0.1"
+            port = 8090
+            async with SocketServer(host=host, port=port, encoder=SocketLogHandlerEncoder()):
+                # socket logger demo
+                # ==================
+                logger = logging.getLogger("test_logger")
+                logger.setLevel(logging.DEBUG)
+                h = SocketHandler(host, port)
+                h.setLevel(logging.DEBUG)
+                logger.addHandler(h)
+                logger.info("test socket")
+                # ==================
+
+                # ensure test case
+                await asyncio.sleep(0.1)
+                assert pickle.loads(h.sock.recv(100000)[4:])["name"] == logger.name
     And provide a simple implementation for generating logs for coroutine code with Client usage.
     
 ```
+
 
 ---
 
@@ -1160,46 +1269,47 @@
 
 4.5 `SocketServer` - To see an example in action, view the test code: morebuiltins/ipc.py:_test_ipc.
 
+
 ```python
-        ```
-    async def test_client(host="127.0.0.1", port=8090, encoder=None, cases=None):
-        async with SocketClient(host=host, port=port, encoder=encoder) as c:
-            for case in cases:
-                await c.send(case)
-                response = await c.recv()
-                if globals().get("print_log"):
-                    print("[Client]", "send:", repr(case), "=>", "recv:", repr(response))
-                assert case == response or str(case) == response, [case, response]
-            await c.send("[shutdown server]")
+
+    Demo::
+
+        async def test_client(host="127.0.0.1", port=8090, encoder=None, cases=None):
+            async with SocketClient(host=host, port=port, encoder=encoder) as c:
+                for case in cases:
+                    await c.send(case)
+                    response = await c.recv()
+                    if globals().get("print_log"):
+                        print("[Client]", "send:", repr(case), "=>", "recv:", repr(response))
+                    assert case == response or str(case) == response, [case, response]
+                await c.send("[shutdown server]")
 
 
-    async def _test_ipc():
-        import platform
+        async def _test_ipc():
+            import platform
 
-        JSONEncoder._DUMP_KWARGS["default"] = str
-        for enc, cases in [
-            [PickleEncoder, [123, "123", None, {"a"}, ["a"], ("a",), {"a": 1}]],
-            [JSONEncoder, [123, "123", None, {"a"}, ["a"], {"a": 1}]],
-        ]:
-            encoder = enc()
-            if platform.system() == "Linux":
-                # test unix domain socket
-                print("Test Linux Unix Domain Socket")
-                host = "/tmp/uds.sock"
-                port = None
+            JSONEncoder._DUMP_KWARGS["default"] = str
+            for enc, cases in [
+                [PickleEncoder, [123, "123", None, {"a"}, ["a"], ("a",), {"a": 1}]],
+                [JSONEncoder, [123, "123", None, {"a"}, ["a"], {"a": 1}]],
+            ]:
+                encoder = enc()
+                if platform.system() == "Linux":
+                    # test unix domain socket
+                    print("Test Linux Unix Domain Socket")
+                    host = "/tmp/uds.sock"
+                    port = None
+                    async with SocketServer(host=host, port=port, encoder=encoder):
+                        await test_client(host, port=None, encoder=encoder, cases=cases)
+
+                # test socket
+                host = "127.0.0.1"
+                port = 8090
                 async with SocketServer(host=host, port=port, encoder=encoder):
-                    await test_client(host, port=None, encoder=encoder, cases=cases)
-
-            # test socket
-            host = "127.0.0.1"
-            port = 8090
-            async with SocketServer(host=host, port=port, encoder=encoder):
-                await test_client(host="127.0.0.1", port=8090, encoder=encoder, cases=cases)
-
-
-        ```
+                    await test_client(host="127.0.0.1", port=8090, encoder=encoder, cases=cases)
     
 ```
+
 
 ---
 
@@ -1207,7 +1317,9 @@
 
 4.7 `find_free_port` - Finds and returns an available port number.
 
+
 ```python
+
     Parameters:
     - host: The host address to bind, default is "127.0.0.1".
     - port: The port number to attempt binding, default is 0 (for OS allocation).
@@ -1223,6 +1335,7 @@
     
 ```
 
+
 ---
 
 
@@ -1232,7 +1345,9 @@
 
 5.1 `req` - A basic mock for requests, performant albeit simplistic.
 
+
 ```python
+
     >>> import time
     >>> r = req.get("https://postman-echo.com/get?a=2", timeout=3, params={"b": "3"})
     >>> r.url
@@ -1254,13 +1369,16 @@
     
 ```
 
+
 ---
 
 
 
 5.2 `DomainParser` - Extracts the Second-level domain (SLD) from a provided hostname or URL.
 
+
 ```python
+
     >>> domain_parser = DomainParser()
     >>> domain_parser.parse_hostname("github.com")
     'github.com'
@@ -1282,14 +1400,16 @@
     
 ```
 
+
 ---
 
 
 
 5.3 `unparse_qsl` - Provides the inverse operation of parse_qsl, converting query string lists back into a URL-encoded string.
 
-```python
-```
+
+
+
 
 ---
 
@@ -1297,7 +1417,9 @@
 
 5.4 `update_url` - Organizes the query arguments within a URL to standardize its format.
 
+
 ```python
+
     >>> update_url('http://www.github.com?b=1&c=1&a=1', {"b": None, "c": None})  # remove params
     'http://www.github.com?a=1'
     >>> update_url("http://www.github.com?b=1&c=1&a=1", a="123", b=None)  # update params with kwargs
@@ -1313,13 +1435,16 @@
     
 ```
 
+
 ---
 
 
 
 5.6 `make_response` - Generates an HTTP response based on the provided parameters.
 
+
 ```python
+
     :param body: The response body which can be a string, bytes, list, or dictionary. Default is an empty string.
     :param status: The HTTP status code. Default is 200.
     :param protocol: The HTTP protocol version. Default is "HTTP/1.1".
@@ -1329,13 +1454,16 @@
     
 ```
 
+
 ---
 
 
 
 5.7 `custom_dns` - Custom the DNS of socket.getaddrinfo, only effect current thread.
 
+
 ```python
+
     [WARNING] This will modify the global socket.getaddrinfo.
 
     >>> from concurrent.futures import ThreadPoolExecutor
@@ -1363,6 +1491,7 @@
     
 ```
 
+
 ---
 
 
@@ -1372,7 +1501,9 @@
 
 6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m morebuiltins.download_python`
 
+
 ```python
+
     λ python -m morebuiltins.download_python
     [10:56:17] Checking https://api.github.com/repos/indygreg/python-build-standalone/releases/latest
     [10:56:19] View the rules:
@@ -1421,6 +1552,7 @@
     [10:56:44] Download complete.
 ```
 
+
 ---
 
 
@@ -1430,8 +1562,71 @@
 
 7.1 `TKit` - Tkinter kit for dialog usages.
 
+
 ```python
+    Demo::
+
+        def examples():
+            while True:
+                TKit.ask(0, "0")
+                TKit.ask(1, "1")
+                TKit.ask(2, "2")
+                if TKit.ask(True, "Choose NO", default="no") is True:
+                    TKit.ask(0, "Wrong choice")
+                    continue
+                if (
+                    TKit.ask((["1"], ["2", "3"], "4", ["5", "6", "7"]), message="Choose 3:")
+                    != "3"
+                ):
+                    TKit.ask(1, "Wrong choice")
+                    continue
+                if TKit.ask(
+                    [["1"], ["2", "3"], "4", ["5", "6", "7"]],
+                    message="Choose 3 and 6:",
+                    width=400,
+                ) != ["3", "6"]:
+                    TKit.ask(2, "Wrong choice")
+                    continue
+                result = TKit.ask("Input text 1 (press Enter to submit):")
+
+                if result != "1":
+                    TKit.ask(2, "Wrong text %s" % repr(result))
+                    continue
+                result = TKit.ask("Input text 1\\n (press Ctrl-Enter to submit):", textarea=1)
+
+                if result != "1\n":
+                    TKit.ask(2, "Wrong text %s" % repr(result))
+                    continue
+
+                def test_text(flush=False):
+                    import time
+
+                    for i in range(50):
+                        print(f"Test print flush={flush} -- {i}", flush=flush)
+                        time.sleep(0.02)
+                    return "OK"
+
+                with TKit.text_context(
+                    test_text,
+                    flush=True,
+                    __resize_kwargs={"title": "The Title", "toolwindow": True},
+                    __text_kwargs={"font": "_ 15"},
+                ) as result:
+                    TKit.info("result=%s" % result)
+
+                with TKit.text_context(
+                    test_text,
+                    flush=False,
+                    __resize_kwargs={"title": "The Title", "toolwindow": True},
+                    __text_kwargs={"font": "_ 15"},
+                ) as result:
+                    TKit.warn("result=%s" % result)
+                break
+
+        examples()
+    
 ```
+
 
 ---
 
@@ -1442,8 +1637,11 @@
 
 8.1 `SimpleEmail` - SimpleEmail Sender.
 
+
 ```python
-    ```python
+
+    Demo::
+
         with SimpleEmail("smtp.gmail.com", 465, "someone@gmail.com", "PASSWORD") as s:
         print(
             s.send_message(
@@ -1456,9 +1654,9 @@
                 encoding="u8",
             )
         )
-    ```
     
 ```
+
 
 ---
 

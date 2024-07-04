@@ -204,70 +204,68 @@ LockType = Union[Lock, Semaphore, asyncio.Lock, asyncio.Semaphore]
 class NamedLock:
     """Reusable named locks, support for timeouts, support for multiple concurrent locks.
 
-            ```python
+    Demo::
 
-    def test_named_lock():
-        def test_sync():
-            import time
-            from concurrent.futures import ThreadPoolExecutor
-            from threading import Lock, Semaphore
+        def test_named_lock():
+            def test_sync():
+                import time
+                from concurrent.futures import ThreadPoolExecutor
+                from threading import Lock, Semaphore
 
-            def _test1():
-                with NamedLock("_test1", Lock, timeout=0.05) as lock:
-                    time.sleep(0.2)
-                    return bool(lock)
-
-            with ThreadPoolExecutor(10) as pool:
-                tasks = [pool.submit(_test1) for _ in range(3)]
-                result = [i.result() for i in tasks]
-                assert result == [True, False, False], result
-            assert len(NamedLock._SYNC_CACHE) == 1
-            NamedLock.clear_unlocked()
-            assert len(NamedLock._SYNC_CACHE) == 0
-
-            def _test2():
-                with NamedLock("_test2", lambda: Semaphore(2), timeout=0.05) as lock:
-                    time.sleep(0.2)
-                    return bool(lock)
-
-            with ThreadPoolExecutor(10) as pool:
-                tasks = [pool.submit(_test2) for _ in range(3)]
-                result = [i.result() for i in tasks]
-                assert result == [True, True, False], result
-
-        def test_async():
-            import asyncio
-
-            async def main():
-                async def _test1():
-                    async with NamedLock("_test1", asyncio.Lock, timeout=0.05) as lock:
-                        await asyncio.sleep(0.2)
+                def _test1():
+                    with NamedLock("_test1", Lock, timeout=0.05) as lock:
+                        time.sleep(0.2)
                         return bool(lock)
 
-                tasks = [asyncio.create_task(_test1()) for _ in range(3)]
-                result = [await i for i in tasks]
-                assert result == [True, False, False], result
-                assert len(NamedLock._ASYNC_CACHE) == 1
+                with ThreadPoolExecutor(10) as pool:
+                    tasks = [pool.submit(_test1) for _ in range(3)]
+                    result = [i.result() for i in tasks]
+                    assert result == [True, False, False], result
+                assert len(NamedLock._SYNC_CACHE) == 1
                 NamedLock.clear_unlocked()
-                assert len(NamedLock._ASYNC_CACHE) == 0
+                assert len(NamedLock._SYNC_CACHE) == 0
 
-                async def _test2():
-                    async with NamedLock(
-                        "_test2", lambda: asyncio.Semaphore(2), timeout=0.05
-                    ) as lock:
-                        await asyncio.sleep(0.2)
+                def _test2():
+                    with NamedLock("_test2", lambda: Semaphore(2), timeout=0.05) as lock:
+                        time.sleep(0.2)
                         return bool(lock)
 
-                tasks = [asyncio.create_task(_test2()) for _ in range(3)]
-                result = [await i for i in tasks]
-                assert result == [True, True, False], result
+                with ThreadPoolExecutor(10) as pool:
+                    tasks = [pool.submit(_test2) for _ in range(3)]
+                    result = [i.result() for i in tasks]
+                    assert result == [True, True, False], result
 
-            asyncio.get_event_loop().run_until_complete(main())
+            def test_async():
+                import asyncio
 
-        test_sync()
-        test_async()
+                async def main():
+                    async def _test1():
+                        async with NamedLock("_test1", asyncio.Lock, timeout=0.05) as lock:
+                            await asyncio.sleep(0.2)
+                            return bool(lock)
 
-            ```
+                    tasks = [asyncio.create_task(_test1()) for _ in range(3)]
+                    result = [await i for i in tasks]
+                    assert result == [True, False, False], result
+                    assert len(NamedLock._ASYNC_CACHE) == 1
+                    NamedLock.clear_unlocked()
+                    assert len(NamedLock._ASYNC_CACHE) == 0
+
+                    async def _test2():
+                        async with NamedLock(
+                            "_test2", lambda: asyncio.Semaphore(2), timeout=0.05
+                        ) as lock:
+                            await asyncio.sleep(0.2)
+                            return bool(lock)
+
+                    tasks = [asyncio.create_task(_test2()) for _ in range(3)]
+                    result = [await i for i in tasks]
+                    assert result == [True, True, False], result
+
+                asyncio.get_event_loop().run_until_complete(main())
+
+            test_sync()
+            test_async()
     """
 
     _SYNC_CACHE: Dict[str, LockType] = {}
@@ -411,19 +409,19 @@ class FuncSchema:
 class InlinePB(object):
     """Inline progress bar.
 
-    ```python
-    with InlinePB(100) as pb:
-        for i in range(100):
-            pb.add(1)
-            time.sleep(0.03)
-    # Progress:  41 / 100  41% [||||||         ] |   33 units/s
-    with InlinePB(100) as pb:
-        for i in range(1, 101):
-            pb.update(i)
-            time.sleep(0.03)
-    # Progress:  45 / 100  45% [||||||         ] |   33 units/s
+    Demo::
 
-    ```
+        with InlinePB(100) as pb:
+            for i in range(100):
+                pb.add(1)
+                time.sleep(0.03)
+        # Progress:  41 / 100  41% [||||||         ] |   33 units/s
+        with InlinePB(100) as pb:
+            for i in range(1, 101):
+                pb.update(i)
+                time.sleep(0.03)
+        # Progress:  45 / 100  45% [||||||         ] |   33 units/s
+
     """
 
     def __init__(
@@ -499,8 +497,8 @@ class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
 
     no test.
 
-    Usage:
-        ```python
+    Demo::
+
         import logging
         import time
 
@@ -515,7 +513,7 @@ class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
         # 2024/06/25 22:47   134     test.log.20240625_224717
         # 2024/06/25 22:47   134     test.log.20240625_224718
         # 2024/06/25 22:47   134     test.log.20240625_224719
-            ```"""
+    """
 
     def __init__(
         self,
@@ -592,7 +590,6 @@ def func_cmd(function: Callable, run=True, auto_default=False):
 
     Demo::
 
-        ```python
         def test(str: str, /, int=1, *, list=["d"], float=0.1, set={"f"}, tuple=(1, 2), bool=True, dict={"k": 1}):
             \"\"\"Test demo function.
 
@@ -610,10 +607,9 @@ def func_cmd(function: Callable, run=True, auto_default=False):
 
         # raise ValueError if auto_default is False and user do not input nessessary args.
         func_cmd(test, auto_default=False)
-        ```
+
         CMD args:
 
-        ```bash
         > python app.py
         ValueError: `str` has no default value.
 
@@ -641,7 +637,6 @@ def func_cmd(function: Callable, run=True, auto_default=False):
                                 {'type': <class 'tuple'>, 'default': (1, 2)}
         -b BOOL, --bool BOOL  {'type': <class 'bool'>, 'default': True}
         -d DICT, --dict DICT  {'type': <class 'dict'>, 'default': {'k': 1}}
-        ```
     """
     from argparse import ArgumentParser
 

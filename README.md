@@ -24,7 +24,7 @@ From [Github Tags](https://github.com/ClericPy/morebuiltins/tags):
 > 
 > `pip install git+https://github.com/ClericPy/morebuiltins.git@master`
 >
-> `pip install git+https://github.com/ClericPy/morebuiltins.git@0.0.6`
+> `pip install git+https://github.com/ClericPy/morebuiltins.git@1.0.3`
 
 Use `pyz`(downloaded from [releases](https://github.com/ClericPy/morebuiltins/releases))
 
