@@ -171,4 +171,9 @@ print(morebuiltins.__file__)
 7.1 `TKit` - Tkinter kit for dialog usages.
 
 
+## 8. morebuiltins.emails
+
+8.1 `SimpleEmail` - SimpleEmail Sender.
+
+
 <!-- end -->

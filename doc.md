@@ -1436,3 +1436,30 @@
 ---
 
 
+## 8. morebuiltins.emails
+
+
+
+8.1 `SimpleEmail` - SimpleEmail Sender.
+
+```python
+    ```python
+        with SimpleEmail("smtp.gmail.com", 465, "someone@gmail.com", "PASSWORD") as s:
+        print(
+            s.send_message(
+                "This is Title",
+                "This is body text or file path(.md/.txt)",
+                "Author<someone@gmail.com>",
+                "anybody@gmail.com",
+                files="a.py,b.py,c.txt",
+                filename="files.zip",
+                encoding="u8",
+            )
+        )
+    ```
+    
+```
+
+---
+
+
