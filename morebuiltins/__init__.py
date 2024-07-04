@@ -7,4 +7,5 @@ __all__ = [
     "morebuiltins.request",
     "morebuiltins.download_python",
     "morebuiltins.tk",
+    "morebuiltins.emails",
 ]

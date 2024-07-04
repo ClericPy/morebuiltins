@@ -1,6 +1,7 @@
 ### 1.0.3 (2024-07-03)
 1. add `functools.get_type_default`
 2. add `functools.func_cmd`
+3. add `emails.SimpleEmail`
 
 ### 1.0.2 (2024-07-01)
 1. update `utils.unix_rlimit` default to None
