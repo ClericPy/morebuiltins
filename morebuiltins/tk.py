@@ -9,7 +9,68 @@ __all__ = ["TKit"]
 
 
 class TKit(tk.Tk):
-    """Tkinter kit for dialog usages."""
+    r"""Tkinter kit for dialog usages.
+    Demo::
+
+        def examples():
+            while True:
+                TKit.ask(0, "0")
+                TKit.ask(1, "1")
+                TKit.ask(2, "2")
+                if TKit.ask(True, "Choose NO", default="no") is True:
+                    TKit.ask(0, "Wrong choice")
+                    continue
+                if (
+                    TKit.ask((["1"], ["2", "3"], "4", ["5", "6", "7"]), message="Choose 3:")
+                    != "3"
+                ):
+                    TKit.ask(1, "Wrong choice")
+                    continue
+                if TKit.ask(
+                    [["1"], ["2", "3"], "4", ["5", "6", "7"]],
+                    message="Choose 3 and 6:",
+                    width=400,
+                ) != ["3", "6"]:
+                    TKit.ask(2, "Wrong choice")
+                    continue
+                result = TKit.ask("Input text 1 (press Enter to submit):")
+
+                if result != "1":
+                    TKit.ask(2, "Wrong text %s" % repr(result))
+                    continue
+                result = TKit.ask("Input text 1\\n (press Ctrl-Enter to submit):", textarea=1)
+
+                if result != "1\n":
+                    TKit.ask(2, "Wrong text %s" % repr(result))
+                    continue
+
+                def test_text(flush=False):
+                    import time
+
+                    for i in range(50):
+                        print(f"Test print flush={flush} -- {i}", flush=flush)
+                        time.sleep(0.02)
+                    return "OK"
+
+                with TKit.text_context(
+                    test_text,
+                    flush=True,
+                    __resize_kwargs={"title": "The Title", "toolwindow": True},
+                    __text_kwargs={"font": "_ 15"},
+                ) as result:
+                    TKit.info("result=%s" % result)
+
+                with TKit.text_context(
+                    test_text,
+                    flush=False,
+                    __resize_kwargs={"title": "The Title", "toolwindow": True},
+                    __text_kwargs={"font": "_ 15"},
+                ) as result:
+                    TKit.warn("result=%s" % result)
+                break
+
+        examples()
+    """
 
     DEFAULT_WIDTH_RATIO = 4
     DEFAULT_HEIGHT_RATIO = 4

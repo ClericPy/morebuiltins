@@ -15,7 +15,8 @@ __all__ = ["SimpleEmail"]
 class SimpleEmail:
     """SimpleEmail Sender.
 
-    ```python
+    Demo::
+
         with SimpleEmail("smtp.gmail.com", 465, "someone@gmail.com", "PASSWORD") as s:
         print(
             s.send_message(
@@ -28,7 +29,6 @@ class SimpleEmail:
                 encoding="u8",
             )
         )
-    ```
     """
 
     def __init__(self, host, port, user, pwd, smtp_cls=smtplib.SMTP_SSL):
