@@ -620,10 +620,18 @@ def func_cmd(function: Callable, run=True, auto_default=False):
         {'str': '[1,1,2]', 'int': 2, 'list': [1, 'a'], 'float': 1.0, 'set': {'f'}, 'tuple': (2, 'b'), 'bool': True, 'dict': {'k': 'v'}}
 
         > python app.py -h
-        usage: temp5.py [-h] [-s STR] [-i INT] [-l LIST] [-f FLOAT] [-se SET] [-t TUPLE] [-b BOOL] [-d DICT]
+        usage: Test demo function.
 
-        Test demo function. Args: str (str): str. int (int, optional): int. Defaults to 1. list (list, optional): list. Defaults to ["d"]. float (float, optional): float. Defaults to 0.1. set (dict,
-        optional): set. Defaults to {"f"}. tuple (tuple, optional): tuple. Defaults to (1, 2). bool (bool, optional): bool. Defaults to True. dict (dict, optional): dict. Defaults to {"k": 1}.
+            Args:
+                str (str): str.
+                int (int, optional): int. Defaults to 1.
+                list (list, optional): list. Defaults to ["d"].
+                float (float, optional): float. Defaults to 0.1.
+                set (dict, optional): set. Defaults to {"f"}.
+                tuple (tuple, optional): tuple. Defaults to (1, 2).
+                bool (bool, optional): bool. Defaults to True.
+                dict (dict, optional): dict. Defaults to {"k": 1}.
+
 
         options:
         -h, --help            show this help message and exit
@@ -640,7 +648,7 @@ def func_cmd(function: Callable, run=True, auto_default=False):
     """
     from argparse import ArgumentParser
 
-    parser = ArgumentParser(description=function.__doc__)
+    parser = ArgumentParser(usage=function.__doc__)
     schema = FuncSchema.parse(function, strict=True, fill_default=False)
     seen_shorten = {"h"}
     for key, value in schema.items():

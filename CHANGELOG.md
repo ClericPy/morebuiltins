@@ -1,3 +1,6 @@
+### 1.0.4 (2024-07-04)
+1. fix `functools.func_cmd` multi-line docstring
+
 ### 1.0.3 (2024-07-03)
 1. add `functools.get_type_default`
 2. add `functools.func_cmd`
