@@ -748,6 +748,39 @@
 ---
 
 
+
+1.28 `FileDict` - A dict that can be saved to a file.
+
+
+```python
+
+    Demo::
+
+        >>> d = FileDict.load("test.json")
+        >>> d.get('a', 'none')
+        'none'
+        >>> d['a'] = 1
+        >>> d.save()
+        >>> d2 = FileDict.load("test.json")
+        >>> d2.get('a')
+        1
+        >>> d2.unlink()
+        >>> d = FileDict.load("test.pkl")
+        >>> d.get('a', 'none')
+        'none'
+        >>> d['a'] = 1
+        >>> d.save()
+        >>> d2 = FileDict.load("test.pkl")
+        >>> d2.get('a')
+        1
+        >>> d2.unlink()
+    
+```
+
+
+---
+
+
 ## 2. morebuiltins.date
 
 
@@ -1194,10 +1227,18 @@
         {'str': '[1,1,2]', 'int': 2, 'list': [1, 'a'], 'float': 1.0, 'set': {'f'}, 'tuple': (2, 'b'), 'bool': True, 'dict': {'k': 'v'}}
 
         > python app.py -h
-        usage: temp5.py [-h] [-s STR] [-i INT] [-l LIST] [-f FLOAT] [-se SET] [-t TUPLE] [-b BOOL] [-d DICT]
+        usage: Test demo function.
 
-        Test demo function. Args: str (str): str. int (int, optional): int. Defaults to 1. list (list, optional): list. Defaults to ["d"]. float (float, optional): float. Defaults to 0.1. set (dict,
-        optional): set. Defaults to {"f"}. tuple (tuple, optional): tuple. Defaults to (1, 2). bool (bool, optional): bool. Defaults to True. dict (dict, optional): dict. Defaults to {"k": 1}.
+            Args:
+                str (str): str.
+                int (int, optional): int. Defaults to 1.
+                list (list, optional): list. Defaults to ["d"].
+                float (float, optional): float. Defaults to 0.1.
+                set (dict, optional): set. Defaults to {"f"}.
+                tuple (tuple, optional): tuple. Defaults to (1, 2).
+                bool (bool, optional): bool. Defaults to True.
+                dict (dict, optional): dict. Defaults to {"k": 1}.
+
 
         options:
         -h, --help            show this help message and exit

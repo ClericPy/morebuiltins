@@ -61,6 +61,7 @@ __all__ = [
     "switch_flush_print",
     "unix_rlimit",
     "SimpleFilter",
+    "FileDict",
 ]
 
 
@@ -1261,6 +1262,100 @@ class SimpleFilter:
                     self.path.unlink(missing_ok=True)
                 return
         self.save_cache()
+
+
+class FileDict(dict):
+    """A dict that can be saved to a file.
+
+    Demo::
+
+        >>> d = FileDict.load("test.json")
+        >>> d.get('a', 'none')
+        'none'
+        >>> d['a'] = 1
+        >>> d.save()
+        >>> d2 = FileDict.load("test.json")
+        >>> d2.get('a')
+        1
+        >>> d2.unlink()
+        >>> d = FileDict.load("test.pkl")
+        >>> d.get('a', 'none')
+        'none'
+        >>> d['a'] = 1
+        >>> d.save()
+        >>> d2 = FileDict.load("test.pkl")
+        >>> d2.get('a')
+        1
+        >>> d2.unlink()
+    """
+
+    @classmethod
+    def choose_handler(cls, filename):
+        ext = os.path.splitext(filename)[1]
+        if ext == ".json":
+            return cls.json_handler
+        elif ext == ".pkl":
+            return cls.pickle_handler
+        raise ValueError("unknown file extension")
+
+    @staticmethod
+    def json_handler(path: str, obj=None):
+        if isinstance(obj, dict):
+            temp = path + ".cache"
+            try:
+                with open(temp, "w") as f:
+                    json.dump(obj, f)
+                os.rename(temp, path)
+            finally:
+                try:
+                    os.unlink(temp)
+                except FileNotFoundError:
+                    pass
+        else:
+            try:
+                with open(path, "r") as f:
+                    return json.load(f)
+            except FileNotFoundError:
+                return {}
+
+    @staticmethod
+    def pickle_handler(path: str, obj=None):
+        if isinstance(obj, dict):
+            temp = path + ".cache"
+            try:
+                with open(temp, "wb") as f:
+                    pickle.dump(obj, f)
+                os.rename(temp, path)
+            finally:
+                try:
+                    os.unlink(temp)
+                except FileNotFoundError:
+                    pass
+        else:
+            try:
+                with open(path, "rb") as f:
+                    return pickle.load(f)
+            except FileNotFoundError:
+                return {}
+
+    @classmethod
+    def load(cls, path: str, handler=None):
+        path = str(path)
+        if not handler:
+            handler = cls.choose_handler(str(path))
+        item = cls(handler(path))
+        setattr(item, "path", path)
+        setattr(item, "handler", handler)
+        return item
+
+    def save(self):
+        self.handler(self.path, self)
+
+    def unlink(self):
+        try:
+            os.unlink(self.path)
+        except FileNotFoundError:
+            pass
 
 
 if __name__ == "__main__":
