@@ -106,6 +106,8 @@ print(morebuiltins.__file__)
 
 1.27 `SimpleFilter` - Simple dup-filter with pickle file.
 
+1.28 `FileDict` - A dict that can be saved to a file.
+
 
 ## 2. morebuiltins.date
 
