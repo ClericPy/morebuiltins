@@ -1,3 +1,6 @@
+### 1.0.6 (2024-07-10)
+1. fix `utils.Validator` typing-hint class
+
 ### 1.0.5 (2024-07-09)
 1. add `add py.typed`
 2. update `utils.Validator` default to `STRICT=True`
