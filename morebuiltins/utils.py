@@ -3,6 +3,7 @@ import atexit
 import base64
 import gzip
 import hashlib
+import inspect
 import json
 import os
 import pickle
@@ -569,6 +570,33 @@ class Validator:
     ... except TypeError as e:
     ...     print(e)
     `other` should be `str` but given `int`
+    >>> # test class Name
+    >>> @dataclass
+    ... class Name(Validator):
+    ...     name: str
+    ...
+    >>> @dataclass
+    ... class Person(Validator):
+    ...     name: Name
+    ...
+    >>> try:
+    ...     print(Person('name'))
+    ... except TypeError as e:
+    ...     print(e)
+    ...
+    `name` should be `Name` but given `str`
+    >>> # test typing.Dict[str, str]
+    >>> import typing
+    >>> @dataclass
+    ... class Person(Validator):
+    ...     name: typing.Dict[str, str]
+    ...
+    >>> try:
+    ...     print(Person('name'))
+    ... except TypeError as e:
+    ...     print(e)
+    ...
+    `name` should be `dict` but given `str`
     """
 
     STRICT = True
@@ -581,9 +609,15 @@ class Validator:
                 setattr(self, f.name, callback(value))
             if self.STRICT:
                 value = getattr(self, f.name)
-                if not isinstance(value, f.type):
+                if inspect.isclass(f.type):
+                    tp = f.type
+                elif hasattr(f.type, "__origin__"):
+                    tp = f.type.__origin__
+                else:
+                    continue
+                if not isinstance(value, tp):
                     raise TypeError(
-                        f"`{f.name}` should be `{f.type.__name__}` but given `{type(value).__name__}`"
+                        f"`{f.name}` should be `{tp.__name__}` but given `{type(value).__name__}`"
                     )
 
     def quick_to_dict(self):

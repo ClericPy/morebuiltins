@@ -357,6 +357,33 @@
     ... except TypeError as e:
     ...     print(e)
     `other` should be `str` but given `int`
+    >>> # test class Name
+    >>> @dataclass
+    ... class Name(Validator):
+    ...     name: str
+    ...
+    >>> @dataclass
+    ... class Person(Validator):
+    ...     name: Name
+    ...
+    >>> try:
+    ...     print(Person('name'))
+    ... except TypeError as e:
+    ...     print(e)
+    ...
+    `name` should be `Name` but given `str`
+    >>> # test typing.Dict[str, str]
+    >>> import typing
+    >>> @dataclass
+    ... class Person(Validator):
+    ...     name: typing.Dict[str, str]
+    ...
+    >>> try:
+    ...     print(Person('name'))
+    ... except TypeError as e:
+    ...     print(e)
+    ...
+    `name` should be `dict` but given `str`
     
 ```
 
