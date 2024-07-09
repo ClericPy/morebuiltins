@@ -335,13 +335,28 @@
     >>>
     >>> @dataclass
     ... class Person(Validator):
-    ...     screen: dict = field(metadata={"callback": lambda i: i["s"]})
+    ...     screen: dict = field(metadata={"callback": lambda i: i.clear() or {'s': 4}})
     ...     name: str = field(default=None, metadata={"callback": str})
     ...     age: int = field(default=0, metadata={"callback": int})
+    ...     other: str = ''
     ...
     >>>
-    >>> print(Person({"s": 3}, 123, "123"))
-    Person(screen=3, name='123', age=123)
+    >>> # test type callback
+    >>> print(Person({"s": 3}, 1, "1"))
+    Person(screen={'s': 4}, name='1', age=1, other='')
+
+    >>> # test Validator.STRICT = False, `other` could be int
+    >>> Validator.STRICT = False
+    >>> Person({"s": 3}, "1", "1", 0)
+    Person(screen={'s': 4}, name='1', age=1, other=0)
+
+    >>> # test Validator.STRICT = True, raise TypeError, `other` should not be int
+    >>> Validator.STRICT = True
+    >>> try:
+    ...     Person({"s": 3}, "1", "1", 0)
+    ... except TypeError as e:
+    ...     print(e)
+    `other` should be `str` but given `int`
     
 ```
 

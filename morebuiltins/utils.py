@@ -547,26 +547,51 @@ class Validator:
     >>>
     >>> @dataclass
     ... class Person(Validator):
-    ...     screen: dict = field(metadata={"callback": lambda i: i["s"]})
+    ...     screen: dict = field(metadata={"callback": lambda i: i.clear() or {'s': 4}})
     ...     name: str = field(default=None, metadata={"callback": str})
     ...     age: int = field(default=0, metadata={"callback": int})
+    ...     other: str = ''
     ...
     >>>
-    >>> print(Person({"s": 3}, 123, "123"))
-    Person(screen=3, name='123', age=123)
+    >>> # test type callback
+    >>> print(Person({"s": 3}, 1, "1"))
+    Person(screen={'s': 4}, name='1', age=1, other='')
+
+    >>> # test Validator.STRICT = False, `other` could be int
+    >>> Validator.STRICT = False
+    >>> Person({"s": 3}, "1", "1", 0)
+    Person(screen={'s': 4}, name='1', age=1, other=0)
+
+    >>> # test Validator.STRICT = True, raise TypeError, `other` should not be int
+    >>> Validator.STRICT = True
+    >>> try:
+    ...     Person({"s": 3}, "1", "1", 0)
+    ... except TypeError as e:
+    ...     print(e)
+    `other` should be `str` but given `int`
     """
+
+    STRICT = True
 
     def __post_init__(self):
         for f in self.__dataclass_fields__.values():
             callback = f.metadata.get("callback")
+            value = getattr(self, f.name)
             if callback:
-                setattr(self, f.name, callback(getattr(self, f.name)))
+                setattr(self, f.name, callback(value))
+            if self.STRICT:
+                value = getattr(self, f.name)
+                if not isinstance(value, f.type):
+                    raise TypeError(
+                        f"`{f.name}` should be `{f.type.__name__}` but given `{type(value).__name__}`"
+                    )
 
-    # def to_dict(self):
-    #     return {
-    #         field.name: getattr(self, field.name)
-    #         for field in self.__dataclass_fields__.values()
-    #     }
+    def quick_to_dict(self):
+        "not very reliable"
+        return {
+            field.name: getattr(self, field.name)
+            for field in self.__dataclass_fields__.values()
+        }
 
 
 def stagger_sort(items, group_key, sort_key=None, sort_reverse=False):

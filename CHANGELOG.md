@@ -1,3 +1,7 @@
+### 1.0.5 (2024-07-09)
+1. add `add py.typed`
+2. update `utils.Validator` default to `STRICT=True`
+
 ### 1.0.4 (2024-07-04)
 1. fix `functools.func_cmd` multi-line docstring
 2. add `utils.FileDict`
