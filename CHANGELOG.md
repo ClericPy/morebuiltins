@@ -1,3 +1,6 @@
+### 1.0.7 (2024-07-15)
+1. add `functools.file_import`
+
 ### 1.0.6 (2024-07-10)
 1. fix `utils.Validator` typing-hint class
 

@@ -136,6 +136,8 @@ print(morebuiltins.__file__)
 
 3.9 `func_cmd` - Handle function with argparse, typing-hint is nessessary.
 
+3.10 `file_import` - Import function from file path.
+
 
 ## 4. morebuiltins.ipc
 

@@ -1301,6 +1301,24 @@
 ---
 
 
+
+3.10 `file_import` - Import function from file path.
+
+
+```python
+
+    Demo::
+        >>> from pathlib import Path
+        >>> file_path = Path(__file__).parent / "utils.py"
+        >>> list(file_import(file_path, ["get_hash", "find_jsons"]).keys())
+        ['get_hash', 'find_jsons']
+    
+```
+
+
+---
+
+
 ## 4. morebuiltins.ipc
 
 

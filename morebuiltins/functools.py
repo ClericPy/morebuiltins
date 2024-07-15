@@ -1,6 +1,8 @@
 import asyncio
+import importlib.util
 import inspect
 import json
+import os
 import re
 import time
 from collections import deque
@@ -22,6 +24,7 @@ __all__ = [
     "SizedTimedRotatingFileHandler",
     "get_type_default",
     "func_cmd",
+    "file_import",
 ]
 
 
@@ -686,6 +689,22 @@ def func_cmd(function: Callable, run=True, auto_default=False):
         return function(*args, **kwargs)
     else:
         return args, kwargs
+
+
+def file_import(file_path, names):
+    """Import function from file path.
+
+    Demo::
+        >>> from pathlib import Path
+        >>> file_path = Path(__file__).parent / "utils.py"
+        >>> list(file_import(file_path, ["get_hash", "find_jsons"]).keys())
+        ['get_hash', 'find_jsons']
+    """
+    module_name = os.path.splitext(os.path.basename(file_path))[0]
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return {name: getattr(module, name) for name in names}
 
 
 def test_bg_task():
