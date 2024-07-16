@@ -705,7 +705,7 @@ def iter_weights(
         yield item
 
 
-def default_dict(cls: Type[dict], **kwargs) -> dict:
+def default_dict(cls: Type[dict], **kwargs):
     """Initializes a dictionary with default zero values based on a subclass of TypedDict.
 
     >>> class Demo(dict):
