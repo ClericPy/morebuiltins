@@ -707,7 +707,7 @@ def iter_weights(
         yield item
 
 
-def default_dict(cls: Type[dict], **kwargs):
+def default_dict(typeddict_class, **kwargs):
     """Initializes a dictionary with default zero values based on a subclass of TypedDict.
 
     >>> class Demo(dict):
@@ -722,9 +722,9 @@ def default_dict(cls: Type[dict], **kwargs):
     >>> default_dict(Demo, bytes_obj=b'1')
     {'int_obj': 0, 'float_obj': 0.0, 'bytes_obj': b'1', 'str_obj': '', 'list_obj': [], 'tuple_obj': (), 'set_obj': set(), 'dict_obj': {}}
     """
-    result = cls()
+    result = typeddict_class()
     built_in_types = {int, float, bytes, str, list, tuple, set, dict}
-    for key, tp in cls.__annotations__.items():
+    for key, tp in typeddict_class.__annotations__.items():
         if key in kwargs:
             result[key] = kwargs[key]
         elif tp in built_in_types:
