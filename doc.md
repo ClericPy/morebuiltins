@@ -823,6 +823,83 @@
 ---
 
 
+
+1.29 `PathLock` - A Lock/asyncio.Lock of a path, and the child-path lock will block the parent-path.
+
+
+```python
+    Ensure a path and its child-path are not busy. Can be used in a with statement to avoid race condition, such as rmtree.
+
+    Demo::
+
+        import asyncio
+        import time
+        from threading import Thread
+
+        from morebuiltins.utils import Path, PathLock
+
+
+        def test_sync_lock():
+            parent = Path("/tmp")
+            child = Path("/tmp/child")
+            result = []
+
+            def parent_job():
+                with PathLock(parent):
+                    print(time.strftime("%Y-%m-%d %H:%M:%S"), "parent done", flush=True)
+                    result.append(parent)
+
+            def child_job():
+                with PathLock(child):
+                    time.sleep(0.5)
+                    print(time.strftime("%Y-%m-%d %H:%M:%S"), "child done", flush=True)
+                    result.append(child)
+
+            Thread(target=child_job).start()
+            time.sleep(0.01)
+            t = Thread(target=parent_job)
+            t.start()
+            t.join()
+            # 2024-07-16 22:52:20 child done
+            # 2024-07-16 22:52:20 parent done
+            # child before parent
+            assert result == [child, parent], result
+
+
+        async def test_async_lock():
+            parent = Path("/tmp")
+            child = Path("/tmp/child")
+            result = []
+
+            async def parent_job():
+                async with PathLock(parent):
+                    print(time.strftime("%Y-%m-%d %H:%M:%S"), "parent done", flush=True)
+                    result.append(parent)
+
+            async def child_job():
+                async with PathLock(child):
+                    await asyncio.sleep(0.5)
+                    print(time.strftime("%Y-%m-%d %H:%M:%S"), "child done", flush=True)
+                    result.append(child)
+
+            asyncio.create_task(child_job())
+            await asyncio.sleep(0.01)
+            await asyncio.create_task(parent_job())
+            # 2024-07-16 22:52:21 child done
+            # 2024-07-16 22:52:21 parent done
+            # child before parent
+            assert result == [child, parent], result
+
+
+        test_sync_lock()
+        asyncio.run(test_async_lock())
+    
+```
+
+
+---
+
+
 ## 2. morebuiltins.date
 
 

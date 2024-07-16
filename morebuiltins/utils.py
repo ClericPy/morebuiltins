@@ -26,6 +26,7 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    List,
     Literal,
     Optional,
     Sequence,
@@ -63,6 +64,7 @@ __all__ = [
     "unix_rlimit",
     "SimpleFilter",
     "FileDict",
+    "PathLock",
 ]
 
 
@@ -1415,6 +1417,147 @@ class FileDict(dict):
             os.unlink(self.path)
         except FileNotFoundError:
             pass
+
+
+class PathLock:
+    """A Lock/asyncio.Lock of a path, and the child-path lock will block the parent-path.
+    Ensure a path and its child-path are not busy. Can be used in a with statement to avoid race condition, such as rmtree.
+
+    Demo::
+
+        import asyncio
+        import time
+        from threading import Thread
+
+        from morebuiltins.utils import Path, PathLock
+
+
+        def test_sync_lock():
+            parent = Path("/tmp")
+            child = Path("/tmp/child")
+            result = []
+
+            def parent_job():
+                with PathLock(parent):
+                    print(time.strftime("%Y-%m-%d %H:%M:%S"), "parent done", flush=True)
+                    result.append(parent)
+
+            def child_job():
+                with PathLock(child):
+                    time.sleep(0.5)
+                    print(time.strftime("%Y-%m-%d %H:%M:%S"), "child done", flush=True)
+                    result.append(child)
+
+            Thread(target=child_job).start()
+            time.sleep(0.01)
+            t = Thread(target=parent_job)
+            t.start()
+            t.join()
+            # 2024-07-16 22:52:20 child done
+            # 2024-07-16 22:52:20 parent done
+            # child before parent
+            assert result == [child, parent], result
+
+
+        async def test_async_lock():
+            parent = Path("/tmp")
+            child = Path("/tmp/child")
+            result = []
+
+            async def parent_job():
+                async with PathLock(parent):
+                    print(time.strftime("%Y-%m-%d %H:%M:%S"), "parent done", flush=True)
+                    result.append(parent)
+
+            async def child_job():
+                async with PathLock(child):
+                    await asyncio.sleep(0.5)
+                    print(time.strftime("%Y-%m-%d %H:%M:%S"), "child done", flush=True)
+                    result.append(child)
+
+            asyncio.create_task(child_job())
+            await asyncio.sleep(0.01)
+            await asyncio.create_task(parent_job())
+            # 2024-07-16 22:52:21 child done
+            # 2024-07-16 22:52:21 parent done
+            # child before parent
+            assert result == [child, parent], result
+
+
+        test_sync_lock()
+        asyncio.run(test_async_lock())
+    """
+
+    GLOBAL_LOCK: Optional[Lock] = None
+    LOCKS: List[Tuple[Path, Lock]] = []
+    GLOBAL_ALOCK: Optional[asyncio.Lock] = None
+    ALOCKS: List[Tuple[Path, asyncio.Lock]] = []
+
+    def __init__(self, path: Path, timeout=None):
+        # ensure resolved, avoid the ../../ or softlink problem
+        self.path = Path(path).resolve()
+        self.timeout = timeout
+        if self.GLOBAL_LOCK is None:
+            self.__class__.GLOBAL_LOCK = Lock()
+
+    @property
+    def global_lock(self):
+        if self.__class__.GLOBAL_LOCK is None:
+            self.__class__.GLOBAL_LOCK = Lock()
+        return self.__class__.GLOBAL_LOCK
+
+    @property
+    def global_alock(self):
+        if self.__class__.GLOBAL_ALOCK is None:
+            self.__class__.GLOBAL_ALOCK = asyncio.Lock()
+        return self.__class__.GLOBAL_ALOCK
+
+    def get_lock(self) -> Lock:
+        with self.global_lock:
+            for path, lock in self.LOCKS:
+                if path.is_relative_to(self.path):
+                    self.LOCKS.append((self.path, lock))
+                    return lock
+            lock = Lock()
+            self.LOCKS.append((self.path, lock))
+            return lock
+
+    async def get_alock(self) -> asyncio.Lock:
+        async with self.global_alock:
+            for path, lock in self.ALOCKS:
+                if path.is_relative_to(self.path):
+                    self.ALOCKS.append((self.path, lock))
+                    return lock
+            lock = asyncio.Lock()
+            self.ALOCKS.append((self.path, lock))
+            return lock
+
+    def __enter__(self):
+        self.lock = self.get_lock()
+        if self.timeout:
+            self.lock.acquire(blocking=True, timeout=self.timeout)
+        else:
+            self.lock.acquire(blocking=True)
+
+    def __exit__(self, *_):
+        with self.GLOBAL_LOCK:
+            try:
+                self.LOCKS.remove(self.path)
+            except ValueError:
+                pass
+        self.lock.release()
+
+    async def __aenter__(self):
+        self.lock = await self.get_alock()
+        await self.lock.acquire()
+
+    async def __aexit__(self, *_):
+        with self.GLOBAL_LOCK:
+            try:
+                self.ALOCKS.remove(self.path)
+            except ValueError:
+                pass
+        self.lock.release()
 
 
 if __name__ == "__main__":
