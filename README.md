@@ -108,6 +108,8 @@ print(morebuiltins.__file__)
 
 1.28 `FileDict` - A dict that can be saved to a file.
 
+1.29 `PathLock` - A Lock/asyncio.Lock of a path, and the child-path lock will block the parent-path.
+
 
 ## 2. morebuiltins.date
 

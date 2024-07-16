@@ -1,3 +1,6 @@
+### 1.0.8 (2024-07-16)
+1. add `utils.PathLock`
+
 ### 1.0.7 (2024-07-15)
 1. add `functools.file_import`
 
