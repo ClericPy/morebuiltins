@@ -453,8 +453,9 @@ def read_num(
     result = round(b / (unit.value or 1), rounded)
     if shorten and isinstance(result, float):
         int_result = int(result)
-        if int_result / result >= precision:
-            result = int_result
+        if result:
+            if int_result / result >= precision:
+                result = int_result
     return f"{result}{sep}{unit.name}"
 
 
