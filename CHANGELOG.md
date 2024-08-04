@@ -1,3 +1,8 @@
+### 1.0.9 (2024-08-04)
+1. fix default_dict type-hint
+2. fix read num zero div
+3. add build_opener_handlers+proxy to request.req
+
 ### 1.0.8 (2024-07-16)
 1. add `utils.PathLock`
 
