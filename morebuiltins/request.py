@@ -12,7 +12,7 @@ from tempfile import gettempdir
 from typing import Dict, Optional, Tuple, Union
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote_plus, urlencode, urlparse, urlunparse
-from urllib.request import Request, urlopen
+from urllib.request import Request, urlopen, build_opener, ProxyHandler
 
 __all__ = [
     "req",
@@ -36,7 +36,9 @@ def _request(
     method: str = "GET",
     verify=True,
     encoding=None,
+    proxy=None,
     urlopen_kwargs: Optional[dict] = None,
+    build_opener_handlers: Optional[list] = None,
     **kwargs,
 ):
     if params:
@@ -116,7 +118,20 @@ def _request(
     ensure_attrs()
     response = None
     try:
-        with urlopen(**urlopen_kwargs) as resp:
+        build_opener_handlers = build_opener_handlers or []
+        if proxy:
+            if build_opener_handlers:
+                raise ValueError(
+                    "proxy and build_opener_handlers are mutually exclusive"
+                )
+            proxy_support = ProxyHandler({"http": proxy, "https": proxy})
+            build_opener_handlers.append(proxy_support)
+        if build_opener_handlers:
+            opener = build_opener(*build_opener_handlers)
+            resp = opener.open(req, data, timeout)
+        else:
+            resp = urlopen(**urlopen_kwargs)
+        with resp as resp:
             body = resp.read()
             response = resp
     except HTTPError as error:
