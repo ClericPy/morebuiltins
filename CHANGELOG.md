@@ -1,3 +1,8 @@
+### 1.1.0 (2024-08-04)
+1. update 2024.08.07 zipapps https://github.com/ClericPy/zipapps/releases/tag/2024.08.07
+2. add `functools.RotatingFileWriter`
+   1. prepare for `log_server` with `asyncio` + `ipc.SocketLogHandlerEncoder`
+
 ### 1.0.9 (2024-08-04)
 1. fix default_dict type-hint
 2. fix read num zero div

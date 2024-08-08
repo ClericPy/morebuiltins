@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from itertools import chain
 from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 from threading import Lock, Semaphore
 from typing import Callable, Coroutine, Dict, Optional, OrderedDict, Set, Union
 from weakref import WeakSet
@@ -25,6 +26,7 @@ __all__ = [
     "get_type_default",
     "func_cmd",
     "file_import",
+    "RotatingFileWriter",
 ]
 
 
@@ -705,6 +707,149 @@ def file_import(file_path, names):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return {name: getattr(module, name) for name in names}
+
+
+class RotatingFileWriter:
+    """RotatingFileWriter class for writing to a file with rotation support.
+
+    Demo::
+
+        >>> # test normal usage
+        >>> writer = RotatingFileWriter("test.log", max_size=10 * 1024, max_backups=1)
+        >>> writer.write("1" * 10)
+        >>> writer.path.stat().st_size
+        10
+        >>> writer.clean_backups(writer.max_backups)
+        >>> writer.unlink_file()
+        >>> # test rotating
+        >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=2)
+        >>> writer.write("1" * 15)
+        >>> writer.write("1" * 15)
+        >>> writer.write("1" * 15)
+        >>> writer.path.stat().st_size
+        15
+        >>> len(writer.backup_path_list())
+        2
+        >>> writer.clean_backups(writer.max_backups)
+        >>> writer.unlink_file()
+        >>> # test no backups
+        >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=0)
+        >>> writer.write("1" * 15)
+        >>> writer.write("1" * 15)
+        >>> writer.write("1" * 15)
+        >>> writer.path.stat().st_size
+        15
+        >>> len(writer.backup_path_list())
+        0
+        >>> writer.clean_backups(writer.max_backups)
+        >>> writer.unlink_file()
+    """
+
+    check_exist_every = 100
+
+    def __init__(
+        self,
+        path: Union[Path, str],
+        max_size=5 * 1024**2,
+        max_backups=0,
+        encoding="utf-8",
+    ):
+        if max_backups < 0:
+            raise ValueError("max_backups must be greater than -1, 0 for itself.")
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.max_size = max_size
+        self.max_backups = max_backups
+        self.encoding = encoding
+        self.file = self.reopen_file()
+        self._check_exist_count = self.check_exist_every + 1
+        self._rotate_lock = Lock()
+
+    def unlink_file(self):
+        self.close_file()
+        self.path.unlink(missing_ok=True)
+
+    def close_file(self):
+        file_obj = getattr(self, "file", None)
+        if file_obj and not file_obj.closed:
+            file_obj.close()
+            self.file = None
+
+    def reopen_file(self):
+        self.close_file()
+        self.file = self.path.open("a")
+        return self.file
+
+    def check_exist(self):
+        return not (
+            self._check_exist_count > self.check_exist_every and not self.path.is_file()
+        )
+
+    def rotate(self, new_length):
+        with self._rotate_lock:
+            if self.need_rotate(new_length):
+                if self.max_backups > 1:
+                    self.close_file()
+                    now = time.strftime("%Y%m%d%H%M%S")
+                    for index in range(self.max_backups):
+                        suffix = f"{now}_{index}" if index else now
+                        target_path = self.path.with_name(f"{self.path.name}.{suffix}")
+                        if target_path.is_file():
+                            # already rotated
+                            continue
+                        else:
+                            break
+                    else:
+                        raise RuntimeError(
+                            "max_backups is too small for writing too fast"
+                        )
+                    self.path.rename(target_path)
+                    self.reopen_file()
+                    self.clean_backups(count=None)
+                else:
+                    self.file.seek(0)
+                    self.file.truncate()
+
+    def need_rotate(self, new_length):
+        return self.max_size and self.file.tell() + new_length > self.max_size
+
+    def ensure_file(self, new_length=0):
+        if not self.file:
+            self.reopen_file()
+        elif not self.check_exist():
+            self.reopen_file()
+        elif self.need_rotate(new_length):
+            self.rotate(new_length)
+
+    def print(self, *strings, end="\n", sep=" ", flush=True):
+        text = f"{sep.join(map(str, strings))}{end}"
+        self.write(text, flush=flush)
+
+    def backup_path_list(self):
+        return list(self.path.parent.glob(f"{self.path.name}.*"))
+
+    def clean_backups(self, count=None):
+        """Clean oldest {count} backups, if count is None, it will clean up to max_backups."""
+        path_list = self.backup_path_list()
+        if path_list:
+            if count is None:
+                count = len(path_list) - self.max_backups
+            if count > 0:
+                path_list.sort(key=lambda x: x.stat().st_mtime)
+                for deleted, path in enumerate(path_list, 1):
+                    path.unlink(missing_ok=True)
+                    if deleted >= count:
+                        break
+
+    def write(self, text: str, flush=True):
+        self._check_exist_count += 1
+        self.ensure_file(len(text))
+        self.file.write(text)
+        if flush:
+            self.file.flush()
+
+    def __del__(self):
+        self.close_file()
 
 
 def test_bg_task():
