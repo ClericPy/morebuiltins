@@ -1396,6 +1396,50 @@
 ---
 
 
+
+3.11 `RotatingFileWriter` - RotatingFileWriter class for writing to a file with rotation support.
+
+
+```python
+
+    Demo::
+
+        >>> # test normal usage
+        >>> writer = RotatingFileWriter("test.log", max_size=10 * 1024, max_backups=1)
+        >>> writer.write("1" * 10)
+        >>> writer.path.stat().st_size
+        10
+        >>> writer.clean_backups(writer.max_backups)
+        >>> writer.unlink_file()
+        >>> # test rotating
+        >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=2)
+        >>> writer.write("1" * 15)
+        >>> writer.write("1" * 15)
+        >>> writer.write("1" * 15)
+        >>> writer.path.stat().st_size
+        15
+        >>> len(writer.backup_path_list())
+        2
+        >>> writer.clean_backups(writer.max_backups)
+        >>> writer.unlink_file()
+        >>> # test no backups
+        >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=0)
+        >>> writer.write("1" * 15)
+        >>> writer.write("1" * 15)
+        >>> writer.write("1" * 15)
+        >>> writer.path.stat().st_size
+        15
+        >>> len(writer.backup_path_list())
+        0
+        >>> writer.clean_backups(writer.max_backups)
+        >>> writer.unlink_file()
+    
+```
+
+
+---
+
+
 ## 4. morebuiltins.ipc
 
 
@@ -1677,12 +1721,12 @@
 
 
 
-6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m morebuiltins.download_python`
+6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m download_python -i` or `python -m download_python -a`(auto download the latest version matched the current platform: x86_64+install_only) or `python -m download_python -auto -k 3.11 -u`
 
 
 ```python
 
-    λ python -m morebuiltins.download_python
+    λ python -m download_python -i
     [10:56:17] Checking https://api.github.com/repos/indygreg/python-build-standalone/releases/latest
     [10:56:19] View the rules:
     https://gregoryszorc.com/docs/python-build-standalone/main/running.html#obtaining-distributions

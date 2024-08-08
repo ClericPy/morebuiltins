@@ -140,6 +140,8 @@ print(morebuiltins.__file__)
 
 3.10 `file_import` - Import function from file path.
 
+3.11 `RotatingFileWriter` - RotatingFileWriter class for writing to a file with rotation support.
+
 
 ## 4. morebuiltins.ipc
 
@@ -169,7 +171,7 @@ print(morebuiltins.__file__)
 
 ## 6. morebuiltins.download_python
 
-6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m morebuiltins.download_python`
+6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m download_python -i` or `python -m download_python -a`(auto download the latest version matched the current platform: x86_64+install_only) or `python -m download_python -auto -k 3.11 -u`
 
 
 ## 7. morebuiltins.tk
