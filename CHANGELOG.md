@@ -1,3 +1,8 @@
+### 1.1.2 (2024-08-11)
+1. add `cmd.proxy_checker`
+   1. `python -m morebuiltins.cmd.proxy_checker -c` to check proxy, input from clipboard and output to clipboard
+2. add utils.Clipboard as same api as pyperclip
+
 ### 1.1.1 (2024-08-10)
 1. add `cmd.log_server`
 2. add start_callback end_callback to `ipc.SocketServer`
