@@ -9,9 +9,10 @@ import time
 import traceback
 import typing
 from collections import Counter, namedtuple
+from concurrent.futures import Future
 from pathlib import Path
 from queue import Empty, Queue
-from threading import Thread
+from threading import Thread, Timer
 
 from ..functools import RotatingFileWriter
 from ..ipc import SocketLogHandlerEncoder, SocketServer
@@ -118,11 +119,15 @@ class LogServer(SocketServer):
         self.file_writer_thread = Thread(target=self.write_worker)
 
         self._shutdown_signals = 0
+        self._thread_done = Future()
 
     def end_callback(self):
         self.send_log("stopping log server")
         self.write_queue.put(None)
-        self.file_writer_thread.join()
+        try:
+            self._thread_done.result(timeout=5)
+        except TimeoutError:
+            os._exit(1)
 
     def start_callback(self):
         self.send_log(
@@ -187,7 +192,9 @@ class LogServer(SocketServer):
                     try:
                         q_msg: QueueMsg = self.write_queue.get(timeout=1)
                         if q_msg is None:
-                            shutdown = True
+                            if not shutdown:
+                                shutdown = True
+                                self.send_log("stopping write_worker daemon")
                             continue
                         name, line, file_args = q_msg
                         if name in new_lines:
@@ -252,6 +259,7 @@ class LogServer(SocketServer):
                 traceback.print_exc()
                 self._shutdown_ev.set()
                 break
+        self._thread_done.set_result(None)
 
     async def default_handler(self, record: dict):
         # record demo:
@@ -281,6 +289,10 @@ class LogServer(SocketServer):
             os._exit(1)
         self.send_log(msg)
         self.shutdown()
+        self.write_queue.put(None)
+        t = Timer(1, self.write_queue.put, args=(None,))
+        t.daemon = True
+        t.start()
 
     def __del__(self):
         for f in self.opened_files.values():
