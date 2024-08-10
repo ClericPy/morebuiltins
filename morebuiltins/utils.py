@@ -1162,15 +1162,16 @@ def get_paste() -> Union[str, None]:
     """
     from tkinter import TclError, Tk
 
-    _tk = Tk()
-    _tk.withdraw()
-    text = None
+    text = _tk = None
     try:
+        _tk = Tk()
+        _tk.withdraw()
         text = _tk.clipboard_get()
     except TclError:
         pass
     finally:
-        _tk.destroy()
+        if _tk:
+            _tk.destroy()
         return text
 
 
@@ -1184,7 +1185,7 @@ def set_clip(text: str):
     text: str - The text content to be copied to the clipboard.
     """
     if sys.platform != "win32":
-        raise RuntimeError("set_clip is only supported on Windows")
+        raise RuntimeError("set_clip is only supported on Windows, you need pyperclip")
     try:
         path = Path(tempfile.gettempdir()) / "set_clip.txt"
         path.write_text(text)
@@ -1195,6 +1196,17 @@ def set_clip(text: str):
         )
     finally:
         path.unlink(missing_ok=True)
+
+
+class Clipboard:
+    try:
+        import pyperclip
+
+        copy = pyperclip.copy
+        paste = pyperclip.paste
+    except ImportError:
+        copy = set_clip
+        paste = get_paste
 
 
 def switch_flush_print():
@@ -1232,6 +1244,8 @@ def switch_flush_print():
 
 def unix_rlimit(max_mem: Optional[int] = None, max_file_size: Optional[int] = None):
     "Unix only. RLIMIT_RSS, RLIMIT_FSIZE to limit the max_memory and max_file_size"
+    if sys.platform == "win32":
+        raise RuntimeError("set_clip is only supported on Windows")
     import resource
 
     if max_mem is not None:
