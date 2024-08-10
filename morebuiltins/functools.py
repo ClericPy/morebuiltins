@@ -772,6 +772,9 @@ class RotatingFileWriter:
         self.close_file()
         self.path.unlink(missing_ok=True)
 
+    def close(self):
+        return self.close_file()
+
     def close_file(self):
         file_obj = getattr(self, "file", None)
         if file_obj and not file_obj.closed:
