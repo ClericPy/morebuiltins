@@ -1,3 +1,10 @@
+### 1.1.1 (2024-08-10)
+1. add `cmd.log_server`
+2. add start_callback end_callback to `ipc.SocketServer`
+   1. ipc: self.handler(self, item) -> self.handler(item)
+3. add `RotatingFileWriter.flush`, and default flush=False
+4. fix `StreamWriter.__del__` fails if event loop is already closed
+
 ### 1.1.0 (2024-08-04)
 1. update 2024.08.07 zipapps https://github.com/ClericPy/zipapps/releases/tag/2024.08.07
 2. add `functools.RotatingFileWriter`
