@@ -188,8 +188,7 @@ class SocketServer:
         self.server: Optional[asyncio.base_events.Server] = None
         self._shutdown_ev: Optional[asyncio.Event] = None
 
-    @staticmethod
-    async def default_handler(self: "SocketServer", item: Any):
+    async def default_handler(self, item: Any):
         if globals().get("print_log"):
             print("[Server] recv:", repr(item), "=>", "send:", repr(item), flush=True)
         if item == "[shutdown server]":
@@ -215,7 +214,7 @@ class SocketServer:
                 while len(head) < content_length:
                     head = head + await reader.read(content_length - len(head))
                 item = self.encoder._loads(head)
-                result = self.handler(self, item)
+                result = self.handler(item)
                 if need_await:
                     result = await result
                 if isinstance(result, bytes):
