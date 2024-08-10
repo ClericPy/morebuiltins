@@ -1491,3 +1491,466 @@
 ---
 
 
+
+4.5 `SocketServer` - To see an example in action, view the test code: morebuiltins/ipc.py:_test_ipc.
+
+
+```python
+
+    Demo::
+
+        async def test_client(host="127.0.0.1", port=8090, encoder=None, cases=None):
+            async with SocketClient(host=host, port=port, encoder=encoder) as c:
+                for case in cases:
+                    await c.send(case)
+                    response = await c.recv()
+                    if globals().get("print_log"):
+                        print("[Client]", "send:", repr(case), "=>", "recv:", repr(response))
+                    assert case == response or str(case) == response, [case, response]
+                await c.send("[shutdown server]")
+
+
+        async def _test_ipc():
+            import platform
+
+            JSONEncoder._DUMP_KWARGS["default"] = str
+            for enc, cases in [
+                [PickleEncoder, [123, "123", None, {"a"}, ["a"], ("a",), {"a": 1}]],
+                [JSONEncoder, [123, "123", None, {"a"}, ["a"], {"a": 1}]],
+            ]:
+                encoder = enc()
+                if platform.system() == "Linux":
+                    # test unix domain socket
+                    print("Test Linux Unix Domain Socket")
+                    host = "/tmp/uds.sock"
+                    port = None
+                    async with SocketServer(host=host, port=port, encoder=encoder):
+                        await test_client(host, port=None, encoder=encoder, cases=cases)
+
+                # test socket
+                host = "127.0.0.1"
+                port = 8090
+                async with SocketServer(host=host, port=port, encoder=encoder):
+                    await test_client(host="127.0.0.1", port=8090, encoder=encoder, cases=cases)
+    
+```
+
+
+---
+
+
+
+4.7 `find_free_port` - Finds and returns an available port number.
+
+
+```python
+
+    Parameters:
+    - host: The host address to bind, default is "127.0.0.1".
+    - port: The port number to attempt binding, default is 0 (for OS allocation).
+
+    Returns:
+    - If a free port is found, it returns the port number; otherwise, returns None.
+
+    Demo:
+
+    >>> free_port = find_free_port()
+    >>> isinstance(free_port, int)
+    True
+    
+```
+
+
+---
+
+
+## 5. morebuiltins.request
+
+
+
+5.1 `req` - A basic mock for requests, performant albeit simplistic.
+
+
+```python
+
+    >>> import time
+    >>> r = req.get("https://postman-echo.com/get?a=2", timeout=3, params={"b": "3"})
+    >>> r.url
+    'https://postman-echo.com/get?a=2&b=3'
+    >>> r.ok
+    True
+    >>> r.status_code
+    200
+    >>> r.text.startswith('{')
+    True
+    >>> r = req.post("https://postman-echo.com/post?a=2", timeout=3, params={"b": "3"}, data=b"mock data")
+    >>> r.json()["data"]
+    'mock data'
+    >>> r.json()["args"]
+    {'a': '2', 'b': '3'}
+    >>> r = req.post("https://postman-echo.com/post?a=2", timeout=3, json={"data": "yes json"})
+    >>> r.json()["json"]
+    {'data': 'yes json'}
+    
+```
+
+
+---
+
+
+
+5.2 `DomainParser` - Extracts the Second-level domain (SLD) from a provided hostname or URL.
+
+
+```python
+
+    >>> domain_parser = DomainParser()
+    >>> domain_parser.parse_hostname("github.com")
+    'github.com'
+    >>> domain_parser.parse_hostname("www.github.com")
+    'github.com'
+    >>> domain_parser.parse_hostname("www.api.github.com.cn")
+    'github.com.cn'
+    >>> domain_parser.parse_hostname("a.b.c.kawasaki.jp")
+    'c.kawasaki.jp'
+    >>> domain_parser.parse_hostname("a.b.c.city.kawasaki.jp")
+    'c.city.kawasaki.jp'
+    >>> domain_parser.parse_hostname("a.bbbbbb.cccccc")
+    ''
+    >>> domain_parser.parse_hostname("a.bbbbbb.cccccc", default="b.c")
+    'b.c'
+    >>> domain_parser.parse_url("https://github.com/ClericPy/morebuiltins")
+    'github.com'
+
+    
+```
+
+
+---
+
+
+
+5.3 `unparse_qsl` - Provides the inverse operation of parse_qsl, converting query string lists back into a URL-encoded string.
+
+
+
+
+
+---
+
+
+
+5.4 `update_url` - Organizes the query arguments within a URL to standardize its format.
+
+
+```python
+
+    >>> update_url('http://www.github.com?b=1&c=1&a=1', {"b": None, "c": None})  # remove params
+    'http://www.github.com?a=1'
+    >>> update_url("http://www.github.com?b=1&c=1&a=1", a="123", b=None)  # update params with kwargs
+    'http://www.github.com?c=1&a=123'
+    >>> update_url('http://www.github.com?b=1&c=1&a=1', sort=True)  # sort params
+    'http://www.github.com?a=1&b=1&c=1'
+    >>> update_url("http://www.github.com?b=1&c=1&a=1", {"a": "999"})  # update params
+    'http://www.github.com?b=1&c=1&a=999'
+    >>> update_url("http://www.github.com?b=1&c=1&a=1", replace_kwargs={"netloc": "www.new_host.com"})  # update netloc
+    'http://www.new_host.com?b=1&c=1&a=1'
+
+    replace_kwargs is a dict to update attributes before sorting  (such as scheme / netloc...).
+    
+```
+
+
+---
+
+
+
+5.6 `make_response` - Generates an HTTP response based on the provided parameters.
+
+
+```python
+
+    :param body: The response body which can be a string, bytes, list, or dictionary. Default is an empty string.
+    :param status: The HTTP status code. Default is 200.
+    :param protocol: The HTTP protocol version. Default is "HTTP/1.1".
+    :param headers: A dictionary of HTTP response headers. Default is None.
+    :param encoding: The encoding to use. Default is "utf-8".
+    :return: A byte sequence representing the constructed HTTP response.
+    
+```
+
+
+---
+
+
+
+5.7 `custom_dns` - Custom the DNS of socket.getaddrinfo, only effect current thread.
+
+
+```python
+
+    [WARNING] This will modify the global socket.getaddrinfo.
+
+    >>> from concurrent.futures import ThreadPoolExecutor
+    >>> # this only effect current thread
+    >>> custom_dns({"1.1.1.1": ("127.0.0.1", 80), ("1.1.1.1", 80): ("192.168.0.1", 443)})
+    >>> socket.getaddrinfo('1.1.1.1', 80)[0][-1]
+    ('192.168.0.1', 443)
+    >>> socket.getaddrinfo('1.1.1.1', 8888)[0][-1]
+    ('127.0.0.1', 80)
+    >>> ThreadPoolExecutor().submit(lambda : socket.getaddrinfo('1.1.1.1', 8888)[0][-1]).result()
+    ('1.1.1.1', 8888)
+    >>> # this effect global socket.getaddrinfo
+    >>> custom_dns({"1.1.1.1": ("127.0.0.1", 80), ("1.1.1.1", 80): ("192.168.0.1", 443)}, thread=False)
+    >>> ThreadPoolExecutor().submit(lambda : socket.getaddrinfo('1.1.1.1', 8888)[0][-1]).result()
+    ('127.0.0.1', 80)
+
+    Demo:
+
+        custom_dns(custom={("MY_PROXY_HOST", 80): ("xxxxxxxxx", 43532)})
+        print(
+            requests.get(
+                "https://www.github.com/", proxies={"all": "http://MY_PROXY_HOST"}
+            ).text
+        )
+    
+```
+
+
+---
+
+
+## 6. morebuiltins.download_python
+
+
+
+6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m download_python -i` or `python -m download_python -a`(auto download the latest version matched the current platform: x86_64+install_only) or `python -m download_python -auto -k 3.11 -u`
+
+
+```python
+
+    λ python -m download_python -i
+    [10:56:17] Checking https://api.github.com/repos/indygreg/python-build-standalone/releases/latest
+    [10:56:19] View the rules:
+    https://gregoryszorc.com/docs/python-build-standalone/main/running.html#obtaining-distributions
+
+    [10:56:19] Got 290 urls from github.
+
+    [290] Enter keywords (can be int index or partial match, defaults to 0):
+    0. windows
+    1. linux
+    2. darwin
+    0
+    [10:56:24] Filt with keyword: "windows". 290 => 40
+
+    [40] Enter keywords (can be int index or partial match, defaults to 0):
+    0. 3.12.3
+    1. 3.11.9
+    2. 3.10.14
+    3. 3.9.19
+    4. 3.8.19
+
+    [10:56:25] Filt with keyword: "3.12.3". 40 => 8
+
+    [8] Enter keywords (can be int index or partial match, defaults to 0):
+    0. x86_64
+    1. i686
+
+    [10:56:28] Filt with keyword: "x86_64". 8 => 4
+
+    [4] Enter keywords (can be int index or partial match, defaults to 0):
+    0. shared-pgo-full.tar.zst
+    1. shared-install_only.tar.gz
+    2. pgo-full.tar.zst
+    3. install_only.tar.gz
+    3
+    [10:56:33] Filt with keyword: "install_only.tar.gz". 4 => 1
+    [10:56:33] Download URL: 39.1 MB
+    https://github.com/indygreg/python-build-standalone/releases/download/20240415/cpython-3.12.3%2B20240415-x86_64-pc-windows-msvc-install_only.tar.gz
+    File path to save(defaults to `./cpython-3.12.3+20240415-x86_64-pc-windows-msvc-install_only.tar.gz`)?
+    or `q` to exit.
+
+    [10:56:38] Start downloading...
+    https://github.com/indygreg/python-build-standalone/releases/download/20240415/cpython-3.12.3%2B20240415-x86_64-pc-windows-msvc-install_only.tar.gz
+    D:\github\morebuiltins\morebuiltins\download_python\cpython-3.12.3+20240415-x86_64-pc-windows-msvc-install_only.tar.gz
+    [10:56:44] Downloading: 39.12 / 39.12 MB | 100.00% | 11.3 MB/s | 0s
+    [10:56:44] Download complete.
+```
+
+
+---
+
+
+## 7. morebuiltins.tk
+
+
+
+7.1 `TKit` - Tkinter kit for dialog usages.
+
+
+```python
+    Demo::
+
+        def examples():
+            while True:
+                TKit.ask(0, "0")
+                TKit.ask(1, "1")
+                TKit.ask(2, "2")
+                if TKit.ask(True, "Choose NO", default="no") is True:
+                    TKit.ask(0, "Wrong choice")
+                    continue
+                if (
+                    TKit.ask((["1"], ["2", "3"], "4", ["5", "6", "7"]), message="Choose 3:")
+                    != "3"
+                ):
+                    TKit.ask(1, "Wrong choice")
+                    continue
+                if TKit.ask(
+                    [["1"], ["2", "3"], "4", ["5", "6", "7"]],
+                    message="Choose 3 and 6:",
+                    width=400,
+                ) != ["3", "6"]:
+                    TKit.ask(2, "Wrong choice")
+                    continue
+                result = TKit.ask("Input text 1 (press Enter to submit):")
+
+                if result != "1":
+                    TKit.ask(2, "Wrong text %s" % repr(result))
+                    continue
+                result = TKit.ask("Input text 1\\n (press Ctrl-Enter to submit):", textarea=1)
+
+                if result != "1\n":
+                    TKit.ask(2, "Wrong text %s" % repr(result))
+                    continue
+
+                def test_text(flush=False):
+                    import time
+
+                    for i in range(50):
+                        print(f"Test print flush={flush} -- {i}", flush=flush)
+                        time.sleep(0.02)
+                    return "OK"
+
+                with TKit.text_context(
+                    test_text,
+                    flush=True,
+                    __resize_kwargs={"title": "The Title", "toolwindow": True},
+                    __text_kwargs={"font": "_ 15"},
+                ) as result:
+                    TKit.info("result=%s" % result)
+
+                with TKit.text_context(
+                    test_text,
+                    flush=False,
+                    __resize_kwargs={"title": "The Title", "toolwindow": True},
+                    __text_kwargs={"font": "_ 15"},
+                ) as result:
+                    TKit.warn("result=%s" % result)
+                break
+
+        examples()
+    
+```
+
+
+---
+
+
+## 8. morebuiltins.emails
+
+
+
+8.1 `SimpleEmail` - SimpleEmail Sender.
+
+
+```python
+
+    Demo::
+
+        with SimpleEmail("smtp.gmail.com", 465, "someone@gmail.com", "PASSWORD") as s:
+        print(
+            s.send_message(
+                "This is Title",
+                "This is body text or file path(.md/.txt)",
+                "Author<someone@gmail.com>",
+                "anybody@gmail.com",
+                files="a.py,b.py,c.txt",
+                filename="files.zip",
+                encoding="u8",
+            )
+        )
+    
+```
+
+
+---
+
+
+## 9. morebuiltins.cmd.log_server
+
+
+
+9.1 `LogServer` - Log Server for SocketHandler, create a socket server with asyncio.start_server. Update settings of rotation/formatter with extra: {"max_size": 1024**2, "formatter": logging.Formatter(fmt="%(asctime)s - %(filename)s - %(message)s")}
+
+
+```python
+
+    Server side:
+        python -m morebuiltins.cmd.log_server --log-dir=./logs --host 127.0.0.1 --port 8901
+
+    Client side:
+
+    ```python
+    import logging
+    import logging.handlers
+
+    logger = logging.getLogger("client")
+    logger.setLevel(logging.DEBUG)
+    h = logging.handlers.SocketHandler("127.0.0.1", 8901)
+    h.setLevel(logging.DEBUG)
+    logger.addHandler(h)
+    for _ in range(5):
+        logger.info(
+            "hello world!",
+            extra={
+                "max_size": 1024**2,
+                "formatter": logging.Formatter(
+                    fmt="%(asctime)s - %(filename)s - %(message)s"
+                ),
+            },
+        )
+    # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
+    # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
+    # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
+    # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
+    # [client] 2024-08-10 19:30:07,114 - temp3.py - hello world!
+    ```
+
+    More docs:
+        python -m morebuiltins.cmd.log_server -h
+        usage: log_server.py [-h] [--host HOST] [--port PORT] [--log-dir LOG_DIR] [--name NAME] [--server-log-args SERVER_LOG_ARGS] [--handle-signals HANDLE_SIGNALS] [--max-queue-size MAX_QUEUE_SIZE]
+                            [--max-queue-buffer MAX_QUEUE_BUFFER] [--log-stream LOG_STREAM]
+
+        options:
+        -h, --help            show this help message and exit
+        --host HOST
+        --port PORT
+        --log-dir LOG_DIR     log dir to save log files, if empty, log to stdout with --log-stream
+        --name NAME           log server name
+        --server-log-args SERVER_LOG_ARGS
+                                max_size,max_backups for log files, default: 10485760,5 == 10MB each log file, 1 name.log + 5 backups
+        --handle-signals HANDLE_SIGNALS
+        --max-queue-size MAX_QUEUE_SIZE
+                                max queue size for log queue, log will be in memory queue before write to file
+        --max-queue-buffer MAX_QUEUE_BUFFER
+                                chunk size of lines before write to file
+        --log-stream LOG_STREAM
+                                log to stream, if --log-stream='' will mute the stream log
+
+    
+```
+
+
+---
+
+
