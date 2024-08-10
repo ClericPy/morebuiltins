@@ -176,6 +176,8 @@ class SocketServer:
         handler: Optional[Callable] = None,
         encoder: Optional[IPCEncoder] = None,
         connect_kwargs: Optional[dict] = None,
+        start_callback: Optional[Callable] = None,
+        end_callback: Optional[Callable] = None,
     ):
         if port is None and sys.platform == "win32":
             raise SystemError("not support UDS(unix domain socket) on win32 platform")
@@ -184,6 +186,8 @@ class SocketServer:
         self.handler = handler or self.default_handler
         self.encoder: IPCEncoder = encoder or PickleEncoder()
         self.connect_kwargs = connect_kwargs or {}
+        self.start_callback = start_callback
+        self.end_callback = end_callback
 
         self.server: Optional[asyncio.base_events.Server] = None
         self._shutdown_ev: Optional[asyncio.Event] = None
@@ -229,6 +233,10 @@ class SocketServer:
             self.server.close()
             await self.server.wait_closed()
             self._shutdown_ev.set()
+            if self.end_callback:
+                maybe_coro = self.end_callback()
+                if asyncio.iscoroutine(maybe_coro):
+                    await maybe_coro
 
     async def start(self):
         self._shutdown_ev = asyncio.Event()
@@ -244,6 +252,10 @@ class SocketServer:
             self.server = await asyncio.start_unix_server(
                 self.connect_callback, path=self.host, **self.connect_kwargs
             )
+        if self.start_callback:
+            maybe_coro = self.start_callback()
+            if asyncio.iscoroutine(maybe_coro):
+                await maybe_coro
 
     def is_serving(self):
         return self.server and self.server.is_serving()
