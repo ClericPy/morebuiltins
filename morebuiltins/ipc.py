@@ -202,26 +202,28 @@ class SocketServer:
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
     ) -> None:
-        head_size = self.encoder.HEAD_SIZE
-        need_await = asyncio.iscoroutinefunction(self.handler)
-        while self.is_serving() and not reader.at_eof():
-            head = await reader.read(head_size)
-            if len(head) < head_size:
-                break
-            content_length = self.encoder.get_size(head)
-            # read the whole package
-            head = await reader.read(content_length)
-            while len(head) < content_length:
-                head = head + await reader.read(content_length - len(head))
-            item = self.encoder._loads(head)
-            result = self.handler(self, item)
-            if need_await:
-                result = await result
-            if isinstance(result, bytes):
-                writer.write(result)
-                await writer.drain()
-        writer.close()
-        await writer.wait_closed()
+        try:
+            head_size = self.encoder.HEAD_SIZE
+            need_await = asyncio.iscoroutinefunction(self.handler)
+            while self.is_serving() and not reader.at_eof():
+                head = await reader.read(head_size)
+                if len(head) < head_size:
+                    break
+                content_length = self.encoder.get_size(head)
+                # read the whole package
+                head = await reader.read(content_length)
+                while len(head) < content_length:
+                    head = head + await reader.read(content_length - len(head))
+                item = self.encoder._loads(head)
+                result = self.handler(self, item)
+                if need_await:
+                    result = await result
+                if isinstance(result, bytes):
+                    writer.write(result)
+                    await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
 
     async def close(self):
         if self.is_serving():
