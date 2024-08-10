@@ -1408,6 +1408,9 @@
         >>> writer = RotatingFileWriter("test.log", max_size=10 * 1024, max_backups=1)
         >>> writer.write("1" * 10)
         >>> writer.path.stat().st_size
+        0
+        >>> writer.flush()
+        >>> writer.path.stat().st_size
         10
         >>> writer.clean_backups(writer.max_backups)
         >>> writer.unlink_file()
@@ -1415,7 +1418,7 @@
         >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=2)
         >>> writer.write("1" * 15)
         >>> writer.write("1" * 15)
-        >>> writer.write("1" * 15)
+        >>> writer.write("1" * 15, flush=True)
         >>> writer.path.stat().st_size
         15
         >>> len(writer.backup_path_list())
@@ -1426,7 +1429,7 @@
         >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=0)
         >>> writer.write("1" * 15)
         >>> writer.write("1" * 15)
-        >>> writer.write("1" * 15)
+        >>> writer.write("1" * 15, flush=True)
         >>> writer.path.stat().st_size
         15
         >>> len(writer.backup_path_list())
@@ -1876,6 +1879,74 @@
                 encoding="u8",
             )
         )
+    
+```
+
+
+---
+
+
+## 9. morebuiltins.cmd.log_server
+
+
+
+9.1 `LogServer` - Log Server for SocketHandler, create a socket server with asyncio.start_server. Update settings of rotation/formatter with extra: {"max_size": 1024**2, "formatter": logging.Formatter(fmt="%(asctime)s - %(filename)s - %(message)s")}
+
+
+```python
+
+    Server side:
+        python -m morebuiltins.cmd.log_server --log-dir=./logs --host 127.0.0.1 --port 8901
+
+    Client side:
+
+    ```python
+    import logging
+    import logging.handlers
+
+    logger = logging.getLogger("client")
+    logger.setLevel(logging.DEBUG)
+    h = logging.handlers.SocketHandler("127.0.0.1", 8901)
+    h.setLevel(logging.DEBUG)
+    logger.addHandler(h)
+    for _ in range(5):
+        logger.info(
+            "hello world!",
+            extra={
+                "max_size": 1024**2,
+                "formatter": logging.Formatter(
+                    fmt="%(asctime)s - %(filename)s - %(message)s"
+                ),
+            },
+        )
+    # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
+    # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
+    # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
+    # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
+    # [client] 2024-08-10 19:30:07,114 - temp3.py - hello world!
+    ```
+
+    More docs:
+        python -m morebuiltins.cmd.log_server -h
+        usage: log_server.py [-h] [--host HOST] [--port PORT] [--log-dir LOG_DIR] [--name NAME] [--server-log-args SERVER_LOG_ARGS] [--handle-signals HANDLE_SIGNALS] [--max-queue-size MAX_QUEUE_SIZE]
+                            [--max-queue-buffer MAX_QUEUE_BUFFER] [--log-stream LOG_STREAM]
+
+        options:
+        -h, --help            show this help message and exit
+        --host HOST
+        --port PORT
+        --log-dir LOG_DIR     log dir to save log files, if empty, log to stdout with --log-stream
+        --name NAME           log server name
+        --server-log-args SERVER_LOG_ARGS
+                                max_size,max_backups for log files, default: 10485760,5 == 10MB each log file, 1 name.log + 5 backups
+        --handle-signals HANDLE_SIGNALS
+        --max-queue-size MAX_QUEUE_SIZE
+                                max queue size for log queue, log will be in memory queue before write to file
+        --max-queue-buffer MAX_QUEUE_BUFFER
+                                chunk size of lines before write to file
+        --log-stream LOG_STREAM
+                                log to stream, if --log-stream='' will mute the stream log
+
     
 ```
 

@@ -208,7 +208,11 @@ class SocketServer:
         try:
             head_size = self.encoder.HEAD_SIZE
             need_await = asyncio.iscoroutinefunction(self.handler)
-            while self.is_serving() and not reader.at_eof():
+            while (
+                not (self._shutdown_ev and self._shutdown_ev.is_set())
+                and self.is_serving()
+                and not reader.at_eof()
+            ):
                 head = await reader.read(head_size)
                 if len(head) < head_size:
                     break
@@ -234,9 +238,12 @@ class SocketServer:
             await self.server.wait_closed()
             self._shutdown_ev.set()
             if self.end_callback:
-                maybe_coro = self.end_callback()
-                if asyncio.iscoroutine(maybe_coro):
-                    await maybe_coro
+                if asyncio.iscoroutinefunction(self.end_callback):
+                    await self.end_callback()
+                else:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, self.end_callback
+                    )
 
     async def start(self):
         self._shutdown_ev = asyncio.Event()
@@ -253,9 +260,12 @@ class SocketServer:
                 self.connect_callback, path=self.host, **self.connect_kwargs
             )
         if self.start_callback:
-            maybe_coro = self.start_callback()
-            if asyncio.iscoroutine(maybe_coro):
-                await maybe_coro
+            if asyncio.iscoroutinefunction(self.start_callback):
+                await self.start_callback()
+            else:
+                await asyncio.get_running_loop().run_in_executor(
+                    None, self.start_callback
+                )
 
     def is_serving(self):
         return self.server and self.server.is_serving()
