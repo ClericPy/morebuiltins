@@ -718,6 +718,9 @@ class RotatingFileWriter:
         >>> writer = RotatingFileWriter("test.log", max_size=10 * 1024, max_backups=1)
         >>> writer.write("1" * 10)
         >>> writer.path.stat().st_size
+        0
+        >>> writer.flush()
+        >>> writer.path.stat().st_size
         10
         >>> writer.clean_backups(writer.max_backups)
         >>> writer.unlink_file()
@@ -725,7 +728,7 @@ class RotatingFileWriter:
         >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=2)
         >>> writer.write("1" * 15)
         >>> writer.write("1" * 15)
-        >>> writer.write("1" * 15)
+        >>> writer.write("1" * 15, flush=True)
         >>> writer.path.stat().st_size
         15
         >>> len(writer.backup_path_list())
@@ -736,7 +739,7 @@ class RotatingFileWriter:
         >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=0)
         >>> writer.write("1" * 15)
         >>> writer.write("1" * 15)
-        >>> writer.write("1" * 15)
+        >>> writer.write("1" * 15, flush=True)
         >>> writer.path.stat().st_size
         15
         >>> len(writer.backup_path_list())
@@ -788,7 +791,7 @@ class RotatingFileWriter:
     def rotate(self, new_length):
         with self._rotate_lock:
             if self.need_rotate(new_length):
-                if self.max_backups > 1:
+                if self.max_backups > 0:
                     self.close_file()
                     now = time.strftime("%Y%m%d%H%M%S")
                     for index in range(self.max_backups):
@@ -821,10 +824,6 @@ class RotatingFileWriter:
         elif self.need_rotate(new_length):
             self.rotate(new_length)
 
-    def print(self, *strings, end="\n", sep=" ", flush=True):
-        text = f"{sep.join(map(str, strings))}{end}"
-        self.write(text, flush=flush)
-
     def backup_path_list(self):
         return list(self.path.parent.glob(f"{self.path.name}.*"))
 
@@ -841,12 +840,19 @@ class RotatingFileWriter:
                     if deleted >= count:
                         break
 
-    def write(self, text: str, flush=True):
+    def flush(self):
+        self.file.flush()
+
+    def write(self, text: str, flush=False):
         self._check_exist_count += 1
         self.ensure_file(len(text))
         self.file.write(text)
         if flush:
             self.file.flush()
+
+    def print(self, *strings, end="\n", sep=" ", flush=False):
+        text = f"{sep.join(map(str, strings))}{end}"
+        self.write(text, flush=flush)
 
     def __del__(self):
         self.close_file()
