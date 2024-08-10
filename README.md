@@ -46,6 +46,7 @@ print(morebuiltins.__file__)
 
 [Changelog](https://github.com/ClericPy/morebuiltins/blob/master/CHANGELOG.md)
 
+## More Modules:
 
 ---
 
@@ -184,4 +185,22 @@ print(morebuiltins.__file__)
 8.1 `SimpleEmail` - SimpleEmail Sender.
 
 
+## 9. morebuiltins.cmd.log_server
+
+9.1 `LogServer` - Log Server for SocketHandler, create a socket server with asyncio.start_server. Update settings of rotation/formatter with extra: {"max_size": 1024**2, "formatter": logging.Formatter(fmt="%(asctime)s - %(filename)s - %(message)s")}
+
+
 <!-- end -->
+
+## cmd utils
+
+1. download_python
+   1. `python -m morebuiltins.cmd.download_python -a -k 3.11 -u`
+   2. `-a` will filt with current platform(x86_64+install_only), `-k` is the keywords, `-u` will unzip the tar.gz
+2. zipapps
+   1. `python -m morebuiltins.zipapps -h`
+   2. https://github.com/ClericPy/zipapps
+3. log_server
+   1. `python -m morebuiltins.cmd.log_server --log-dir=./logs`
+   2. client use the `logging.handlers.SocketHandler` (support python2/3)
+   3. Update settings of rotation/formatter with `extra: {"max_size": 1024**2, "formatter": logging.Formatter(fmt="%(asctime)s - %(filename)s - %(message)s")}`
