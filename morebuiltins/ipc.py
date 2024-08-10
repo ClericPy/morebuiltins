@@ -276,7 +276,8 @@ class SocketServer:
 
     def shutdown(self):
         "sync close"
-        self._shutdown_ev.set()
+        if self.is_serving():
+            self.server.get_loop().call_soon_threadsafe(self._shutdown_ev.set)
 
     async def __aenter__(self):
         await self.start()
