@@ -252,6 +252,10 @@ class SocketServer:
         if self._shutdown_ev:
             await self._shutdown_ev.wait()
 
+    def shutdown(self):
+        "sync close"
+        self._shutdown_ev.set()
+
     async def __aenter__(self):
         await self.start()
         return self
