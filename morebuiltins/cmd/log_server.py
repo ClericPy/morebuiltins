@@ -188,9 +188,11 @@ class LogServer(SocketServer):
         while not shutdown:
             try:
                 new_lines = {}
+                timeout = 1
                 for _ in range(self.max_queue_buffer):
                     try:
-                        q_msg: QueueMsg = self.write_queue.get(timeout=1)
+                        q_msg: QueueMsg = self.write_queue.get(timeout=timeout)
+                        timeout = 0
                         if q_msg is None:
                             if not shutdown:
                                 shutdown = True
@@ -257,7 +259,7 @@ class LogServer(SocketServer):
                 self.send_log("error in write_worker", e, level="ERROR")
                 print(format_error(e), file=sys.stderr, flush=True)
                 traceback.print_exc()
-                self._shutdown_ev.set()
+                self.shutdown()
                 break
         self._thread_done.set_result(None)
 
@@ -284,15 +286,12 @@ class LogServer(SocketServer):
 
     def handle_signal(self, sig, frame):
         self._shutdown_signals += 1
-        msg = f"received signal: {sig}, count: {self._shutdown_signals}"
         if self._shutdown_signals > 5:
             os._exit(1)
+        msg = f"received signal: {sig}, count: {self._shutdown_signals}"
         self.send_log(msg)
         self.shutdown()
         self.write_queue.put(None)
-        t = Timer(1, self.write_queue.put, args=(None,))
-        t.daemon = True
-        t.start()
 
     def __del__(self):
         for f in self.opened_files.values():
