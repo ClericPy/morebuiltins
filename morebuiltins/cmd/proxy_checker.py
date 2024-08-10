@@ -124,6 +124,13 @@ async def main():
     )
     parser.add_argument("--retry", type=int, default=0, help="retry times")
     parser.add_argument("-n", "--concurrency", type=int, default=20, help="concurrency")
+    parser.add_argument(
+        "-r",
+        "--max-result",
+        type=int,
+        default=0,
+        help="quick return when result count >= max-result",
+    )
     parser.add_argument("-i", "--input-file", default="", help="input text file path")
     parser.add_argument("-o", "--output-file", default="", help="output text file path")
     parser.add_argument(
@@ -175,11 +182,14 @@ async def main():
             result_list.clear()
             done = 0
             oks = 0
+            last_loop = args.loop == loop + 1
             async for item in pc.check_proxies(proxies):
                 done += 1
                 if item.ok:
                     oks += 1
                     result_list.append(item.proxy)
+                    if last_loop and args.max_result and len(result_list) >= args.max_result:
+                        break
                 if not quiet:
                     print(
                         f"[{loop+1}] {done} / {len(proxies)} (oks={oks})".ljust(21),
@@ -188,7 +198,7 @@ async def main():
                         flush=True,
                         file=sys.stderr,
                     )
-        if result_list:
+        if result_list or from_clipboard:
             result = "\n".join(result_list)
             if output_file:
                 print(result, file=output_file, flush=True)
