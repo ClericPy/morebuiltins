@@ -3,6 +3,7 @@ import pickle
 import socket
 import sys
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from logging import LogRecord
 from logging.handlers import SocketHandler
 from typing import Any, Callable, Dict, Literal, Optional, Union
@@ -191,6 +192,7 @@ class SocketServer:
 
         self.server: Optional[asyncio.base_events.Server] = None
         self._shutdown_ev: Optional[asyncio.Event] = None
+        self._default_executor = ThreadPoolExecutor()
 
     async def default_handler(self, item: Any):
         if globals().get("print_log"):
@@ -222,9 +224,12 @@ class SocketServer:
                 while len(head) < content_length:
                     head = head + await reader.read(content_length - len(head))
                 item = self.encoder._loads(head)
-                result = self.handler(item)
                 if need_await:
-                    result = await result
+                    result = await self.handler(item)
+                else:
+                    result = asyncio.get_running_loop().run_in_executor(
+                        self._default_executor, self.handler, item
+                    )
                 if isinstance(result, bytes):
                     writer.write(result)
                     await writer.drain()
@@ -242,7 +247,7 @@ class SocketServer:
                     await self.end_callback()
                 else:
                     await asyncio.get_running_loop().run_in_executor(
-                        None, self.end_callback
+                        self._default_executor, self.end_callback
                     )
 
     async def start(self):
@@ -264,7 +269,7 @@ class SocketServer:
                 await self.start_callback()
             else:
                 await asyncio.get_running_loop().run_in_executor(
-                    None, self.start_callback
+                    self._default_executor, self.start_callback
                 )
 
     def is_serving(self):
