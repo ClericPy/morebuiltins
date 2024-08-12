@@ -1,3 +1,7 @@
+### 1.1.3 (2024-08-12)
+1. add `morebuiltins.cmd.proxy_checker` --max-result for quick return
+2. fix `morebultins.cmd.log_server` lost log in high frequency writing
+
 ### 1.1.2 (2024-08-11)
 1. add `cmd.proxy_checker`
    1. `python -m morebuiltins.cmd.proxy_checker -c` to check proxy, input from clipboard and output to clipboard

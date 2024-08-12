@@ -9,10 +9,9 @@ import time
 import traceback
 import typing
 from collections import Counter, namedtuple
-from concurrent.futures import Future
 from pathlib import Path
 from queue import Empty, Queue
-from threading import Thread, Timer
+from threading import Timer
 
 from ..functools import RotatingFileWriter
 from ..ipc import SocketLogHandlerEncoder, SocketServer
@@ -80,6 +79,8 @@ class LogServer(SocketServer):
 
     """
 
+    STOP_SIG = object()
+
     def __init__(
         self,
         host="127.0.0.1",
@@ -89,7 +90,7 @@ class LogServer(SocketServer):
         server_log_args=(10 * 1024**2, 5),
         handle_signals=(2, 15),
         max_queue_size=100000,
-        max_queue_buffer=1000,
+        max_queue_buffer=20000,
         log_stream=sys.stdout,
     ):
         super().__init__(
@@ -100,6 +101,8 @@ class LogServer(SocketServer):
             start_callback=self.start_callback,
             end_callback=self.end_callback,
         )
+        # ensure has running loop
+        self.loop = asyncio.get_running_loop()
         self.name = name
         self.server_log_args = {
             "max_size": server_log_args[0],
@@ -109,31 +112,32 @@ class LogServer(SocketServer):
         self.log_dir = Path(log_dir).resolve() if log_dir else None
         if self.log_dir:
             self.log_dir.mkdir(exist_ok=True, parents=True)
-        self.opened_files: typing.Dict[str, RotatingFileWriter] = {}
         self.handle_signals = handle_signals
+        self.max_queue_size = max_queue_size
+        self.max_queue_buffer = max_queue_buffer
+
+        self._opened_files: typing.Dict[str, RotatingFileWriter] = {}
+        self._write_queue = Queue(maxsize=max_queue_size)
+        self._shutdown_signals = 0
+        self._write_chunks = []
+        self._lines_counter = Counter()
+        self._size_counter = Counter()
+        self._queue_consumer_task = self.loop.run_in_executor(
+            self._default_executor, self.write_queue_consumer
+        )
         for sig in handle_signals:
             signal.signal(sig, self.handle_signal)
-        self.max_queue_size = max_queue_size
-        self.write_queue = Queue(maxsize=max_queue_size)
-        self.max_queue_buffer = max_queue_buffer
-        self.file_writer_thread = Thread(target=self.write_worker)
 
-        self._shutdown_signals = 0
-        self._thread_done = Future()
-
-    def end_callback(self):
-        self.send_log("stopping log server")
-        self.write_queue.put(None)
-        try:
-            self._thread_done.result(timeout=5)
-        except TimeoutError:
-            os._exit(1)
+    async def end_callback(self):
+        await self.loop.run_in_executor(
+            self._default_executor, self._write_queue.put, self.STOP_SIG
+        )
+        await self._queue_consumer_task
 
     def start_callback(self):
         self.send_log(
             f"started log server on {self.host}:{self.port}, handle_signals={self.handle_signals}, max_queue_size={self.max_queue_size}, max_queue_buffer={self.max_queue_buffer}, log_stream={getattr(self.log_stream, 'name', None)}, log_dir={self.log_dir}"
         )
-        self.file_writer_thread.start()
 
     def send_log(
         self, msg: str, error: typing.Optional[Exception] = None, level="INFO"
@@ -143,15 +147,17 @@ class LogServer(SocketServer):
         if error:
             msg = f"{msg} | {format_error(error)}"
         msg = f"{ttime(now)},{ms} | {level: >5} | {msg}"
-        self.write_queue.put((self.name, msg, self.server_log_args))
+        self._write_queue.put((self.name, msg, self.server_log_args))
 
     def get_targets(self, name: str, max_size=5 * 1024**2, max_backups=1):
         targets = []
         if self.log_stream:
             targets.append(self.log_stream)
+        elif name == self.name:
+            targets.append(sys.stderr)
         if self.log_dir:
-            if name in self.opened_files:
-                fw = self.opened_files[name]
+            if name in self._opened_files:
+                fw = self._opened_files[name]
                 if fw.max_size != max_size:
                     fw.max_size = max_size
                 if fw.max_backups != max_backups:
@@ -171,32 +177,38 @@ class LogServer(SocketServer):
                         level="ERROR",
                     )
                 targets.append(
-                    self.opened_files.setdefault(
+                    self._opened_files.setdefault(
                         name,
                         fw,
                     )
                 )
         return targets
 
-    def write_worker(self):
-        last_log_time = time.time()
-        interval = 60
-        lines_counter = Counter()
-        size_counter = Counter()
-        shutdown = False
+    def write_queue_consumer(self):
         self.send_log("started write_worker daemon")
-        while not shutdown:
+        stopped = False
+        interval = 30
+        last_log_time = time.time()
+        while not stopped:
             try:
                 new_lines = {}
-                timeout = 1
-                for _ in range(self.max_queue_buffer):
+                for index in range(self.max_queue_buffer):
                     try:
-                        q_msg: QueueMsg = self.write_queue.get(timeout=timeout)
-                        timeout = 0
-                        if q_msg is None:
-                            if not shutdown:
-                                shutdown = True
+                        if index == 0:
+                            try:
+                                q_msg: QueueMsg = self._write_queue.get(timeout=1)
+                            except Empty:
+                                if self._write_queue.qsize():
+                                    continue
+                                else:
+                                    break
+                        else:
+                            q_msg = self._write_queue.get_nowait()
+                        if q_msg is self.STOP_SIG:
+                            if not stopped:
                                 self.send_log("stopping write_worker daemon")
+                                new_lines[q_msg] = q_msg
+                                stopped = True
                             continue
                         name, line, file_args = q_msg
                         if name in new_lines:
@@ -208,60 +220,65 @@ class LogServer(SocketServer):
                         data["lines"].append(line)
                     except Empty:
                         break
-                for name, data in new_lines.items():
-                    file_args = data["file_args"]
-                    targets = self.get_targets(name, **file_args)
-                    for log_file in targets:
-                        if log_file is self.log_stream:
-                            head = f"[{name}] "
-                        else:
-                            head = ""
-                        try:
-                            for line in data["lines"]:
-                                text = f"{head}{line}\n"
-                                log_file.write(text)
-                            # only flush once per file
-                            log_file.flush()
-                        except Exception as e:
-                            self.send_log(
-                                f"error in write_worker ({name})", e, level="WARN"
-                            )
-                    if name != self.name:
-                        lines_counter[name] += len(data["lines"])
-                        size_counter[name] += sum(
-                            [len(line) for line in data["lines"]]
-                        ) + len(data["lines"])
-                if lines_counter:
+                if new_lines:
+                    self._write_chunks.append(new_lines)
+                    for name, data in new_lines.items():
+                        if name is self.STOP_SIG:
+                            stopped = True
+                            continue
+                        file_args = data["file_args"]
+                        lines = data["lines"]
+                        targets = self.get_targets(name, **file_args)
+                        for log_file in targets:
+                            try:
+                                if log_file is self.log_stream:
+                                    head = f"[{name}] "
+                                    body = f"\n{head}".join(lines)
+                                    lines_text = f"{head}{body}\n"
+                                else:
+                                    lines_text = "\n".join(lines)
+                                log_file.write(f"{lines_text}\n")
+                                log_file.flush()
+                            except Exception as e:
+                                self.send_log(
+                                    f"error in write_worker ({name})", e, level="WARN"
+                                )
+                        if name != self.name:
+                            self._lines_counter[name] += len(data["lines"])
+                            self._size_counter[name] += sum(
+                                [len(line) for line in data["lines"]]
+                            ) + len(data["lines"])
+                if self._lines_counter:
                     now = time.time()
                     if now - last_log_time > interval:
                         start = ttime(last_log_time, fmt="%H:%M:%S")
                         end = ttime(now, fmt="%H:%M:%S")
+                        last_log_time = now
                         lines_msg = json.dumps(
                             {
                                 name: value
-                                for name, value in lines_counter.most_common(10)
+                                for name, value in self._lines_counter.most_common(30)
                             },
                             ensure_ascii=False,
                         )
                         size_msg = json.dumps(
                             {
                                 name: read_size(value, 1, shorten=True)
-                                for name, value in size_counter.most_common(10)
+                                for name, value in self._size_counter.most_common(30)
                             },
                             ensure_ascii=False,
                         )
                         self.send_log(
-                            f"{start} - {end} log counter: {sum(lines_counter.values())} lines ({lines_msg}), {read_size(sum(size_counter.values()), 1, shorten=True)} ({size_msg})"
+                            f"[{start} - {end}] log counter: {sum(self._lines_counter.values())} lines ({lines_msg}), {read_size(sum(self._size_counter.values()), 1, shorten=True)} ({size_msg})"
                         )
-                        lines_counter.clear()
-                        last_log_time = now
+                        self._lines_counter.clear()
+                        self._size_counter.clear()
             except Exception as e:
-                self.send_log("error in write_worker", e, level="ERROR")
+                self.send_log("error in write_queue_consumer", e, level="ERROR")
                 print(format_error(e), file=sys.stderr, flush=True)
                 traceback.print_exc()
                 self.shutdown()
                 break
-        self._thread_done.set_result(None)
 
     async def default_handler(self, record: dict):
         # record demo:
@@ -278,7 +295,7 @@ class LogServer(SocketServer):
                 k: v for k, v in record.items() if k in {"max_size", "max_backups"}
             }
             q_msg = QueueMsg(name=name, text=text, file_args=file_args)
-            self.write_queue.put_nowait(q_msg)
+            self._write_queue.put_nowait(q_msg)
         except Exception as e:
             self.send_log("error in default_handler", e, level="WARN")
         finally:
@@ -291,10 +308,11 @@ class LogServer(SocketServer):
         msg = f"received signal: {sig}, count: {self._shutdown_signals}"
         self.send_log(msg)
         self.shutdown()
-        self.write_queue.put(None)
+        self._write_queue.put(self.STOP_SIG)
+        self.loop.call_soon_threadsafe(self._shutdown_ev.set)
 
     def __del__(self):
-        for f in self.opened_files.values():
+        for f in self._opened_files.values():
             f.close()
 
 
@@ -305,6 +323,7 @@ async def main():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=8901, type=int)
     parser.add_argument(
+        "-t",
         "--log-dir",
         default="",
         dest="log_dir",
@@ -326,7 +345,7 @@ async def main():
     )
     parser.add_argument(
         "--max-queue-buffer",
-        default=1000,
+        default=10000,
         type=int,
         help="chunk size of lines before write to file",
     )

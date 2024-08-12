@@ -1,4 +1,4 @@
-__version__ = "1.1.2"
+__version__ = "1.1.3"
 __all__ = [
     "morebuiltins.utils",
     "morebuiltins.date",
@@ -9,5 +9,5 @@ __all__ = [
     "morebuiltins.tk",
     "morebuiltins.emails",
     "morebuiltins.cmd.log_server",
-    # "morebuiltins.cmd.proxy_checker",
+    "morebuiltins.cmd.proxy_checker",
 ]

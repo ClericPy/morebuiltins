@@ -1954,3 +1954,50 @@
 ---
 
 
+## 10. morebuiltins.cmd.proxy_checker
+
+
+
+10.1 `ProxyChecker` - A command line toolkit to check available proxies.
+
+
+```python
+
+    1. clipboard usage:
+        > input-text from clipboard, and set the result to clipboard. `-l 2` means try 2 loops
+            > python -m morebuiltins.cmd.proxy_checker -c -l 2
+
+    2. input-file output-file usage:
+        > input-text from file, and set the result to output-file
+            > python -m morebuiltins.cmd.proxy_checker -i input.txt -o output.txt
+        > output to stdout
+            > python -m morebuiltins.cmd.proxy_checker -i input.txt
+
+    3. stdin usage:
+        > cat file.txt | python -m morebuiltins.cmd.proxy_checker > stdout.txt
+        > cat file.txt | python -m morebuiltins.cmd.proxy_checker -o output.txt
+
+    python -m morebuiltins.cmd.proxy_checker -h
+        options:
+        -h, --help            show this help message and exit
+        -t TIMEOUT, --timeout TIMEOUT
+                                timeout of each request
+        -l LOOP, --loop LOOP  Loop the test to validate the successful results each time until the desired number of iterations is reached.
+        --retry RETRY         retry times
+        -n CONCURRENCY, --concurrency CONCURRENCY
+                                concurrency
+        -i INPUT_FILE, --input-file INPUT_FILE
+                                input text file path
+        -o OUTPUT_FILE, --output-file OUTPUT_FILE
+                                output text file path
+        -c, --from-clipboard  text from clipboard, ignore -i. if --output-file not set, output to clipboard
+        -q, --quiet           mute the progress in stderr
+
+
+    
+```
+
+
+---
+
+
