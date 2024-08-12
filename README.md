@@ -190,6 +190,11 @@ print(morebuiltins.__file__)
 9.1 `LogServer` - Log Server for SocketHandler, create a socket server with asyncio.start_server. Update settings of rotation/formatter with extra: {"max_size": 1024**2, "formatter": logging.Formatter(fmt="%(asctime)s - %(filename)s - %(message)s")}
 
 
+## 10. morebuiltins.cmd.proxy_checker
+
+10.1 `ProxyChecker` - A command line toolkit to check available proxies.
+
+
 <!-- end -->
 
 ## cmd utils
