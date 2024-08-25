@@ -1,3 +1,6 @@
+### 1.1.4 (2024-08-25)
+1. modify default args for `cmd.proxy_checker`
+
 ### 1.1.3 (2024-08-12)
 1. add `morebuiltins.cmd.proxy_checker` --max-result for quick return
 2. fix `morebultins.cmd.log_server` lost log in high frequency writing
