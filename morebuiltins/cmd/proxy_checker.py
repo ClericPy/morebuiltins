@@ -48,7 +48,7 @@ class ProxyChecker(object):
 
     """
 
-    target = b"HTTP/1.1 204 No Content\r\n"
+    target = re.compile(rb"HTTP/1.1 20\d [^\r\n]+\r\n")
     request = b"GET http://www.gstatic.com/generate_204 HTTP/1.1\r\nHost: www.gstatic.com\r\nConnection: close\r\n\r\n"
     ip_regex = re.compile(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?:\s+|:)(\d+)")
 
@@ -96,7 +96,7 @@ class ProxyChecker(object):
                     result = await asyncio.wait_for(
                         self.send_request(host, int(port)), timeout=self.timeout
                     )
-                ok = result == self.target
+                ok = bool(self.target.search(result))
                 if ok:
                     break
             except Exception as e:
@@ -142,40 +142,48 @@ async def main():
     parser.add_argument(
         "-q", "--quiet", action="store_true", help="mute the progress in stderr"
     )
+    parser.add_argument(
+        "-u",
+        "--url",
+        default="http://www.gstatic.com/generate_204",
+        help="default check url",
+    )
+    parser.add_argument(
+        "-ii", "--stdin", action="store_true", help="set stdin as input"
+    )
     args = parser.parse_args()
+    quiet = args.quiet
     text = ""
     output_file = None
     from_clipboard = args.from_clipboard
     target_path = Path(args.output_file) if args.output_file else None
-    if from_clipboard:
+    if args.input_file:
+        text = Path(args.input_file).read_bytes().decode("utf-8", "ignore")
+    elif args.stdin:
+        null_lines = 0
+        for i in sys.stdin:
+            if not i.strip():
+                null_lines += 1
+            if null_lines > 3:
+                break
+            text += i
+        if not args.output_file:
+            output_file = sys.stdout
+            quiet = True
+    else:
         from morebuiltins.utils import Clipboard
 
         text = Clipboard.paste()
         target_path = target_path or Clipboard.copy
-    if not text:
-        if args.input_file:
-            text = Path(args.input_file).read_bytes().decode("utf-8", "replace")
-        else:
-            text = ""
-            null_lines = 0
-            for i in sys.stdin:
-                if not i.strip():
-                    null_lines += 1
-                if null_lines > 3:
-                    break
-                text += i
-            if not args.output_file:
-                output_file = sys.stdout
     pc = ProxyChecker(
         concurrency=args.concurrency, timeout=args.timeout, retry=args.retry
     )
     proxies = pc.find_proxies(text)
-    quiet = args.quiet
     result_list = []
     try:
         if isinstance(target_path, Path):
             target_path = Path(args.output_file)
-            target_path.mkdir(parents=True, exist_ok=True)
+            target_path.parent.mkdir(parents=True, exist_ok=True)
             output_file = open(target_path, "w")
         for loop in range(args.loop):
             proxies = set(result_list or proxies)
@@ -188,7 +196,11 @@ async def main():
                 if item.ok:
                     oks += 1
                     result_list.append(item.proxy)
-                    if last_loop and args.max_result and len(result_list) >= args.max_result:
+                    if (
+                        last_loop
+                        and args.max_result
+                        and len(result_list) >= args.max_result
+                    ):
                         break
                 if not quiet:
                     print(
