@@ -176,7 +176,7 @@
 
 
 
-1.8 `get_hash` - Generates an MD5 hash string from the given input string.
+1.8 `get_hash` - Generates a hash string from the given input string.
 
 
 ```python

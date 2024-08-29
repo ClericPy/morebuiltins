@@ -292,7 +292,7 @@ def get_hash(
     default: Callable = lambda obj: str(obj).encode("utf-8"),
     func=hashlib.md5,
 ) -> str:
-    """Generates an MD5 hash string from the given input string.
+    """Generates a hash string from the given input string.
 
     >>> get_hash(123456, 10)
     'a59abbe56e'
@@ -318,6 +318,32 @@ def get_hash(
     elif isinstance(n, (tuple, list)):
         start, end = n[0], n[1]
         return _temp[start:end]
+
+
+def get_hash_int(
+    string,
+    n: int = 16,
+    default: Callable = lambda obj: str(obj).encode("utf-8"),
+    func=hashlib.md5,
+) -> int:
+    """Generates a int hash(like docid) from the given input bytes.
+
+    >>> get_hash_int(1)
+    2035485573088411
+    >>> get_hash_int("string")
+    1418352543534881
+    >>> get_hash_int(b'123456', 16)
+    4524183350839358
+    >>> get_hash_int(b'123', 10)
+    5024125808
+    >>> get_hash_int(b'123', 13, func=hashlib.sha256)
+    1787542395619
+    >>> get_hash_int(b'123', 13, func=hashlib.sha512)
+    3045057537218
+    >>> get_hash_int(b'123', 13, func=hashlib.sha1)
+    5537183137519
+    """
+    return int(get_hash(string, n=None, default=default, func=func), 16) % 10**n
 
 
 def find_jsons(
