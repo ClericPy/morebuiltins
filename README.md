@@ -67,7 +67,7 @@ print(morebuiltins.__file__)
 
 1.7 `guess_interval` - Analyzes a sequence of numbers and returns the median, calculating intervals only if they are greater than or equal to the specified accuracy.
 
-1.8 `get_hash` - Generates an MD5 hash string from the given input string.
+1.8 `get_hash` - Generates a hash string from the given input string.
 
 1.9 `find_jsons` - A generator that locates valid JSON strings, supporting only dictionaries and lists.
 

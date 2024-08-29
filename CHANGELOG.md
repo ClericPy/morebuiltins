@@ -1,3 +1,6 @@
+### 1.1.5 (2024-08-29)
+1. add `utils.get_hash_int`
+
 ### 1.1.4 (2024-08-25)
 1. modify default args for `cmd.proxy_checker`
 
