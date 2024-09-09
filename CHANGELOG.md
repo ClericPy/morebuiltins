@@ -1,3 +1,6 @@
+### 1.1.6 (2024-09-09)
+1. add filename_filter to utils.format_error
+
 ### 1.1.5 (2024-08-29)
 1. add `utils.get_hash_int`
 

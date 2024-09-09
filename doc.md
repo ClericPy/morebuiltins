@@ -463,6 +463,7 @@
     - `index` (`Union[int, slice]`, optional): Specifies which frames to include in the output. By default, it's set to `slice(-3, None, None)`, showing the last three frames. Can be an integer for a single frame or a slice object for a range of frames.
     - `filter` (`Optional[Callable]`, optional): A callable that determines whether a given frame should be included. Defaults to `_tb_filter`, which typically filters out frames from "site-packages". If set to `None`, no filtering occurs.
     - `template` (`str`, optional): A string template defining how the error message should be formatted. It can include placeholders like `{trace_routes}`, `{error_line}`, and `{error.__class__.__name__}`. The default template provides a concise summary of the error location and type.
+    - `filename_filter` (`Tuple[str, str]`, optional): A tuple specifying the include and exclude strings of filename. Defaults to `("", "")`, which means no filtering occurs.
     - `**kwargs`: Additional keyword arguments to be used within the formatting template.
 
     Returns:
@@ -519,6 +520,20 @@
     ... except Exception as e:
     ...     format_error(e, filter=lambda i: '<doctest' in str(i))
     "[<doctest>:<module>(4)] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
+    >>> try:
+    ...     # test with filename_filter[0]
+    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
+    ...     version_info_to_nodot(0)
+    ... except Exception as e:
+    ...     format_error(e, filter=None, filename_filter=("site-packages", ""))
+    '[compatibility_tags.py:version_info_to_nodot(23)] return "".join(map(str, version_info[:2])) >>> TypeError(\'int\' object is not subscriptable)'
+    >>> try:
+    ...     # test with filename_filter[1]
+    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
+    ...     version_info_to_nodot(0)
+    ... except Exception as e:
+    ...     format_error(e, filter=None, filename_filter=("", "site-packages"))
+    '[<doctest>:<module>(4)] return "".join(map(str, version_info[:2])) >>> TypeError(\'int\' object is not subscriptable)'
     
 ```
 
