@@ -13,7 +13,7 @@ from itertools import chain
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from threading import Lock, Semaphore
-from typing import Callable, Coroutine, Dict, Optional, OrderedDict, Set, Union
+from typing import Any, Callable, Coroutine, Dict, Optional, OrderedDict, Set, Union
 from weakref import WeakSet
 
 __all__ = [
@@ -394,8 +394,9 @@ class FuncSchema:
                             f"Parameter `{param.name}` has no type and no default value."
                         )
                     else:
-                        continue
-                tp = type(param.default)
+                        tp: Any = str
+                else:
+                    tp = type(param.default)
             else:
                 tp = param.annotation
             if tp in cls.ALLOW_TYPES:
