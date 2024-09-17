@@ -270,6 +270,8 @@ class TKit(tk.Tk):
     @classmethod
     def ask_text(cls, arg: str, message="", title="", **kwargs):
         textarea = bool(kwargs.pop("textarea", None))
+        default = kwargs.pop("default", "")
+        button_text = kwargs.pop("button_text", "Submit")
         message = message or arg
         root = cls()
         root.title(title)
@@ -283,6 +285,8 @@ class TKit(tk.Tk):
 
         if textarea:
             text_box: Any = tk.Text(root, height=2)
+            if default:
+                text_box.insert("1.0", default)
 
             def submit(event=None):
                 # remove \n
@@ -294,6 +298,8 @@ class TKit(tk.Tk):
 
         else:
             text_box = tk.Entry(root, textvariable=text_var)
+            if default:
+                text_box.insert(0, default)
 
             def submit(event=None):
                 root.destroy()
@@ -302,7 +308,7 @@ class TKit(tk.Tk):
         text_box.bind("<Control-Return>", submit)
         text_box.pack(expand=True, fill="both")
         text_box.focus_force()
-        tk.Button(root, text="Submit", background="#ffffff", command=submit).pack(
+        tk.Button(root, text=button_text, background="#ffffff", command=submit).pack(
             expand=True, fill="both"
         )
         root.mainloop()

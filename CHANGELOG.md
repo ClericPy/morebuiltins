@@ -2,7 +2,7 @@
 1. add filename_filter to utils.format_error
 2. add `functools.get_function` to find function from entrypoint
    1. set the type default to str while strict=False and no default/annotation
-3. 
+3. add `default` `button_text` to `TKit.ask_text`
 
 ### 1.1.5 (2024-08-29)
 1. add `utils.get_hash_int`
