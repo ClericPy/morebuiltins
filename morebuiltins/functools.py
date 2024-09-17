@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import importlib.util
 import inspect
 import json
@@ -27,6 +28,7 @@ __all__ = [
     "func_cmd",
     "file_import",
     "RotatingFileWriter",
+    "get_function",
 ]
 
 
@@ -861,6 +863,18 @@ class RotatingFileWriter:
         self.close_file()
 
 
+def get_function(entrypoint: str):
+    """Get the function object from entrypoint.
+
+    Demo::
+
+        >>> get_function("urllib.parse:urlparse").__name__
+        'urlparse'
+    """
+    module, _, function = entrypoint.partition(":")
+    return getattr(importlib.import_module(module), function)
+
+
 def test_bg_task():
     async def _test_bg_task():
         async def coro():
@@ -936,14 +950,19 @@ def test_named_lock():
     test_async()
 
 
-def test():
+def test_utils():
     test_bg_task()
     test_named_lock()
 
 
-if __name__ == "__main__":
+def test():
+    global __name__
     __name__ = "morebuiltins.functools"
-    test()
     import doctest
 
     doctest.testmod()
+    test_utils()
+
+
+if __name__ == "__main__":
+    test()
