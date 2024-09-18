@@ -7,6 +7,7 @@
    1. try `python -m morebuiltins.cmd.ui -e re:findall --cli`
    2. try `python -m morebuiltins.cmd.ui -e re:findall --gui1`
    3. try `python -m morebuiltins.cmd.ui -e re:findall --gui2`
+5. add default doc for `morebuiltins.cmd.ui` --gui
 
 ### 1.1.5 (2024-08-29)
 1. add `utils.get_hash_int`
