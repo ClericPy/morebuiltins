@@ -23,6 +23,9 @@ class TKUI:
         self.origin_std = (sys.stdout, sys.stderr)
         sys.stdout = TextRedirector(self.text_output, "stdout")
         sys.stderr = TextRedirector(self.text_output, "stderr")
+        doc = getattr(self.function, "__doc__", "")
+        if doc:
+            print(doc)
 
     def __del__(self):
         sys.stdout, sys.stderr = self.origin_std
