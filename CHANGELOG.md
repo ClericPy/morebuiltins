@@ -4,6 +4,9 @@
    1. set the type default to str while strict=False and no default/annotation
 3. add `default` `button_text` to `TKit.ask_text`
 4. add `morebuiltins.cmd.ui` with `--cli`/`--gui`, `--web` is coming soon
+   1. try `python -m morebuiltins.cmd.ui -e re:findall --cli`
+   2. try `python -m morebuiltins.cmd.ui -e re:findall --gui1`
+   3. try `python -m morebuiltins.cmd.ui -e re:findall --gui2`
 
 ### 1.1.5 (2024-08-29)
 1. add `utils.get_hash_int`
