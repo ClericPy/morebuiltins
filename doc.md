@@ -1207,7 +1207,7 @@
     >>> def test(a, b: str, /, c=1, *, d=["d"], e=0.1, f={"f"}, g=(1, 2), h=True, i={1}, **kws):
     ...     return
     >>> FuncSchema.parse(test, strict=False)
-    {'b': {'type': <class 'str'>, 'default': <class 'inspect._empty'>}, 'c': {'type': <class 'int'>, 'default': 1}, 'd': {'type': <class 'list'>, 'default': ['d']}, 'e': {'type': <class 'float'>, 'default': 0.1}, 'f': {'type': <class 'set'>, 'default': {'f'}}, 'g': {'type': <class 'tuple'>, 'default': (1, 2)}, 'h': {'type': <class 'bool'>, 'default': True}, 'i': {'type': <class 'set'>, 'default': {1}}}
+    {'a': {'type': <class 'str'>, 'default': <class 'inspect._empty'>}, 'b': {'type': <class 'str'>, 'default': <class 'inspect._empty'>}, 'c': {'type': <class 'int'>, 'default': 1}, 'd': {'type': <class 'list'>, 'default': ['d']}, 'e': {'type': <class 'float'>, 'default': 0.1}, 'f': {'type': <class 'set'>, 'default': {'f'}}, 'g': {'type': <class 'tuple'>, 'default': (1, 2)}, 'h': {'type': <class 'bool'>, 'default': True}, 'i': {'type': <class 'set'>, 'default': {1}}, 'kws': {'type': <class 'str'>, 'default': <class 'inspect._empty'>}}
     >>> def test(a):
     ...     return
     >>> try:FuncSchema.parse(test, strict=True)
@@ -1249,6 +1249,26 @@
     (1, 1)
     >>> FuncSchema.convert('[1, "1"]', list)
     [1, '1']
+    >>> FuncSchema.to_string(1)
+    '1'
+    >>> FuncSchema.to_string("1")
+    '1'
+    >>> FuncSchema.to_string(1.0, float)
+    '1.0'
+    >>> FuncSchema.to_string(False)
+    'false'
+    >>> FuncSchema.to_string(True)
+    'true'
+    >>> FuncSchema.to_string({1: 1})
+    '{"1": 1}'
+    >>> FuncSchema.to_string({'1': '1'})
+    '{"1": "1"}'
+    >>> FuncSchema.to_string({1})
+    '[1]'
+    >>> FuncSchema.to_string((1, 1))
+    '[1, 1]'
+    >>> FuncSchema.to_string([1, '1'])
+    '[1, "1"]'
     
 ```
 
@@ -1451,6 +1471,23 @@
         0
         >>> writer.clean_backups(writer.max_backups)
         >>> writer.unlink_file()
+    
+```
+
+
+---
+
+
+
+3.12 `get_function` - Get the function object from entrypoint.
+
+
+```python
+
+    Demo::
+
+        >>> get_function("urllib.parse:urlparse").__name__
+        'urlparse'
     
 ```
 

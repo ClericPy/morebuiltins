@@ -335,7 +335,7 @@ class FuncSchema:
     >>> def test(a, b: str, /, c=1, *, d=["d"], e=0.1, f={"f"}, g=(1, 2), h=True, i={1}, **kws):
     ...     return
     >>> FuncSchema.parse(test, strict=False)
-    {'b': {'type': <class 'str'>, 'default': <class 'inspect._empty'>}, 'c': {'type': <class 'int'>, 'default': 1}, 'd': {'type': <class 'list'>, 'default': ['d']}, 'e': {'type': <class 'float'>, 'default': 0.1}, 'f': {'type': <class 'set'>, 'default': {'f'}}, 'g': {'type': <class 'tuple'>, 'default': (1, 2)}, 'h': {'type': <class 'bool'>, 'default': True}, 'i': {'type': <class 'set'>, 'default': {1}}}
+    {'a': {'type': <class 'str'>, 'default': <class 'inspect._empty'>}, 'b': {'type': <class 'str'>, 'default': <class 'inspect._empty'>}, 'c': {'type': <class 'int'>, 'default': 1}, 'd': {'type': <class 'list'>, 'default': ['d']}, 'e': {'type': <class 'float'>, 'default': 0.1}, 'f': {'type': <class 'set'>, 'default': {'f'}}, 'g': {'type': <class 'tuple'>, 'default': (1, 2)}, 'h': {'type': <class 'bool'>, 'default': True}, 'i': {'type': <class 'set'>, 'default': {1}}, 'kws': {'type': <class 'str'>, 'default': <class 'inspect._empty'>}}
     >>> def test(a):
     ...     return
     >>> try:FuncSchema.parse(test, strict=True)
@@ -377,6 +377,26 @@ class FuncSchema:
     (1, 1)
     >>> FuncSchema.convert('[1, "1"]', list)
     [1, '1']
+    >>> FuncSchema.to_string(1)
+    '1'
+    >>> FuncSchema.to_string("1")
+    '1'
+    >>> FuncSchema.to_string(1.0, float)
+    '1.0'
+    >>> FuncSchema.to_string(False)
+    'false'
+    >>> FuncSchema.to_string(True)
+    'true'
+    >>> FuncSchema.to_string({1: 1})
+    '{"1": 1}'
+    >>> FuncSchema.to_string({'1': '1'})
+    '{"1": "1"}'
+    >>> FuncSchema.to_string({1})
+    '[1]'
+    >>> FuncSchema.to_string((1, 1))
+    '[1, 1]'
+    >>> FuncSchema.to_string([1, '1'])
+    '[1, "1"]'
     """
 
     ALLOW_TYPES = {int, float, str, tuple, list, set, dict, bool}
@@ -412,6 +432,21 @@ class FuncSchema:
             return target_type(json.loads(obj))
         else:
             return target_type(obj)
+
+    @classmethod
+    def to_string(cls, obj, ensure_ascii=False):
+        tp = type(obj)
+        if isinstance(obj, str):
+            return obj
+        elif tp in cls.JSON_TYPES:
+            if tp in {tuple, set}:
+                obj = list(obj)
+            return json.dumps(obj, ensure_ascii=ensure_ascii)
+        elif tp in cls.ALLOW_TYPES:
+            # {int, float}
+            return str(obj)
+        else:
+            raise TypeError(f"Unsupported type: {tp}")
 
 
 class InlinePB(object):
