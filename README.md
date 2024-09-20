@@ -197,6 +197,17 @@ print(morebuiltins.__file__)
 10.1 `ProxyChecker` - A command line toolkit to check available proxies.
 
 
+## 11. morebuiltins.cmd.ui
+
+11.2 `handle_cli` - Command Line Interface: interactive mode
+
+11.3 `handle_web` - Function to Web UI.
+
+11.4 `handle_tk1` - Function to tkinter UI. (interactive mode)
+
+11.5 `handle_tk2` - Function to tkinter UI.
+
+
 <!-- end -->
 
 ## cmd utils

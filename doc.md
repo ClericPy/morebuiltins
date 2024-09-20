@@ -2053,3 +2053,59 @@
 ---
 
 
+## 11. morebuiltins.cmd.ui
+
+
+
+11.2 `handle_cli` - Command Line Interface: interactive mode
+
+
+```python
+
+    Args:
+        func: a callable function
+    
+```
+
+
+---
+
+
+
+11.3 `handle_web` - Function to Web UI.
+
+
+```python
+
+    Args:
+        function: callable function
+        bind (str, optional): Defaults to "127.0.0.1:8080".
+        open_browser (bool, optional): auto open browser. Defaults to False.
+        keepalive_timeout (int, optional): shutdown if no request after timeout. Defaults to 60.
+    
+```
+
+
+---
+
+
+
+11.4 `handle_tk1` - Function to tkinter UI. (interactive mode)
+
+
+
+
+
+---
+
+
+
+11.5 `handle_tk2` - Function to tkinter UI.
+
+
+
+
+
+---
+
+

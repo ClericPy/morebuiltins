@@ -3,10 +3,11 @@
 2. add `functools.get_function` to find function from entrypoint
    1. set the type default to str while strict=False and no default/annotation
 3. add `default` `button_text` to `TKit.ask_text`
-4. add `morebuiltins.cmd.ui` with `--cli`/`--gui`, `--web` is coming soon
+4. add `morebuiltins.cmd.ui` with `--cli`/`--gui`, `--web`
    1. try `python -m morebuiltins.cmd.ui -e re:findall --cli`
    2. try `python -m morebuiltins.cmd.ui -e re:findall --gui1`
    3. try `python -m morebuiltins.cmd.ui -e re:findall --gui2`
+   4. try `python -m morebuiltins.cmd.ui -e test_func_web --web --web-open --web-timeout=30`
 5. add default doc for `morebuiltins.cmd.ui` --gui
 6. `morebuiltins.functools.FuncSchema` changed
    1. `parse` will see arg type as `str` while strict=False and no default/annotation
