@@ -10,4 +10,5 @@ __all__ = [
     "morebuiltins.emails",
     "morebuiltins.cmd.log_server",
     "morebuiltins.cmd.proxy_checker",
+    "morebuiltins.cmd.ui",
 ]
