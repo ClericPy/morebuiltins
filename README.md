@@ -143,6 +143,8 @@ print(morebuiltins.__file__)
 
 3.11 `RotatingFileWriter` - RotatingFileWriter class for writing to a file with rotation support.
 
+3.12 `get_function` - Get the function object from entrypoint.
+
 
 ## 4. morebuiltins.ipc
 
