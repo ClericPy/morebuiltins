@@ -1,3 +1,7 @@
+### 1.1.7 (2024-09-24)
+1. fix `utils.code_inline` gzip compress `mtime` to 0
+2. 
+
 ### 1.1.6 (2024-09-09)
 1. add filename_filter to utils.format_error
 2. add `functools.get_function` to find function from entrypoint
