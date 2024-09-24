@@ -414,11 +414,17 @@ def code_inline(
 ) -> str:
     """Minifies Python source code into a single line.
 
-    >>> code1 = ''
-    >>> code2 = code_inline("variable=12345")
-    >>> # import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY8mBl+`0{<&ZEXqtw%1N~~G%_|Z1ptx!(o_xr000".encode("u8"))))
+    >>> code1 = code_inline('def test_code1(): return 12345')
+    >>> code1
+    'import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY8000000t!n>O;adIEiQ>q&QD1-)X=n2C`v6UEy`0cG%_|Z1psqiSP>oo000".encode("u8"))))'
+    >>> exec(code1)
+    >>> test_code1()
+    12345
+    >>> code2 = code_inline("v=12345")
+    >>> code2
+    'import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY8000000tzd$H8e6dF$Dk}<L9Rb0000".encode("u8"))))'
     >>> exec(code2)
-    >>> variable
+    >>> v
     12345
 
     Args:
@@ -429,7 +435,7 @@ def code_inline(
     """
     _encoder = getattr(base64, f"{encoder}encode")
     _source = source_code.encode(encoding="u8")
-    _source = gzip.compress(_source)
+    _source = gzip.compress(_source, mtime=0)
     _source = _encoder(_source)
     code = _source.decode("u8")
     result = (
