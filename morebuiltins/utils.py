@@ -1437,6 +1437,10 @@ class FileDict(dict):
             try:
                 with open(temp, "w") as f:
                     json.dump(obj, f)
+                try:
+                    os.unlink(path)
+                except FileNotFoundError:
+                    pass
                 os.rename(temp, path)
             finally:
                 try:
@@ -1457,6 +1461,10 @@ class FileDict(dict):
             try:
                 with open(temp, "wb") as f:
                     pickle.dump(obj, f)
+                try:
+                    os.unlink(path)
+                except FileNotFoundError:
+                    pass
                 os.rename(temp, path)
             finally:
                 try:
@@ -1475,10 +1483,10 @@ class FileDict(dict):
         path = str(path)
         if not handler:
             handler = cls.choose_handler(str(path))
-        item = cls(handler(path))
-        setattr(item, "path", path)
-        setattr(item, "handler", handler)
-        return item
+        self = cls(handler(path))
+        setattr(self, "path", path)
+        setattr(self, "handler", handler)
+        return self
 
     def save(self):
         self.handler(self.path, self)
