@@ -9,11 +9,21 @@ import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
+from gzip import GzipFile
 from itertools import chain
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
-from threading import Lock, Semaphore
-from typing import Any, Callable, Coroutine, Dict, Optional, OrderedDict, Set, Union
+from threading import Lock, Semaphore, Thread
+from typing import (
+    Any,
+    Callable,
+    Coroutine,
+    Dict,
+    Optional,
+    OrderedDict,
+    Set,
+    Union,
+)
 from weakref import WeakSet
 
 __all__ = [
@@ -538,25 +548,45 @@ class InlinePB(object):
 class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
     """TimedRotatingFileHandler with maxSize, to avoid files that are too large.
 
-    no test.
 
     Demo::
 
         import logging
         import time
+        from morebuiltins.functools import SizedTimedRotatingFileHandler
 
-        logger = logging.getLogger("test")
-        h = SizedTimedRotatingFileHandler("test.log", "d", 1, 3, maxBytes=1)
+        logger = logging.getLogger("test1")
+        h = SizedTimedRotatingFileHandler(
+            "logs/test1.log", "d", 1, 3, maxBytes=1, ensure_dir=True
+        )
         h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
         logger.addHandler(h)
 
         for i in range(5):
-            logger.warning(str(i) * 100)
+            logger.warning(str(i) * 102400)
             time.sleep(1)
-        # 2024/06/25 22:47   134     test.log.20240625_224717
-        # 2024/06/25 22:47   134     test.log.20240625_224718
-        # 2024/06/25 22:47   134     test.log.20240625_224719
+        # 102434 test1.log
+        # 102434 test1.log.20241113_231000
+        # 102434 test1.log.20241113_231001
+        # 102434 test1.log.20241113_231002
+        logger = logging.getLogger("test2")
+        h = SizedTimedRotatingFileHandler(
+            "logs/test2.log", "d", 1, 3, maxBytes=1, compress=True
+        )
+        h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        logger.addHandler(h)
+
+        for i in range(5):
+            logger.warning(str(i) * 102400)
+            time.sleep(1)
+        # 102434 test2.log
+        #    186 test2.log.20241113_231005.gz
+        #    186 test2.log.20241113_231006.gz
+        #    186 test2.log.20241113_231007.gz
+
     """
+
+    do_compress_delay = 0.1
 
     def __init__(
         self,
@@ -568,6 +598,8 @@ class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
         encoding=None,
         delay=False,
         utc=False,
+        compress=False,
+        ensure_dir=True,
     ):
         """
         Initialize the timed backup file handler.
@@ -581,12 +613,84 @@ class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
         :param delay: Whether to delay opening the file until the first write
         :param utc: Whether to use UTC time for naming backups
         """
+        self.log_path = Path(filename)
+        if ensure_dir:
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
         super().__init__(filename, when, interval, backupCount, encoding, delay, utc)
         self.maxBytes = maxBytes
         self.suffix = "%Y%m%d_%H%M%S"
-        self.extMatch = re.compile(
-            r"^\d{4}\d{2}\d{2}_\d{2}\d{2}\d{2}(\.\w+)?$", re.ASCII
+        self.compress = compress
+        self.need_compress = False
+        self.comress_chunk_size = 64 * 1024
+        self.extMatch = re.compile(r"^\d{4}\d{2}\d{2}_\d{2}\d{2}\d{2}$", re.ASCII)
+
+    def do_compress_async(self):
+        if getattr(self, "_background_compress", None):
+            return
+        self._compressing = Thread(
+            target=self.do_compress, daemon=False, name="do_compress_async"
         )
+        self._compressing.start()
+
+    def gzip_log(self, path: Path):
+        try:
+            temp_path = path.with_suffix(".tmp.gz")
+            with open(path, "rb") as f:
+                with GzipFile(temp_path, "wb") as gz:
+                    size = 0
+                    lines = []
+                    for line in f:
+                        size += len(line)
+                        lines.append(line)
+                        if size > self.comress_chunk_size:
+                            gz.writelines(lines)
+                            size = 0
+                            lines = []
+                    if lines:
+                        gz.writelines(lines)
+            if path.is_file():
+                try:
+                    path.unlink()
+                    temp_path.rename(path.with_suffix(f"{path.suffix}.gz"))
+                except OSError:
+                    pass
+        except OSError:
+            pass
+        finally:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    def do_compress(self):
+        try:
+            while self.need_compress:
+                self.need_compress = False
+                time.sleep(self.do_compress_delay)
+                now_suffix = f".{time.strftime(self.suffix)}"
+                path_list = []
+                for path in self.log_path.parent.glob(f"{self.log_path.name}.*"):
+                    if path.suffix == now_suffix:
+                        self.need_compress = True
+                        continue
+                    for time_suffix in path.name.split(".")[-2:]:
+                        if self.extMatch.match(time_suffix):
+                            path_list.append((time_suffix, path))
+                path_list.sort()
+                target_index = len(path_list) - self.backupCount
+                for index, (_, path) in enumerate(path_list):
+                    if index < target_index:
+                        try:
+                            path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        continue
+                    elif path.suffix == ".gz":
+                        continue
+                    else:
+                        self.gzip_log(path)
+        finally:
+            self._compressing = None
 
     def shouldRollover(self, record):
         """
@@ -607,11 +711,25 @@ class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
         Do a rollover, as described by the base class documentation.
         However, also check for the maxBytes parameter and rollover if needed.
         """
-        super().doRollover()
+        try:
+            super().doRollover()
+        except OSError:
+            pass
+        finally:
+            self.need_compress = True
+        if self.compress:
+            self.do_compress_async()
 
-        if self.maxBytes > 0:
-            self.stream.close()
-            self.stream = self._open()
+    def getFilesToDelete(self):
+        # always return null list
+        if self.compress:
+            return []
+        else:
+            return super().getFilesToDelete()
+
+    def __del__(self):
+        if self.compress:
+            self.do_compress()
 
 
 def get_type_default(tp, default=None):
@@ -794,6 +912,9 @@ class RotatingFileWriter:
         max_size=5 * 1024**2,
         max_backups=0,
         encoding="utf-8",
+        errors=None,
+        buffering=-1,
+        newline=None,
     ):
         if max_backups < 0:
             raise ValueError("max_backups must be greater than -1, 0 for itself.")
@@ -802,6 +923,9 @@ class RotatingFileWriter:
         self.max_size = max_size
         self.max_backups = max_backups
         self.encoding = encoding
+        self.errors = errors
+        self.buffering = buffering
+        self.newline = newline
         self.file = self.reopen_file()
         self._check_exist_count = self.check_exist_every + 1
         self._rotate_lock = Lock()
@@ -821,7 +945,13 @@ class RotatingFileWriter:
 
     def reopen_file(self):
         self.close_file()
-        self.file = self.path.open("a")
+        self.file = self.path.open(
+            "a",
+            encoding=self.encoding,
+            errors=self.errors,
+            buffering=self.buffering,
+            newline=self.newline,
+        )
         return self.file
 
     def check_exist(self):
