@@ -4,6 +4,7 @@
 3. add `ipc.QueueManager` based on BaseManager, add JSON listener
 4. add `compress`, `ensure_dir` arg to `funtools.SizedTimedRotatingFileHandler`
 5. add `compress` arg to `funtools.RotatingFileWriter`
+6. update `utils.format_error` default filter skip from "site-packages" to "-packages"
 
 ### 1.1.6 (2024-09-09)
 1. add filename_filter to utils.format_error

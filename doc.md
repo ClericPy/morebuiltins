@@ -227,13 +227,13 @@
 
     >>> code1 = code_inline('def test_code1(): return 12345')
     >>> code1
-    'import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY8000000t!n>O;adIEiQ>q&QD1-)X=n2C`v6UEy`0cG%_|Z1psqiSP>oo000".encode("u8"))))'
+    'import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY80RR910{=@%O;adIEiQ>q&QD1-)X=n2C`v6UEy`0cG%_|Z1psqiSP>oo000".encode("u8"))))'
     >>> exec(code1)
     >>> test_code1()
     12345
     >>> code2 = code_inline("v=12345")
     >>> code2
-    'import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY8000000tzd$H8e6dF$Dk}<L9Rb0000".encode("u8"))))'
+    'import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY80RR910{<(sH8e6dF$Dk}<L9Rb0000".encode("u8"))))'
     >>> exec(code2)
     >>> v
     12345
@@ -458,7 +458,7 @@
 
 
 
-1.17 `format_error` - Extracts frame information from an exception, with an option to filter out “site-packages” details by default.
+1.17 `format_error` - Extracts frame information from an exception, with an option to filter out “-packages” details by default. To shorten your exception message.
 
 
 ```python
@@ -467,7 +467,7 @@
 
     - `error` (`BaseException`): The exception instance for which the stack trace information is to be extracted and formatted.
     - `index` (`Union[int, slice]`, optional): Specifies which frames to include in the output. By default, it's set to `slice(-3, None, None)`, showing the last three frames. Can be an integer for a single frame or a slice object for a range of frames.
-    - `filter` (`Optional[Callable]`, optional): A callable that determines whether a given frame should be included. Defaults to `_tb_filter`, which typically filters out frames from "site-packages". If set to `None`, no filtering occurs.
+    - `filter` (`Optional[Callable]`, optional): A callable that determines whether a given frame should be included. Defaults to `_tb_filter`, which typically filters out frames from "-packages". If set to `None`, no filtering occurs.
     - `template` (`str`, optional): A string template defining how the error message should be formatted. It can include placeholders like `{trace_routes}`, `{error_line}`, and `{error.__class__.__name__}`. The default template provides a concise summary of the error location and type.
     - `filename_filter` (`Tuple[str, str]`, optional): A tuple specifying the include and exclude strings of filename. Defaults to `("", "")`, which means no filtering occurs.
     - `**kwargs`: Additional keyword arguments to be used within the formatting template.
@@ -506,40 +506,40 @@
     ...     format_error(e, index=slice(-1, None, None))
     '[<doctest>:func2(3)] def func2(): 1 / 0 >>> ZeroDivisionError(division by zero)'
     >>> try:
-    ...     # test with default filter(filename skip site-packages)
-    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
-    ...     version_info_to_nodot(0)
-    ... except Exception as e:
-    ...     format_error(e)
-    "[<doctest>:<module>(4)] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
-    >>> try:
     ...     # test without filter
-    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
-    ...     version_info_to_nodot(0)
+    ...     from pip._internal.utils.encoding import auto_decode
+    ...     auto_decode(0)
     ... except Exception as e:
-    ...     format_error(e, filter=None)
-    '[<doctest>:<module>(4)|compatibility_tags.py:version_info_to_nodot(23)] return "".join(map(str, version_info[:2])) >>> TypeError(\'int\' object is not subscriptable)'
+    ...     "encoding.py:auto_decode" in format_error(e, filter=None)
+    True
     >>> try:
     ...     # test with custom filter.
-    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
-    ...     version_info_to_nodot(0)
+    ...     from pip._internal.utils.encoding import auto_decode
+    ...     auto_decode(0)
     ... except Exception as e:
     ...     format_error(e, filter=lambda i: '<doctest' in str(i))
-    "[<doctest>:<module>(4)] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
+    "[<doctest>:<module>(4)] auto_decode(0) >>> AttributeError('int' object has no attribute 'startswith')"
     >>> try:
-    ...     # test with filename_filter[0]
-    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
-    ...     version_info_to_nodot(0)
+    ...     # test with default filter(filename skip -packages)
+    ...     from pip._internal.utils.encoding import auto_decode
+    ...     auto_decode(0)
     ... except Exception as e:
-    ...     format_error(e, filter=None, filename_filter=("site-packages", ""))
-    '[compatibility_tags.py:version_info_to_nodot(23)] return "".join(map(str, version_info[:2])) >>> TypeError(\'int\' object is not subscriptable)'
+    ...     format_error(e)
+    "[<doctest>:<module>(4)] auto_decode(0) >>> AttributeError('int' object has no attribute 'startswith')"
     >>> try:
-    ...     # test with filename_filter[1]
-    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
-    ...     version_info_to_nodot(0)
+    ...     # test with filename_filter[0] include string, disable the default filter at first
+    ...     from pip._internal.utils.encoding import auto_decode
+    ...     auto_decode(0)
     ... except Exception as e:
-    ...     format_error(e, filter=None, filename_filter=("", "site-packages"))
-    '[<doctest>:<module>(4)] return "".join(map(str, version_info[:2])) >>> TypeError(\'int\' object is not subscriptable)'
+    ...     "encoding.py:auto_decode" in format_error(e, filter=None, filename_filter=("-packages", ""))
+    True
+    >>> try:
+    ...     # test with filename_filter[1] exclude string, disable the default filter at first
+    ...     from pip._internal.utils.encoding import auto_decode
+    ...     auto_decode(0)
+    ... except Exception as e:
+    ...     "encoding.py:auto_decode" in format_error(e, filter=None, filename_filter=("", "-packages"))
+    False
     
 ```
 
@@ -1314,24 +1314,42 @@
 
 ```python
 
-    no test.
 
     Demo::
 
         import logging
         import time
+        from morebuiltins.functools import SizedTimedRotatingFileHandler
 
-        logger = logging.getLogger("test")
-        h = SizedTimedRotatingFileHandler("test.log", "d", 1, 3, maxBytes=1)
+        logger = logging.getLogger("test1")
+        h = SizedTimedRotatingFileHandler(
+            "logs/test1.log", "d", 1, 3, maxBytes=1, ensure_dir=True
+        )
         h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
         logger.addHandler(h)
 
         for i in range(5):
-            logger.warning(str(i) * 100)
+            logger.warning(str(i) * 102400)
             time.sleep(1)
-        # 2024/06/25 22:47   134     test.log.20240625_224717
-        # 2024/06/25 22:47   134     test.log.20240625_224718
-        # 2024/06/25 22:47   134     test.log.20240625_224719
+        # 102434 test1.log
+        # 102434 test1.log.20241113_231000
+        # 102434 test1.log.20241113_231001
+        # 102434 test1.log.20241113_231002
+        logger = logging.getLogger("test2")
+        h = SizedTimedRotatingFileHandler(
+            "logs/test2.log", "d", 1, 3, maxBytes=1, compress=True
+        )
+        h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        logger.addHandler(h)
+
+        for i in range(5):
+            logger.warning(str(i) * 102400)
+            time.sleep(1)
+        # 102434 test2.log
+        #    186 test2.log.20241113_231005.gz
+        #    186 test2.log.20241113_231006.gz
+        #    186 test2.log.20241113_231007.gz
+
     
 ```
 
@@ -1476,7 +1494,23 @@
         >>> len(writer.backup_path_list())
         0
         >>> writer.clean_backups(writer.max_backups)
-        >>> writer.unlink_file()
+        >>> len(writer.backup_path_list())
+        0
+        >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=3)
+        >>> writer.print("1" * 100)
+        >>> writer.unlink(rotate=False)
+        >>> len(writer.backup_path_list())
+        1
+        >>> writer.unlink(rotate=True)
+        >>> len(writer.backup_path_list())
+        0
+        >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=3, compress=True)
+        >>> writer.print("1" * 100)
+        >>> len(writer.backup_path_list())
+        1
+        >>> writer.unlink(rotate=True)
+        >>> len(writer.backup_path_list())
+        0
     
 ```
 
