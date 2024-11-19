@@ -781,8 +781,8 @@ def always_return_value(value):
 
 
 def _tb_filter(tb: traceback.FrameSummary):
-    # filt tb with code-line and not in site-packages
-    return tb.line and "site-packages" not in tb.filename
+    # filt tb with code-line and not excluded -packages
+    return tb.line and "-packages" not in tb.filename
 
 
 def format_error(
@@ -793,13 +793,13 @@ def format_error(
     filename_filter=("", ""),
     **kwargs,
 ) -> str:
-    r"""Extracts frame information from an exception, with an option to filter out “site-packages” details by default.
+    r"""Extracts frame information from an exception, with an option to filter out “-packages” details by default. To shorten your exception message.
 
     Parameters:
 
     - `error` (`BaseException`): The exception instance for which the stack trace information is to be extracted and formatted.
     - `index` (`Union[int, slice]`, optional): Specifies which frames to include in the output. By default, it's set to `slice(-3, None, None)`, showing the last three frames. Can be an integer for a single frame or a slice object for a range of frames.
-    - `filter` (`Optional[Callable]`, optional): A callable that determines whether a given frame should be included. Defaults to `_tb_filter`, which typically filters out frames from "site-packages". If set to `None`, no filtering occurs.
+    - `filter` (`Optional[Callable]`, optional): A callable that determines whether a given frame should be included. Defaults to `_tb_filter`, which typically filters out frames from "-packages". If set to `None`, no filtering occurs.
     - `template` (`str`, optional): A string template defining how the error message should be formatted. It can include placeholders like `{trace_routes}`, `{error_line}`, and `{error.__class__.__name__}`. The default template provides a concise summary of the error location and type.
     - `filename_filter` (`Tuple[str, str]`, optional): A tuple specifying the include and exclude strings of filename. Defaults to `("", "")`, which means no filtering occurs.
     - `**kwargs`: Additional keyword arguments to be used within the formatting template.
@@ -838,40 +838,40 @@ def format_error(
     ...     format_error(e, index=slice(-1, None, None))
     '[<doctest>:func2(3)] def func2(): 1 / 0 >>> ZeroDivisionError(division by zero)'
     >>> try:
-    ...     # test with default filter(filename skip site-packages)
-    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
-    ...     version_info_to_nodot(0)
-    ... except Exception as e:
-    ...     format_error(e)
-    "[<doctest>:<module>(4)] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
-    >>> try:
     ...     # test without filter
-    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
-    ...     version_info_to_nodot(0)
+    ...     from pip._internal.utils.encoding import auto_decode
+    ...     auto_decode(0)
     ... except Exception as e:
-    ...     format_error(e, filter=None)
-    '[<doctest>:<module>(4)|compatibility_tags.py:version_info_to_nodot(23)] return "".join(map(str, version_info[:2])) >>> TypeError(\'int\' object is not subscriptable)'
+    ...     "encoding.py:auto_decode" in format_error(e, filter=None)
+    True
     >>> try:
     ...     # test with custom filter.
-    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
-    ...     version_info_to_nodot(0)
+    ...     from pip._internal.utils.encoding import auto_decode
+    ...     auto_decode(0)
     ... except Exception as e:
     ...     format_error(e, filter=lambda i: '<doctest' in str(i))
-    "[<doctest>:<module>(4)] version_info_to_nodot(0) >>> TypeError('int' object is not subscriptable)"
+    "[<doctest>:<module>(4)] auto_decode(0) >>> AttributeError('int' object has no attribute 'startswith')"
     >>> try:
-    ...     # test with filename_filter[0]
-    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
-    ...     version_info_to_nodot(0)
+    ...     # test with default filter(filename skip -packages)
+    ...     from pip._internal.utils.encoding import auto_decode
+    ...     auto_decode(0)
     ... except Exception as e:
-    ...     format_error(e, filter=None, filename_filter=("site-packages", ""))
-    '[compatibility_tags.py:version_info_to_nodot(23)] return "".join(map(str, version_info[:2])) >>> TypeError(\'int\' object is not subscriptable)'
+    ...     format_error(e)
+    "[<doctest>:<module>(4)] auto_decode(0) >>> AttributeError('int' object has no attribute 'startswith')"
     >>> try:
-    ...     # test with filename_filter[1]
-    ...     from pip._internal.utils.compatibility_tags import version_info_to_nodot
-    ...     version_info_to_nodot(0)
+    ...     # test with filename_filter[0] include string, disable the default filter at first
+    ...     from pip._internal.utils.encoding import auto_decode
+    ...     auto_decode(0)
     ... except Exception as e:
-    ...     format_error(e, filter=None, filename_filter=("", "site-packages"))
-    '[<doctest>:<module>(4)] return "".join(map(str, version_info[:2])) >>> TypeError(\'int\' object is not subscriptable)'
+    ...     "encoding.py:auto_decode" in format_error(e, filter=None, filename_filter=("-packages", ""))
+    True
+    >>> try:
+    ...     # test with filename_filter[1] exclude string, disable the default filter at first
+    ...     from pip._internal.utils.encoding import auto_decode
+    ...     auto_decode(0)
+    ... except Exception as e:
+    ...     "encoding.py:auto_decode" in format_error(e, filter=None, filename_filter=("", "-packages"))
+    False
     """
     try:
         if filter:

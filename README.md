@@ -85,7 +85,7 @@ print(morebuiltins.__file__)
 
 1.16 `always_return_value` - Got a function always return the given value.
 
-1.17 `format_error` - Extracts frame information from an exception, with an option to filter out “site-packages” details by default.
+1.17 `format_error` - Extracts frame information from an exception, with an option to filter out “-packages” details by default. To shorten your exception message.
 
 1.18 `Trie` - Transforms a standard dictionary into a trie structure that supports prefix matching.
 
