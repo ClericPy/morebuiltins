@@ -1,4 +1,7 @@
-### 1.1.7 (2024-09-24)
+### 1.1.7 (2024-12-11)
+1. add `utils.i2b` and `utils.b2i`, integer and fixed-length byte strings conversion.
+
+### 1.1.7 (2024-11-19)
 1. fix `utils.code_inline` gzip compress `mtime` to 1, to ensure the same compressed data
 2. fix `utils.FileDict.save`
 3. add `ipc.QueueManager` based on BaseManager, add JSON listener
