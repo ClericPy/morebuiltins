@@ -921,6 +921,93 @@
 ---
 
 
+
+1.30 `i2b` - Convert an int to bytes of a specified length, commonly used in TCP communication.
+
+
+```python
+
+    Parameters:
+        n: The integer to convert.
+        length: The number of bytes to convert. Default is 0, which means the byte length is determined automatically based on the integer's bit length.
+        byteorder: The byte order, which can be "big" or "little". Default is "big".
+        signed: Whether the integer is signed. Default is False.
+
+    Returns:
+        The converted byte sequence.
+
+    Length  Maximum::
+
+        1   256B-1
+        2    64K-1
+        3    16M-1
+        4     4G-1
+        5     1T-1
+        6    64T-1
+        7    16E-1
+        8   256Z-1
+        9    32Y-1
+        10    4P-1
+
+    >>> i2b(0)
+    b''
+    >>> i2b(1)
+    b'\x01'
+    >>> i2b(1, length=2)
+    b'\x00\x01'
+    >>> i2b(255)
+    b'\xff'
+    >>> i2b(256)
+    b'\x01\x00'
+    >>> i2b(256, length=3)
+    b'\x00\x01\x00'
+    >>> i2b(256, byteorder="little")
+    b'\x00\x01'
+    >>> i2b(256, length=3, signed=True)
+    b'\x00\x01\x00'
+    
+```
+
+
+---
+
+
+
+1.31 `b2i` - Convert a byte sequence to an integer.
+
+
+```python
+
+    Parameters:
+        b: The byte sequence to convert.
+        byteorder: The byte order, which can be "big" or "little". Default is "big".
+        signed: Whether the integer is signed. Default is False.
+
+    Returns:
+        The converted integer.
+    >>> b2i(b'\x01')
+    1
+    >>> b2i(b'\x00\x01')
+    1
+    >>> b2i(b'\x00\x01', byteorder="little")
+    256
+    >>> b2i(b'\xff')
+    255
+    >>> b2i(b'\x01\x00')
+    256
+    >>> b2i(b'\x00\x01\x00')
+    256
+    >>> b2i(b'\x00\x01\x00', signed=True)
+    256
+    >>> b2i(b'\x00\x01\x00', signed=False)
+    256
+    
+```
+
+
+---
+
+
 ## 2. morebuiltins.date
 
 

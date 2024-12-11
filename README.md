@@ -111,6 +111,10 @@ print(morebuiltins.__file__)
 
 1.29 `PathLock` - A Lock/asyncio.Lock of a path, and the child-path lock will block the parent-path.
 
+1.30 `i2b` - Convert an int to bytes of a specified length, commonly used in TCP communication.
+
+1.31 `b2i` - Convert a byte sequence to an integer.
+
 
 ## 2. morebuiltins.date
 
