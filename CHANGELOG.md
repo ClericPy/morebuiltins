@@ -1,5 +1,7 @@
-### 1.1.7 (2024-12-11)
+### 1.1.8 (2024-12-11)
 1. add `utils.i2b` and `utils.b2i`, integer and fixed-length byte strings conversion.
+2. add `--compress` to `cmd.log_server`
+3. add `snippets.event.EventTemplate`
 
 ### 1.1.7 (2024-11-19)
 1. fix `utils.code_inline` gzip compress `mtime` to 1, to ensure the same compressed data
