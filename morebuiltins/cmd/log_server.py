@@ -11,7 +11,6 @@ import typing
 from collections import Counter, namedtuple
 from pathlib import Path
 from queue import Empty, Queue
-from threading import Timer
 
 from ..functools import RotatingFileWriter
 from ..ipc import SocketLogHandlerEncoder, SocketServer
@@ -92,6 +91,7 @@ class LogServer(SocketServer):
         max_queue_size=100000,
         max_queue_buffer=20000,
         log_stream=sys.stdout,
+        compress=False,
     ):
         super().__init__(
             host,
@@ -109,6 +109,7 @@ class LogServer(SocketServer):
             "max_backups": server_log_args[1],
         }
         self.log_stream = log_stream
+        self.compress = compress
         self.log_dir = Path(log_dir).resolve() if log_dir else None
         if self.log_dir:
             self.log_dir.mkdir(exist_ok=True, parents=True)
@@ -136,7 +137,7 @@ class LogServer(SocketServer):
 
     def start_callback(self):
         self.send_log(
-            f"started log server on {self.host}:{self.port}, handle_signals={self.handle_signals}, max_queue_size={self.max_queue_size}, max_queue_buffer={self.max_queue_buffer}, log_stream={getattr(self.log_stream, 'name', None)}, log_dir={self.log_dir}"
+            f"started log server on {self.host}:{self.port}, handle_signals={self.handle_signals}, max_queue_size={self.max_queue_size}, max_queue_buffer={self.max_queue_buffer}, log_stream={getattr(self.log_stream, 'name', None)}, compress={self.compress}, log_dir={self.log_dir}"
         )
 
     def send_log(
@@ -169,6 +170,7 @@ class LogServer(SocketServer):
                         self.log_dir.joinpath(f"{name}.log"),
                         max_size=max_size,
                         max_backups=max_backups,
+                        compress=self.compress,
                     )
                 except Exception as e:
                     self.send_log(
@@ -354,6 +356,11 @@ async def main():
         default="sys.stdout",
         help="log to stream, if --log-stream='' will mute the stream log",
     )
+    parser.add_argument(
+        "--compress",
+        action="store_true",
+        help="compress log files with gzip",
+    )
     args = parser.parse_args()
     log_stream = {"sys.stdout": sys.stdout, "sys.stderr": sys.stderr, "": ""}[
         args.log_stream
@@ -368,6 +375,7 @@ async def main():
         max_queue_size=args.max_queue_size,
         max_queue_buffer=args.max_queue_buffer,
         log_stream=log_stream,
+        compress=args.compress,
     ) as ls:
         await ls.wait_closed()
 
