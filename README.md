@@ -212,14 +212,19 @@ print(morebuiltins.__file__)
 11.5 `handle_tk2` - Function to tkinter UI.
 
 
-## 12. morebuiltins.snippets.event
+## 12. morebuiltins.cmd.parse_deps
 
-12.1 `EventTemplate` - Event template for event sourcing
+12.1 `parse_deps` - Parse dependencies of a project directory.
 
 
-## 13. morebuiltins.snippets.sql
+## 13. morebuiltins.snippets.event
 
-13.1 `SqliteSQL` - Sqlite SQL generator
+13.1 `EventTemplate` - Event template for event sourcing
+
+
+## 14. morebuiltins.snippets.sql
+
+14.1 `SqliteSQL` - Sqlite SQL generator
 
 
 <!-- end -->

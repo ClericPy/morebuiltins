@@ -11,6 +11,7 @@ __all__ = [
     "morebuiltins.cmd.log_server",
     "morebuiltins.cmd.proxy_checker",
     "morebuiltins.cmd.ui",
+    "morebuiltins.cmd.parse_deps",
     "morebuiltins.snippets.event",
     "morebuiltins.snippets.sql",
 ]

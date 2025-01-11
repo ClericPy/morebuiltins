@@ -2236,11 +2236,115 @@
 ---
 
 
-## 12. morebuiltins.snippets.event
+## 12. morebuiltins.cmd.parse_deps
 
 
 
-12.1 `EventTemplate` - Event template for event sourcing
+12.1 `parse_deps` - Parse dependencies of a project directory.
+
+
+```python
+
+    Args:
+          project_dir (str): Path to the project directory.
+          ignore_stds (bool, optional): Whether to ignore dependencies from the standard library. Defaults to True.
+          format_path (bool, optional): Whether to format the paths. Defaults to True.
+          pattern_list (tuple, optional): List of patterns to match files. Defaults to ("*.py",).
+    Returns:
+            dict: A dictionary containing the project directory, circular dependencies, and dependencies.
+
+    Demo::
+
+        import json
+        import multiprocessing
+        from pathlib import Path
+
+        project_dir = Path(multiprocessing.__file__).parent
+        result = parse_deps(
+            project_dir,
+            ignore_stds=True,
+            format_path=True,
+            pattern_list=("*.py",),
+        )
+        dependencies = sorted(
+            result["dependencies"].items(),
+            key=lambda i: (len(i[1]), i[0]),
+            reverse=True,
+        )
+        print("project_dir:", project_dir.as_posix(), flush=True)
+        print("circular_dependency:", result["circular_dependency"], flush=True)
+        for source, deps in dependencies:
+            print(source, f"({len(deps)})", flush=True)
+            for i in deps:
+                print("\t", i, flush=True)
+        # project_dir: D:/python311/Lib/multiprocessing
+        # circular_dependency: [('./connection.py', './context.py'), ('./context.py', './forkserver.py'), ('./context.py', './managers.py'), ('./context.py', './popen_forkserver.py'), ('./context.py', './popen_spawn_posix.py'), ('./context.py', './popen_spawn_win32.py'), ('./context.py', './sharedctypes.py'), ('./context.py', './spawn.py'), ('./dummy/__init__.py', './pool.py')]
+        # ./context.py (13)
+        # 	 ./connection.py
+        # 	 ./forkserver.py
+        # 	 ./managers.py
+        # 	 ./pool.py
+        # 	 ./popen_fork.py
+        # 	 ./popen_forkserver.py
+        # 	 ./popen_spawn_posix.py
+        # 	 ./popen_spawn_win32.py
+        # 	 ./queues.py
+        # 	 ./sharedctypes.py
+        # 	 ./spawn.py
+        # 	 ./synchronize.py
+        # 	 ./util.py
+        # ./synchronize.py (2)
+        # 	 ./heap.py
+        # 	 ./resource_tracker.py
+        # ./resource_sharer.py (2)
+        # 	 ./connection.py
+        # 	 ./context.py
+        # ./queues.py (2)
+        # 	 ./synchronize.py
+        # 	 ./util.py
+        # ./pool.py (2)
+        # 	 ./connection.py
+        # 	 ./dummy/__init__.py
+        # ./dummy/__init__.py (2)
+        # 	 ./dummy/connection.py
+        # 	 ./pool.py
+        # ./util.py (1)
+        # 	 test
+        # ./spawn.py (1)
+        # 	 ./context.py
+        # ./sharedctypes.py (1)
+        # 	 ./context.py
+        # ./reduction.py (1)
+        # 	 ./resource_sharer.py
+        # ./process.py (1)
+        # 	 ./context.py
+        # ./popen_spawn_win32.py (1)
+        # 	 ./context.py
+        # ./popen_spawn_posix.py (1)
+        # 	 ./context.py
+        # ./popen_forkserver.py (1)
+        # 	 ./context.py
+        # ./managers.py (1)
+        # 	 ./context.py
+        # ./heap.py (1)
+        # 	 ./context.py
+        # ./forkserver.py (1)
+        # 	 ./context.py
+        # ./connection.py (1)
+        # 	 ./context.py
+
+    
+```
+
+
+---
+
+
+## 13. morebuiltins.snippets.event
+
+
+
+13.1 `EventTemplate` - Event template for event sourcing
 
 
 
@@ -2249,11 +2353,11 @@
 ---
 
 
-## 13. morebuiltins.snippets.sql
+## 14. morebuiltins.snippets.sql
 
 
 
-13.1 `SqliteSQL` - Sqlite SQL generator
+14.1 `SqliteSQL` - Sqlite SQL generator
 
 
 
