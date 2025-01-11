@@ -2,8 +2,12 @@
 
 from typing import TypedDict
 
+__all__ = ["EventTemplate"]
+
 
 class EventTemplate(TypedDict):
+    """Event template for event sourcing"""
+
     name: str  # event type, like 'user.login'
     id: str  # event id, such as type + timestamp + random
     prev_id: str  # previous(parent) event id, for event chain

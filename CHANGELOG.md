@@ -1,3 +1,6 @@
+### 1.1.9 (2024-12-11)
+1. add `snippets.sql.SqliteSQL` as Sqlite SQL generator
+
 ### 1.1.8 (2024-12-11)
 1. add `utils.i2b` and `utils.b2i`, integer and fixed-length byte strings conversion.
 2. add `--compress` to `cmd.log_server`

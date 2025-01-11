@@ -2236,3 +2236,29 @@
 ---
 
 
+## 12. morebuiltins.snippets.event
+
+
+
+12.1 `EventTemplate` - Event template for event sourcing
+
+
+
+
+
+---
+
+
+## 13. morebuiltins.snippets.sql
+
+
+
+13.1 `SqliteSQL` - Sqlite SQL generator
+
+
+
+
+
+---
+
+
