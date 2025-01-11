@@ -1,4 +1,4 @@
-__version__ = "1.1.8"
+__version__ = "1.1.9"
 __all__ = [
     "morebuiltins.utils",
     "morebuiltins.date",
@@ -11,4 +11,6 @@ __all__ = [
     "morebuiltins.cmd.log_server",
     "morebuiltins.cmd.proxy_checker",
     "morebuiltins.cmd.ui",
+    "morebuiltins.snippets.event",
+    "morebuiltins.snippets.sql",
 ]
