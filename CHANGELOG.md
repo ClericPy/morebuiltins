@@ -1,5 +1,6 @@
 ### 1.1.9 (2024-12-11)
 1. add `snippets.sql.SqliteSQL` as Sqlite SQL generator
+2. add `cmd.parse_deps` to parse dependencies of a project directory, and find circular dependencies.
 
 ### 1.1.8 (2024-12-11)
 1. add `utils.i2b` and `utils.b2i`, integer and fixed-length byte strings conversion.
