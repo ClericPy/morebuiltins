@@ -3,10 +3,19 @@ import re
 import sys
 from pathlib import Path
 
-
 __all__ = ["parse_deps"]
 
-stds_libs = set(sys.stdlib_module_names) | set(sys.builtin_module_names)
+try:
+    stdlibs = set(sys.stdlib_module_names)
+except AttributeError:
+    # fix python3.9 sys.stdlib_module_names not found
+    import os
+    import pkgutil
+
+    stdlib_path = os.path.dirname(os.__file__)
+    stdlibs = {name for _, name, _ in pkgutil.iter_modules([stdlib_path])}
+
+stds_libs = stdlibs | set(sys.builtin_module_names)
 
 
 def parse_deps(project_dir, ignore_stds=True, format_path=True, pattern_list=("*.py",)):
