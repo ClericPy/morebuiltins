@@ -1190,6 +1190,7 @@
     5
     >>> len(test.tasks)
     0
+    >>> test.pool.shutdown()
     
 ```
 
@@ -2240,7 +2241,7 @@
 
 
 
-12.1 `parse_deps` - Parse dependencies of a project directory.
+12.1 `parse_deps` - Parse dependencies of a project directory, and find circular dependencies.
 
 
 ```python
@@ -2361,6 +2362,55 @@
 
 
 
+
+
+---
+
+
+## 15. morebuiltins.cmd.systemd.service
+
+
+
+15.1 `service_handler` - Generate and manage systemd service files
+
+
+```python
+
+    Example usage:
+
+    1. Create, enable and start service:
+        python -m morebuiltins.cmd.systemd.service -name myservice -enable -Description "My service" -ExecStart "/bin/bash myscript.sh"
+    2. Stop, disable and remove service:
+        python -m morebuiltins.cmd.systemd.service -name myservice -disable
+    3. Print service file content:
+        python -m morebuiltins.cmd.systemd.service -name myservice -Description "My service" -ExecStart "/bin/bash myscript.sh" -Type simple
+    
+```
+
+
+---
+
+
+## 16. morebuiltins.cmd.systemd.timer
+
+
+
+16.1 `timer_handler` - Parse arguments and manage systemd timer files.
+
+
+```python
+    If -enable or -disable is not set, print timer and service file content.
+
+    Examples usage:
+
+        1. enable & start timer
+            - python -m morebuiltins.cmd.systemd.timer -name mytimer -enable -OnCalendar '*:0/15' -ExecStart '/bin/echo hello'
+        2. disable & stop timer
+            - python -m morebuiltins.cmd.systemd.timer -name mytimer -disable
+        3. print timer and service file content
+            - python -m morebuiltins.cmd.systemd.timer -name mytimer -OnCalendar '*:0/15' -ExecStart '/bin/echo hello'
+    
+```
 
 
 ---
