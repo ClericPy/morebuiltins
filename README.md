@@ -214,7 +214,7 @@ print(morebuiltins.__file__)
 
 ## 12. morebuiltins.cmd.parse_deps
 
-12.1 `parse_deps` - Parse dependencies of a project directory.
+12.1 `parse_deps` - Parse dependencies of a project directory, and find circular dependencies.
 
 
 ## 13. morebuiltins.snippets.event
@@ -225,6 +225,16 @@ print(morebuiltins.__file__)
 ## 14. morebuiltins.snippets.sql
 
 14.1 `SqliteSQL` - Sqlite SQL generator
+
+
+## 15. morebuiltins.cmd.systemd.service
+
+15.1 `service_handler` - Generate and manage systemd service files
+
+
+## 16. morebuiltins.cmd.systemd.timer
+
+16.1 `timer_handler` - Parse arguments and manage systemd timer files.
 
 
 <!-- end -->

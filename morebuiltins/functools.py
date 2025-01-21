@@ -177,6 +177,7 @@ def threads(n: Optional[int] = None, executor_class=None, **kws):
     5
     >>> len(test.tasks)
     0
+    >>> test.pool.shutdown()
     """
     pool = (executor_class or ThreadPoolExecutor)(max_workers=n, **kws)
     tasks: WeakSet = WeakSet()

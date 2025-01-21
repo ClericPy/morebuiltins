@@ -14,4 +14,6 @@ __all__ = [
     "morebuiltins.cmd.parse_deps",
     "morebuiltins.snippets.event",
     "morebuiltins.snippets.sql",
+    "morebuiltins.cmd.systemd.service",
+    "morebuiltins.cmd.systemd.timer",
 ]
