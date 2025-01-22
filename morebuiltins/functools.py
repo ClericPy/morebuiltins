@@ -8,7 +8,8 @@ import re
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from functools import wraps
+from contextvars import copy_context
+from functools import partial, wraps
 from gzip import GzipFile
 from itertools import chain
 from logging.handlers import TimedRotatingFileHandler
@@ -39,6 +40,7 @@ __all__ = [
     "file_import",
     "RotatingFileWriter",
     "get_function",
+    "to_thread",
 ]
 
 
@@ -177,7 +179,7 @@ def threads(n: Optional[int] = None, executor_class=None, **kws):
     5
     >>> len(test.tasks)
     0
-    >>> test.pool.shutdown()
+    >>> test.pool.shutdown()  # optional
     """
     pool = (executor_class or ThreadPoolExecutor)(max_workers=n, **kws)
     tasks: WeakSet = WeakSet()
@@ -1108,6 +1110,12 @@ def get_function(entrypoint: str):
     """
     module, _, function = entrypoint.partition(":")
     return getattr(importlib.import_module(module), function)
+
+
+async def to_thread(func, /, *args, **kwargs):
+    """Asynchronously run function *func* in a separate thread, same as `asyncio.to_thread` in python 3.9+."""
+    func_call = partial(copy_context().run, func, *args, **kwargs)
+    return await asyncio.get_running_loop().run_in_executor(None, func_call)
 
 
 def test_bg_task():
