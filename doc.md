@@ -505,41 +505,6 @@
     ... except Exception as e:
     ...     format_error(e, index=slice(-1, None, None))
     '[<doctest>:func2(3)] def func2(): 1 / 0 >>> ZeroDivisionError(division by zero)'
-    >>> try:
-    ...     # test without filter
-    ...     from pip._internal.utils.encoding import auto_decode
-    ...     auto_decode(0)
-    ... except Exception as e:
-    ...     "encoding.py:auto_decode" in format_error(e, filter=None)
-    True
-    >>> try:
-    ...     # test with custom filter.
-    ...     from pip._internal.utils.encoding import auto_decode
-    ...     auto_decode(0)
-    ... except Exception as e:
-    ...     format_error(e, filter=lambda i: '<doctest' in str(i))
-    "[<doctest>:<module>(4)] auto_decode(0) >>> AttributeError('int' object has no attribute 'startswith')"
-    >>> try:
-    ...     # test with default filter(filename skip -packages)
-    ...     from pip._internal.utils.encoding import auto_decode
-    ...     auto_decode(0)
-    ... except Exception as e:
-    ...     format_error(e)
-    "[<doctest>:<module>(4)] auto_decode(0) >>> AttributeError('int' object has no attribute 'startswith')"
-    >>> try:
-    ...     # test with filename_filter[0] include string, disable the default filter at first
-    ...     from pip._internal.utils.encoding import auto_decode
-    ...     auto_decode(0)
-    ... except Exception as e:
-    ...     "encoding.py:auto_decode" in format_error(e, filter=None, filename_filter=("-packages", ""))
-    True
-    >>> try:
-    ...     # test with filename_filter[1] exclude string, disable the default filter at first
-    ...     from pip._internal.utils.encoding import auto_decode
-    ...     auto_decode(0)
-    ... except Exception as e:
-    ...     "encoding.py:auto_decode" in format_error(e, filter=None, filename_filter=("", "-packages"))
-    False
     
 ```
 
@@ -1190,7 +1155,7 @@
     5
     >>> len(test.tasks)
     0
-    >>> test.pool.shutdown()
+    >>> test.pool.shutdown()  # optional
     
 ```
 
@@ -1618,6 +1583,16 @@
         'urlparse'
     
 ```
+
+
+---
+
+
+
+3.13 `to_thread` - Asynchronously run function *func* in a separate thread, same as `asyncio.to_thread` in python 3.9+.
+
+
+
 
 
 ---
