@@ -149,6 +149,8 @@ print(morebuiltins.__file__)
 
 3.12 `get_function` - Get the function object from entrypoint.
 
+3.13 `to_thread` - Asynchronously run function *func* in a separate thread, same as `asyncio.to_thread` in python 3.9+.
+
 
 ## 4. morebuiltins.ipc
 

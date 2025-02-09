@@ -1,6 +1,6 @@
 import argparse
 import sys
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 import subprocess
 from pathlib import Path
 
@@ -52,7 +52,7 @@ def manage_timer_files(
     return 0
 
 
-def create_timer_file(args: Dict[str, Any]) -> tuple[str, str]:
+def create_timer_file(args: Dict[str, Any]) -> Tuple[str, str]:
     """Generate systemd timer and service file content"""
     # Generate timer content
     timer_content = ["[Unit]"]

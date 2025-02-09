@@ -4,6 +4,7 @@
 3. add `cmd.os.linux.systemd.service` and `cmd.os.linux.systemd.timer`
 4. add `functools.to_thread`, same as `asyncio.to_thread` in python 3.9+.
 5. add `functools.AsyncQueueListener` for asyncio non-block logging.
+6. fix systemd.timer typing hint error
 
 ### 1.1.8 (2024-12-11)
 1. add `utils.i2b` and `utils.b2i`, integer and fixed-length byte strings conversion.
