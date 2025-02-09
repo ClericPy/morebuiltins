@@ -9,8 +9,8 @@ readme = "README.md"
 license = {file = "LICENSE"}
 classifiers = ["License :: OSI Approved :: MIT License"]
 dynamic = ["version"]
-description = "Things which I thought should be set in builtins."
-requires-python = ">=3.7"
+description = "Expanding Python's built-in functionalities to enable richer and more versatile work scenarios."
+requires-python = ">=3.8"
 
 [project.urls]
 Home = "https://github.com/ClericPy/morebuiltins"
