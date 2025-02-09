@@ -3,6 +3,7 @@ import importlib
 import importlib.util
 import inspect
 import json
+import logging
 import os
 import re
 import time
@@ -12,8 +13,10 @@ from contextvars import copy_context
 from functools import partial, wraps
 from gzip import GzipFile
 from itertools import chain
-from logging.handlers import TimedRotatingFileHandler
+from logging.handlers import QueueHandler, QueueListener, TimedRotatingFileHandler
+from multiprocessing import Queue as ProcessQueue
 from pathlib import Path
+from queue import Queue
 from threading import Lock, RLock, Semaphore, Thread
 from typing import (
     Any,
@@ -527,7 +530,7 @@ class InlinePB(object):
 
     def __enter__(self):
         self._fill = len(str(self.total))
-        self._end = f'{" " * 10}\r'
+        self._end = f"{' ' * 10}\r"
         return self
 
     def __exit__(self, *_):
@@ -1118,6 +1121,85 @@ async def to_thread(func, /, *args, **kwargs):
     return await asyncio.get_running_loop().run_in_executor(None, func_call)
 
 
+class AsyncQueueListener(QueueListener):
+    """Asynchronous non-blocking QueueListener that manages logger handlers.
+    logger is a logging.Logger instance.
+    queue is a Queue or ProcessQueue instance.
+    respect_handler_level is a boolean that determines if the handler level should be respected.
+
+    Example:
+
+        async def main():
+            # Create logger with a blocking handler
+            logger = logging.getLogger("example")
+            logger.setLevel(logging.INFO)
+            stream_handler = logging.StreamHandler()
+            stream_handler.setFormatter(
+                logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+            )
+            logger.addHandler(stream_handler)
+            # Use async queue listener
+            async with AsyncQueueListener(logger):
+                # Log won't block the event loop
+                for i in range(5):
+                    logger.info("log info")
+                    logger.debug("log debug")
+                    await asyncio.sleep(0.01)
+    """
+
+    def __init__(
+        self,
+        logger: logging.Logger,
+        queue: Optional[Union[Queue, ProcessQueue]] = None,
+        respect_handler_level=True,
+    ):
+        self.logger = logger
+        self.queue = queue or Queue()
+        # Store original handlers
+        self.original_handlers = list(logger.handlers)
+        # Get handlers that might block
+        self.blocking_handlers = [
+            h for h in self.original_handlers if not isinstance(h, QueueHandler)
+        ]
+        # Initialize parent with queue and blocking handlers
+        super().__init__(
+            self.queue,
+            *self.blocking_handlers,
+            respect_handler_level=respect_handler_level,
+        )
+
+    def _switch_to_queue_handler(self):
+        """Switch handlers in a blocking context"""
+        # Remove original handlers
+        for handler in self.original_handlers:
+            self.logger.removeHandler(handler)
+        # Add queue handler
+        self.logger.addHandler(QueueHandler(self.queue))
+
+    def _restore_original_handlers(self):
+        """Restore original handlers in a blocking context"""
+        # Remove queue handler
+        self.logger.removeHandler(self.logger.handlers[0])
+        # Restore original handlers
+        for handler in self.original_handlers:
+            self.logger.addHandler(handler)
+
+    def stop(self):
+        super().stop()
+        self._restore_original_handlers()
+
+    def start(self):
+        self._switch_to_queue_handler()
+        super().start()
+
+    async def __aenter__(self):
+        await to_thread(self.start)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await to_thread(self.stop)
+
+
 def test_bg_task():
     async def _test_bg_task():
         async def coro():
@@ -1193,9 +1275,38 @@ def test_named_lock():
     test_async()
 
 
+def test_AsyncQueueListener():
+    """Test AsyncQueueListener logs without blocking"""
+
+    async def _test():
+        from io import StringIO
+
+        mock_stdout = StringIO()
+        # Create logger with a blocking handler
+        logger = logging.getLogger("example")
+        logger.setLevel(logging.INFO)
+        stream_handler = logging.StreamHandler(stream=mock_stdout)
+        stream_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        )
+        logger.addHandler(stream_handler)
+        # Use async queue listener
+        async with AsyncQueueListener(logger):
+            # Log won't block the event loop
+            for i in range(5):
+                logger.info("log info")
+                logger.debug("log debug")
+        text = mock_stdout.getvalue()
+        assert text.count("log info") == 5
+        assert text.count("log debug") == 0
+
+    asyncio.get_event_loop().run_until_complete(_test()) is True
+
+
 def test_utils():
     test_bg_task()
     test_named_lock()
+    test_AsyncQueueListener()
 
 
 def test():
