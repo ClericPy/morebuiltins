@@ -9,7 +9,7 @@ from http import HTTPStatus
 from http.client import HTTPResponse
 from pathlib import Path
 from tempfile import gettempdir
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union, List, Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote_plus, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen, build_opener, ProxyHandler
@@ -27,20 +27,20 @@ __all__ = [
 
 def _request(
     url: str,
-    params: Optional[dict] = None,
-    headers: Optional[dict] = None,
-    data: Optional[bytes] = None,
-    json=None,
-    form=None,
-    timeout=None,
+    params: Optional[Dict[str, Any]] = None,
+    headers: Optional[Dict[str, str]] = None,
+    data: Optional[Union[bytes, Dict[str, Any]]] = None,
+    json: Optional[Any] = None,
+    form: Optional[Dict[str, Any]] = None,
+    timeout: Optional[float] = None,
     method: str = "GET",
-    verify=True,
-    encoding=None,
-    proxy=None,
-    urlopen_kwargs: Optional[dict] = None,
-    build_opener_handlers: Optional[list] = None,
-    **kwargs,
-):
+    verify: bool = True,
+    encoding: Optional[str] = None,
+    proxy: Optional[str] = None,
+    urlopen_kwargs: Optional[Dict[str, Any]] = None,
+    build_opener_handlers: Optional[List[Any]] = None,
+    **kwargs: Any
+) -> HTTPResponse:
     if params:
         if "?" in url:
             sep = "&"

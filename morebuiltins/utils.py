@@ -32,6 +32,7 @@ from typing import (
     Sequence,
     Tuple,
     Type,
+    TypedDict,
     Union,
 )
 
@@ -119,9 +120,7 @@ def ptime(
         return int(time())
 
 
-def slice_into_pieces(
-    items: Sequence, n: int
-) -> Generator[Union[tuple, Sequence], None, None]:
+def slice_into_pieces(items: Sequence, n: int) -> Generator[tuple, None, None]:
     """Divides a sequence into “n” segments, returning a generator that yields “n” pieces.
 
     >>> for chunk in slice_into_pieces(range(10), 3):
@@ -151,7 +150,7 @@ def slice_into_pieces(
 
 def slice_by_size(
     items: Sequence, size: int, callback=tuple
-) -> Generator[Union[tuple, Sequence], None, None]:
+) -> Generator[tuple, None, None]:
     """Slices a sequence into chunks of a specified “size”, returning a generator that produces tuples of chunks.
 
     >>> for chunk in slice_by_size(range(10), 3):
@@ -201,7 +200,7 @@ def unique(
     Yields:
         Iterator[Generator[tuple, None, None]]: the unique item.
     """
-    seen: set = set()
+    seen: set[Any] = set()
     _add = seen.add
     if key:
         for item in items:
@@ -238,6 +237,7 @@ def retry(
     def wrapper(function):
         @wraps(function)
         def retry_sync(*args, **kwargs):
+            error = None
             for _ in range(tries):
                 try:
                     return function(*args, **kwargs)
@@ -249,6 +249,7 @@ def retry(
 
         @wraps(function)
         async def retry_async(*args, **kwargs):
+            error = None
             for _ in range(tries):
                 try:
                     return await function(*args, **kwargs)
@@ -290,7 +291,7 @@ def guess_interval(nums, accuracy=0):
 
 def get_hash(
     string,
-    n: Union[tuple, list, int, None] = None,
+    n: Optional[Union[tuple[int, int], list[int], int]] = None,
     default: Callable = lambda obj: str(obj).encode("utf-8"),
     func=hashlib.md5,
 ) -> str:
@@ -470,7 +471,7 @@ class TimeUnit(IntEnum):
 
 def read_num(
     b,
-    enum=IntEnum,
+    enum: Type[IntEnum] = IntEnum,
     rounded: Optional[int] = None,
     shorten=False,
     precision=1.0,
@@ -665,7 +666,7 @@ class Validator:
         }
 
 
-def stagger_sort(items, group_key, sort_key=None, sort_reverse=False):
+def stagger_sort(items: Sequence, group_key, sort_key=None, sort_reverse=False):
     """Ensures that identical groups are ordered and evenly distributed, mitigating data skew. The function does not alter the original list and returns a generator.
 
     >>> items = [('a', 0), ('a', 2), ('a', 1), ('b', 0), ('b', 1)]
@@ -742,7 +743,7 @@ def iter_weights(
         yield item
 
 
-def default_dict(typeddict_class, **kwargs):
+def default_dict(typeddict_class: dict, **kwargs):
     """Initializes a dictionary with default zero values based on a subclass of TypedDict.
 
     >>> class Demo(dict):
@@ -758,7 +759,7 @@ def default_dict(typeddict_class, **kwargs):
     >>> item
     {'int_obj': 0, 'float_obj': 0.0, 'bytes_obj': b'1', 'str_obj': '', 'list_obj': [], 'tuple_obj': (), 'set_obj': set(), 'dict_obj': {}}
     >>> type(item)
-    <class 'dict'>
+    <class 'morebuiltins.utils.Demo'>
     >>> from typing import TypedDict
     >>> class Demo(TypedDict):
     ...     int_obj: int
@@ -810,7 +811,7 @@ def format_error(
     index: Union[int, slice] = slice(-3, None, None),
     filter: Optional[Callable] = _tb_filter,
     template="[{trace_routes}] {error_line} >>> {error.__class__.__name__}({error!s:.100})",
-    filename_filter=("", ""),
+    filename_filter: Tuple[str, str] = ("", ""),
     **kwargs,
 ) -> str:
     r"""Extracts frame information from an exception, with an option to filter out “-packages” details by default. To shorten your exception message.
