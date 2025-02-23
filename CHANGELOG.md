@@ -1,3 +1,6 @@
+### 1.2.0 (2025-02-16)
+1. add alias for AsyncQueueListener: `functools.async_logger`
+
 ### 1.1.9 (2025-01-16)
 1. add `snippets.sql.SqliteSQL` as Sqlite SQL generator
 2. add `cmd.parse_deps` to parse dependencies of a project directory, and find circular dependencies.

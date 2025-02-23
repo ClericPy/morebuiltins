@@ -1200,6 +1200,10 @@ class AsyncQueueListener(QueueListener):
         await to_thread(self.stop)
 
 
+# alias for AsyncQueueListener
+async_logger = AsyncQueueListener
+
+
 def test_bg_task():
     async def _test_bg_task():
         async def coro():

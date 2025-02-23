@@ -754,8 +754,26 @@ def default_dict(typeddict_class, **kwargs):
     ...     tuple_obj: tuple
     ...     set_obj: set
     ...     dict_obj: dict
-    >>> default_dict(Demo, bytes_obj=b'1')
+    >>> item = default_dict(Demo, bytes_obj=b'1')
+    >>> item
     {'int_obj': 0, 'float_obj': 0.0, 'bytes_obj': b'1', 'str_obj': '', 'list_obj': [], 'tuple_obj': (), 'set_obj': set(), 'dict_obj': {}}
+    >>> type(item)
+    <class 'dict'>
+    >>> from typing import TypedDict
+    >>> class Demo(TypedDict):
+    ...     int_obj: int
+    ...     float_obj: float
+    ...     bytes_obj: bytes
+    ...     str_obj: str
+    ...     list_obj: list
+    ...     tuple_obj: tuple
+    ...     set_obj: set
+    ...     dict_obj: dict
+    >>> item = default_dict(Demo, bytes_obj=b'1')
+    >>> item
+    {'int_obj': 0, 'float_obj': 0.0, 'bytes_obj': b'1', 'str_obj': '', 'list_obj': [], 'tuple_obj': (), 'set_obj': set(), 'dict_obj': {}}
+    >>> type(item)
+    <class 'dict'>
     """
     result = typeddict_class()
     built_in_types = {int, float, bytes, str, list, tuple, set, dict}
