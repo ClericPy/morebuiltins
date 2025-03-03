@@ -431,8 +431,26 @@
     ...     tuple_obj: tuple
     ...     set_obj: set
     ...     dict_obj: dict
-    >>> default_dict(Demo, bytes_obj=b'1')
+    >>> item = default_dict(Demo, bytes_obj=b'1')
+    >>> item
     {'int_obj': 0, 'float_obj': 0.0, 'bytes_obj': b'1', 'str_obj': '', 'list_obj': [], 'tuple_obj': (), 'set_obj': set(), 'dict_obj': {}}
+    >>> type(item)
+    <class 'morebuiltins.utils.Demo'>
+    >>> from typing import TypedDict
+    >>> class Demo(TypedDict):
+    ...     int_obj: int
+    ...     float_obj: float
+    ...     bytes_obj: bytes
+    ...     str_obj: str
+    ...     list_obj: list
+    ...     tuple_obj: tuple
+    ...     set_obj: set
+    ...     dict_obj: dict
+    >>> item = default_dict(Demo, bytes_obj=b'1')
+    >>> item
+    {'int_obj': 0, 'float_obj': 0.0, 'bytes_obj': b'1', 'str_obj': '', 'list_obj': [], 'tuple_obj': (), 'set_obj': set(), 'dict_obj': {}}
+    >>> type(item)
+    <class 'dict'>
     
 ```
 
@@ -966,6 +984,227 @@
     256
     >>> b2i(b'\x00\x01\x00', signed=False)
     256
+    
+```
+
+
+---
+
+
+
+1.32 `get_hash_int` - Generates a int hash(like docid) from the given input bytes.
+
+
+```python
+
+    >>> get_hash_int(1)
+    2035485573088411
+    >>> get_hash_int("string")
+    1418352543534881
+    >>> get_hash_int(b'123456', 16)
+    4524183350839358
+    >>> get_hash_int(b'123', 10)
+    5024125808
+    >>> get_hash_int(b'123', 13, func=hashlib.sha256)
+    1787542395619
+    >>> get_hash_int(b'123', 13, func=hashlib.sha512)
+    3045057537218
+    >>> get_hash_int(b'123', 13, func=hashlib.sha1)
+    5537183137519
+    
+```
+
+
+---
+
+
+
+1.33 `iter_weights` - Generates an element sequence based on weights.
+
+
+```python
+
+    This function produces a sequence of elements where each element's frequency of occurrence
+    is proportional to its weight from the provided dictionary. Elements with higher weights
+    appear more frequently in the sequence. The total cycle length can be adjusted via the
+    `loop_length` parameter. The `round_int` parameter allows customization of the rounding
+    function to control the precision of weight calculations.
+
+    Keys with weights greater than 0 will be yielded.
+
+    Parameters:
+    - weight_dict: A dictionary where keys are elements and values are their respective weights.
+    - loop_length: An integer defining the total length of the repeating cycle, defaulting to 100.
+    - round_int: A function used for rounding, defaulting to Python's built-in `round`.
+
+    Yields:
+    A generator that yields a sequence of elements distributed according to their weights.
+
+    Examples:
+    >>> list(iter_weights({"6": 6, "3": 3, "1": 0.4}, 10))
+    ['6', '3', '6', '3', '6', '3', '6', '6', '6']
+    >>> list(iter_weights({"6": 6, "3": 3, "1": 0.9}, 10))
+    ['6', '3', '1', '6', '3', '6', '3', '6', '6', '6']
+    >>> list(iter_weights({"6": 6, "3": 3, "1": 0.9}, 10, round_int=int))
+    ['6', '3', '6', '3', '6', '3', '6', '6', '6']
+    >>> from itertools import cycle
+    >>> c = cycle(iter_weights({"6": 6, "3": 3, "1": 1}, loop_length=10))
+    >>> [next(c) for i in range(20)]
+    ['6', '3', '1', '6', '3', '6', '3', '6', '6', '6', '6', '3', '1', '6', '3', '6', '3', '6', '6', '6']
+    
+```
+
+
+---
+
+
+
+1.34 `get_size` - Recursively get size of objects.
+
+
+```python
+
+    Args:
+        obj: object of any type
+        seen (set): set of ids of objects already seen
+        iterate_unsafe (bool, optional): whether to iterate through generators/iterators. Defaults to False.
+
+    Returns:
+        int: size of object in bytes
+
+    Examples:
+    >>> get_size("") > 0
+    True
+    >>> get_size([]) > 0
+    True
+    >>> def gen():
+    ...     for i in range(10):
+    ...         yield i
+    >>> g = gen()
+    >>> get_size(g) > 0
+    True
+    >>> next(g)
+    0
+    >>> get_size(g, iterate_unsafe=True) > 0
+    True
+    >>> try:
+    ...     next(g)
+    ... except StopIteration:
+    ...     "StopIteration"
+    'StopIteration'
+    
+```
+
+
+---
+
+
+
+1.35 `base_encode` - Encode a number to a base-N string.
+
+
+```python
+
+    Args:
+        num (int): The number to encode.
+        alphabet (str, optional): Defaults to "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".
+
+    Returns:
+        str: The encoded string.
+
+    Examples:
+    >>> base_encode(0)
+    '0'
+    >>> base_encode(1)
+    '1'
+    >>> base_encode(10000000000000)
+    '2Q3rKTOE'
+    >>> base_encode(10000000000000, "0123456789")
+    '10000000000000'
+    
+```
+
+
+---
+
+
+
+1.36 `base_decode` - Decode a base-N string to a number.
+
+
+```python
+
+    Args:
+        string (str): The string to decode.
+        alphabet (str, optional): Defaults to "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".
+
+    Returns:
+        int: The decoded number.
+
+    Examples:
+    >>> base_decode("0")
+    0
+    >>> base_decode("1")
+    1
+    >>> base_decode("2Q3rKTOE")
+    10000000000000
+    >>> base_decode("10000000000000", "0123456789")
+    10000000000000
+    
+```
+
+
+---
+
+
+
+1.37 `gen_id` - Generate a unique ID based on the current time and random bytes
+
+
+```python
+
+    Args:
+        rand_len (int, optional): Defaults to 4.
+
+    Returns:
+        str: The generated ID.
+
+    Examples:
+    >>> a, b = gen_id(), gen_id()
+    >>> a != b
+    True
+    >>> import time
+    >>> ids = [time.sleep(0.000001) or gen_id() for _ in range(1000)]
+    >>> len(set(ids))
+    1000
+    
+```
+
+
+---
+
+
+
+1.38 `timeti` - Return the number of iterations per second for a given statement.
+
+
+```python
+
+    Args:
+        stmt (str, optional): Defaults to "pass".
+        setup (str, optional): Defaults to "pass".
+        timer (optional): Defaults to timeit.default_timer.
+        number (int, optional): Defaults to 1000000.
+        globals (dict, optional): Defaults to None.
+
+    Returns:
+        int: The number of iterations per second.
+
+    Examples:
+    >>> timeti("1 / 1") > 1000000
+    True
+    >>> timeti(lambda : 1 + 1, number=100000) > 100000
+    True
     
 ```
 

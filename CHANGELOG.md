@@ -1,10 +1,7 @@
-### 1.2.1 (2025-03-03)
+### 1.2.0 (2025-03-03)
 1. add `utils.get_size` to get size of objects recursively.
-2. 
-
-
-### 1.2.0 (2025-02-16)
-1. add alias for AsyncQueueListener: `functools.async_logger`
+2. add `base_encode, base_decode, gen_id, timeti` to `utils`
+3. add alias for AsyncQueueListener: `functools.async_logger`
 
 ### 1.1.9 (2025-01-16)
 1. add `snippets.sql.SqliteSQL` as Sqlite SQL generator

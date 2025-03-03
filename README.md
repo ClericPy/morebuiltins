@@ -115,6 +115,20 @@ print(morebuiltins.__file__)
 
 1.31 `b2i` - Convert a byte sequence to an integer.
 
+1.32 `get_hash_int` - Generates a int hash(like docid) from the given input bytes.
+
+1.33 `iter_weights` - Generates an element sequence based on weights.
+
+1.34 `get_size` - Recursively get size of objects.
+
+1.35 `base_encode` - Encode a number to a base-N string.
+
+1.36 `base_decode` - Decode a base-N string to a number.
+
+1.37 `gen_id` - Generate a unique ID based on the current time and random bytes
+
+1.38 `timeti` - Return the number of iterations per second for a given statement.
+
 
 ## 2. morebuiltins.date
 

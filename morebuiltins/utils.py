@@ -12,9 +12,11 @@ import re
 import subprocess
 import sys
 import tempfile
+import timeit
 import traceback
 import types
 from collections import UserDict
+from datetime import datetime
 from enum import IntEnum
 from functools import wraps
 from itertools import groupby, islice
@@ -72,6 +74,10 @@ __all__ = [
     "get_hash_int",
     "iter_weights",
     "get_size",
+    "base_encode",
+    "base_decode",
+    "gen_id",
+    "timeti",
 ]
 
 
@@ -295,7 +301,7 @@ def guess_interval(nums, accuracy=0):
 
 def get_hash(
     string,
-    n: Optional[Union[tuple[int, int], list[int], int]] = None,
+    n: Optional[Union[Tuple[int, int], List[int], int]] = None,
     default: Callable = lambda obj: str(obj).encode("utf-8"),
     func=hashlib.md5,
 ) -> str:
@@ -1764,6 +1770,123 @@ def get_size(obj, seen=None, iterate_unsafe=False) -> int:
         # Safe to iterate through containers like lists, tuples, sets, etc.
         size += sum([get_size(i, seen, iterate_unsafe) for i in obj])
     return size
+
+
+def base_encode(
+    num: int,
+    alphabet: str = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+) -> str:
+    """Encode a number to a base-N string.
+
+    Args:
+        num (int): The number to encode.
+        alphabet (str, optional): Defaults to "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".
+
+    Returns:
+        str: The encoded string.
+
+    Examples:
+    >>> base_encode(0)
+    '0'
+    >>> base_encode(1)
+    '1'
+    >>> base_encode(10000000000000)
+    '2Q3rKTOE'
+    >>> base_encode(10000000000000, "0123456789")
+    '10000000000000'
+    """
+    length = len(alphabet)
+    result = ""
+    while num:
+        num, i = divmod(num, length)
+        result = f"{alphabet[i]}{result}"
+    return result or alphabet[0]
+
+
+def base_decode(
+    string: str,
+    alphabet: str = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+) -> int:
+    """Decode a base-N string to a number.
+
+    Args:
+        string (str): The string to decode.
+        alphabet (str, optional): Defaults to "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".
+
+    Returns:
+        int: The decoded number.
+
+    Examples:
+    >>> base_decode("0")
+    0
+    >>> base_decode("1")
+    1
+    >>> base_decode("2Q3rKTOE")
+    10000000000000
+    >>> base_decode("10000000000000", "0123456789")
+    10000000000000
+    """
+    length = len(alphabet)
+    result = 0
+    for char in string:
+        result = result * length + alphabet.index(char)
+    return result
+
+
+def gen_id(rand_len=4) -> str:
+    """Generate a unique ID based on the current time and random bytes
+
+    Args:
+        rand_len (int, optional): Defaults to 4.
+
+    Returns:
+        str: The generated ID.
+
+    Examples:
+    >>> a, b = gen_id(), gen_id()
+    >>> a != b
+    True
+    >>> import time
+    >>> ids = [time.sleep(0.000001) or gen_id() for _ in range(1000)]
+    >>> len(set(ids))
+    1000
+    """
+    now = datetime.now()
+    s1 = now.strftime("%y%m%d_%H%M%S")
+    s2 = base_encode(now.microsecond)
+    s2 = f"{s2:>04}{os.urandom(rand_len // 2).hex()}"
+    return f"{s1}_{s2}"
+
+
+def timeti(
+    stmt: Union[str, Callable] = "pass",
+    setup="pass",
+    timer=timeit.default_timer,
+    number=1000000,
+    globals=None,
+) -> int:
+    """Return the number of iterations per second for a given statement.
+
+    Args:
+        stmt (str, optional): Defaults to "pass".
+        setup (str, optional): Defaults to "pass".
+        timer (optional): Defaults to timeit.default_timer.
+        number (int, optional): Defaults to 1000000.
+        globals (dict, optional): Defaults to None.
+
+    Returns:
+        int: The number of iterations per second.
+
+    Examples:
+    >>> timeti("1 / 1") > 1000000
+    True
+    >>> timeti(lambda : 1 + 1, number=100000) > 100000
+    True
+    """
+    result = timeit.timeit(
+        stmt=stmt, setup=setup, timer=timer, number=number, globals=globals
+    )
+    return int(1 / (result / number))
 
 
 if __name__ == "__main__":
