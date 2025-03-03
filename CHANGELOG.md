@@ -1,3 +1,8 @@
+### 1.2.1 (2025-03-03)
+1. add `utils.get_size` to get size of objects recursively.
+2. 
+
+
 ### 1.2.0 (2025-02-16)
 1. add alias for AsyncQueueListener: `functools.async_logger`
 

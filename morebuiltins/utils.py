@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import base64
+import collections.abc
 import gzip
 import hashlib
 import inspect
@@ -12,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import traceback
+import types
 from collections import UserDict
 from enum import IntEnum
 from functools import wraps
@@ -32,7 +34,6 @@ from typing import (
     Sequence,
     Tuple,
     Type,
-    TypedDict,
     Union,
 )
 
@@ -68,6 +69,9 @@ __all__ = [
     "PathLock",
     "i2b",
     "b2i",
+    "get_hash_int",
+    "iter_weights",
+    "get_size",
 ]
 
 
@@ -743,7 +747,7 @@ def iter_weights(
         yield item
 
 
-def default_dict(typeddict_class: dict, **kwargs):
+def default_dict(typeddict_class: Type[dict], **kwargs):
     """Initializes a dictionary with default zero values based on a subclass of TypedDict.
 
     >>> class Demo(dict):
@@ -1702,6 +1706,64 @@ class PathLock:
             except ValueError:
                 pass
         self.lock.release()
+
+
+def get_size(obj, seen=None, iterate_unsafe=False) -> int:
+    """Recursively get size of objects.
+
+    Args:
+        obj: object of any type
+        seen (set): set of ids of objects already seen
+        iterate_unsafe (bool, optional): whether to iterate through generators/iterators. Defaults to False.
+
+    Returns:
+        int: size of object in bytes
+
+    Examples:
+    >>> get_size("") > 0
+    True
+    >>> get_size([]) > 0
+    True
+    >>> def gen():
+    ...     for i in range(10):
+    ...         yield i
+    >>> g = gen()
+    >>> get_size(g) > 0
+    True
+    >>> next(g)
+    0
+    >>> get_size(g, iterate_unsafe=True) > 0
+    True
+    >>> try:
+    ...     next(g)
+    ... except StopIteration:
+    ...     "StopIteration"
+    'StopIteration'
+    """
+    size = sys.getsizeof(obj)
+    if seen is None:
+        seen = set()
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+    seen.add(obj_id)
+    if isinstance(obj, (str, bytes, bytearray)):
+        pass
+    elif isinstance(obj, dict):
+        size += sum([get_size(v, seen, iterate_unsafe) for v in obj.values()])
+        size += sum([get_size(k, seen, iterate_unsafe) for k in obj.keys()])
+    elif hasattr(obj, "__dict__"):
+        size += get_size(obj.__dict__, seen, iterate_unsafe)
+    elif isinstance(obj, types.GeneratorType) or isinstance(
+        obj, collections.abc.Iterator
+    ):
+        if iterate_unsafe:
+            # Warning: this will consume the generator/iterator
+            size += sum([get_size(i, seen, iterate_unsafe) for i in obj])
+    elif hasattr(obj, "__iter__"):
+        # Safe to iterate through containers like lists, tuples, sets, etc.
+        size += sum([get_size(i, seen, iterate_unsafe) for i in obj])
+    return size
 
 
 if __name__ == "__main__":
