@@ -78,6 +78,7 @@ __all__ = [
     "base_decode",
     "gen_id",
     "timeti",
+    "SnowFlake",
 ]
 
 
@@ -1890,6 +1891,160 @@ def timeti(
         stmt=stmt, setup=setup, timer=timer, number=number, globals=globals
     )
     return int(1 / (result / number))
+
+
+class SnowFlake:
+    def __init__(
+        self,
+        machine_id: int = 1,
+        worker_id: int = 1,
+        wait_for_next_ms=True,
+        start_epoch_ms: int = -1,
+        *,
+        max_bits=64,
+        sign_bit=1,
+        machine_id_bit=5,  # between 0 and 31
+        worker_id_bit=5,  # between 0 and 31
+        seq_bit=12,  # between 0 and 4095
+        start_date="2025-01-01",
+    ):
+        r"""Generate unique IDs using Twitter's Snowflake algorithm.
+
+        The ID is composed of:
+        - 41 bits timestamp in milliseconds since a custom epoch
+        - 5 bits machine ID
+        - 5 bits worker ID
+        - 12 bits sequence number
+        If you need to ensure thread safety, please lock it yourself.
+
+            Args:
+                machine_id (int): the machine_id of the SnowFlake object
+                worker_id (int): the worker_id of the SnowFlake object
+                wait_for_next_ms (bool, optional): whether to wait for next millisecond if sequence overflows. Defaults to True.
+                start_epoch_ms (int, optional): the start epoch in milliseconds. Defaults to -1.
+                *
+                max_bits (int, optional): the maximum bits of the ID. Defaults to 64.
+                sign_bit (int, optional): the sign bit of the ID. Defaults to 1.
+                machine_id_bit (int, optional): the machine_id bit of the ID. Defaults to 5.
+                worker_id_bit (int, optional): the worker_id bit of the ID. Defaults to 5.
+                seq_bit (int, optional): the sequence bit of the ID. Defaults to 12.
+                start_date (str): the start date of the SnowFlake object. Defaults to "2025-01-01", only used when start_epoch_ms is -1.
+
+            Example:
+            >>> import time
+            >>> snowflake = SnowFlake()
+            >>> ids = [snowflake.get_id() for _ in range(10000)]
+            >>> len(set(ids)) == len(ids)
+            True
+            >>> # test timestamp overflow
+            >>> snowflake = SnowFlake(1, 1, start_date=time.strftime("%Y-%m-%d"))
+            >>> timeleft = snowflake.timestamp_overflow_check() // 1000 // 60 // 60 // 24 // 365
+            >>> timeleft == 69
+            True
+            >>> snowflake = SnowFlake(1, 1, start_date=time.strftime("%Y-%m-%d"), sign_bit=0)
+            >>> timeleft = snowflake.timestamp_overflow_check() // 1000 // 60 // 60 // 24 // 365
+            >>> timeleft >= 138
+            True
+            >>> # test machine_id and worker_id overflow
+            >>> try:
+            ...     snowflake = SnowFlake(32, 32)
+            ... except ValueError as e:
+            ...     e
+            ValueError('Machine ID must be between 0 and 31')
+            >>> sf = SnowFlake(32, 32, machine_id_bit=6, worker_id_bit=6)
+            >>> sf.max_machine_id
+            63
+            >>> sf = SnowFlake(32, machine_id_bit=64)
+            >>> sf.timestamp_overflow_check() < 0
+            True
+        """
+        self.max_bits = max_bits
+        self.sign_bit = sign_bit
+        self.machine_id_bit = machine_id_bit
+        self.worker_id_bit = worker_id_bit
+        self.seq_bit = seq_bit
+        self.max_seq = (1 << self.seq_bit) - 1
+        self.max_worker_id = (1 << self.worker_id_bit) - 1
+        self.max_machine_id = (1 << self.machine_id_bit) - 1
+        self.max_timestamp = self.get_max_timestamp()
+        # Validate inputs
+        if not 0 <= machine_id <= self.max_machine_id:
+            raise ValueError(f"Machine ID must be between 0 and {self.max_machine_id}")
+        if not 0 <= worker_id <= self.max_worker_id:
+            raise ValueError(f"Worker ID must be between 0 and {self.max_worker_id}")
+        self.timestamp_shift = self.seq_bit + self.worker_id_bit + self.machine_id_bit
+        self.machine_id = machine_id
+        self.worker_id = worker_id
+        # Calculate parts of ID
+        self.machine_id_part = machine_id << (self.seq_bit + self.worker_id_bit)
+        self.worker_id_part = worker_id << self.seq_bit
+        # Initialize sequence, timestamp and last timestamp
+        self.seq = 0
+        self.last_timestamp = -1
+        if start_epoch_ms < 0:
+            self.start_epoch_ms = self.str_to_ms(start_date)
+        else:
+            self.start_epoch_ms = start_epoch_ms
+        self.wait_for_next_ms = wait_for_next_ms
+
+    def get_max_timestamp(self):
+        """Get maximum timestamp that can be represented"""
+        return (1 << (self.max_bits - self.sign_bit)) - 1 >> (
+            self.seq_bit + self.worker_id_bit + self.machine_id_bit
+        )
+
+    def timestamp_overflow_check(self):
+        """Check how many milliseconds left until timestamp overflows"""
+        return self.get_max_timestamp() - self._ms_passed()
+
+    @staticmethod
+    def str_to_ms(string: str) -> int:
+        """Convert string to milliseconds since start_time"""
+        return int(mktime(strptime(string, "%Y-%m-%d")) * 1000)
+
+    def _ms_passed(self):
+        """Get current timestamp in milliseconds since start_time"""
+        return int(time() * 1000 - self.start_epoch_ms)
+
+    def _wait_next_millis(self, last_timestamp):
+        """Wait until next millisecond"""
+        if not self.wait_for_next_ms:
+            raise RuntimeError(
+                f"Over {self.max_seq} IDs generated in 1ms, increase the wait_for_next_ms parameter"
+            )
+        timestamp = self._ms_passed()
+        while timestamp <= last_timestamp:
+            timestamp = self._ms_passed()
+        return timestamp
+
+    def get_id(self):
+        """Generate next unique ID"""
+        now = self._ms_passed()
+
+        # Clock moved backwards, reject requests
+        if now < self.last_timestamp:
+            raise RuntimeError(
+                f"Clock moved backwards. Refusing to generate ID for {self.last_timestamp - now} milliseconds"
+            )
+
+        # Same timestamp, increment sequence
+        if now == self.last_timestamp:
+            self.seq = (self.seq + 1) & self.max_seq
+            # Sequence overflow, wait for next millisecond
+            if self.seq == 0:
+                now = self._wait_next_millis(now)
+        else:
+            # Reset sequence for different timestamp
+            self.seq = 0
+
+        self.last_timestamp = now
+        # Compose ID from components
+        return (
+            (now << self.timestamp_shift)
+            | (self.machine_id_part)
+            | (self.worker_id_part)
+            | self.seq
+        )
 
 
 if __name__ == "__main__":

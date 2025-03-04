@@ -1,5 +1,6 @@
 ### 1.2.2 (2025-03-04)
 1. Change the default alphabet in `utils.base_encode` to "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", which follows the order of ASCII characters.
+2. add `utils.SnowFlake` for id generator
 
 ### 1.2.1 (2025-03-03)
 1. add `utils.get_size` to get size of objects recursively.
