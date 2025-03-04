@@ -1107,7 +1107,7 @@
 
     Args:
         num (int): The number to encode.
-        alphabet (str, optional): Defaults to "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".
+        alphabet (str, optional): Defaults to "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", which follows the order of ASCII characters.
 
     Returns:
         str: The encoded string.
@@ -1118,9 +1118,12 @@
     >>> base_encode(1)
     '1'
     >>> base_encode(10000000000000)
-    '2Q3rKTOE'
+    '2q3Rktoe'
     >>> base_encode(10000000000000, "0123456789")
     '10000000000000'
+    >>> a = [base_encode(i).zfill(10) for i in range(10000)]
+    >>> sorted(a) == a
+    True
     
 ```
 

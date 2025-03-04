@@ -1,4 +1,7 @@
-### 1.2.0 (2025-03-03)
+### 1.2.2 (2025-03-04)
+1. Change the default alphabet in `utils.base_encode` to "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", which follows the order of ASCII characters.
+
+### 1.2.1 (2025-03-03)
 1. add `utils.get_size` to get size of objects recursively.
 2. add `base_encode, base_decode, gen_id, timeti` to `utils`
 3. add alias for AsyncQueueListener: `functools.async_logger`
