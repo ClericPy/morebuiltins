@@ -1369,7 +1369,7 @@
 
 
 
-3.2 `threads` - Quickly convert synchronous functions to be concurrency-able. (similar to madisonmay/Tomorrow)
+3.2 `threads` - Quickly convert synchronous functions to be concurrent. (similar to madisonmay/Tomorrow)
 
 
 ```python
@@ -2121,7 +2121,7 @@
 
 
 
-6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m download_python -i` or `python -m download_python -a`(auto download the latest version matched the current platform: x86_64+install_only) or `python -m download_python -auto -k 3.11 -u`
+6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m download_python -i` or `python -m download_python -a`(auto download the latest version matched the current platform: x86_64+install_only) or `python -m download_python --auto -k 3.11 -u`
 
 
 ```python

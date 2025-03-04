@@ -157,7 +157,7 @@ def lru_cache_ttl(
 
 
 def threads(n: Optional[int] = None, executor_class=None, **kws):
-    """Quickly convert synchronous functions to be concurrency-able. (similar to madisonmay/Tomorrow)
+    """Quickly convert synchronous functions to be concurrent. (similar to madisonmay/Tomorrow)
 
     >>> @threads(10)
     ... def test(i):

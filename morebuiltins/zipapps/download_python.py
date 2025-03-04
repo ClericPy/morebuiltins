@@ -110,7 +110,7 @@ def choose_asset(assets: list, keywords, auto=False):
 
 
 def download_python():
-    """Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m download_python -i` or `python -m download_python -a`(auto download the latest version matched the current platform: x86_64+install_only) or `python -m download_python -auto -k 3.11 -u`
+    """Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m download_python -i` or `python -m download_python -a`(auto download the latest version matched the current platform: x86_64+install_only) or `python -m download_python --auto -k 3.11 -u`
 
     λ python -m download_python -i
     [10:56:17] Checking https://api.github.com/repos/indygreg/python-build-standalone/releases/latest

@@ -16,17 +16,17 @@ This project enhances Python’s built-ins with extra functionality, prioritizin
 
 ## Install
 
-From [pypi.org](https://pypi.org/project/morebuiltins/)
+- From [pypi.org](https://pypi.org/project/morebuiltins/)
 
 > `pip install -U morebuiltins`
 
-From [Github Tags](https://github.com/ClericPy/morebuiltins/tags):
+- From [Github Tags](https://github.com/ClericPy/morebuiltins/tags):
 > 
 > `pip install git+https://github.com/ClericPy/morebuiltins.git@master`
 >
 > `pip install git+https://github.com/ClericPy/morebuiltins.git@1.0.3`
 
-Use `pyz`(downloaded from [releases](https://github.com/ClericPy/morebuiltins/releases))
+- Use `pyz`(downloaded from [releases](https://github.com/ClericPy/morebuiltins/releases))
 
 ```python
 import sys
@@ -35,7 +35,7 @@ import morebuiltins
 print(morebuiltins.__file__)
 # morebuiltins.pyz/morebuiltins/__init__.py
 ```
-**morebuiltins.pyz command-line**
+- **morebuiltins.pyz command-line**
 > zipapps: `python morebuiltins.pyz -m morebuiltins.zipapps -o morebuiltins.pyz -c morebuiltins`
 >
 > download_python: `python morebuiltins.pyz -m morebuiltins.download_python`
@@ -141,7 +141,7 @@ print(morebuiltins.__file__)
 
 3.1 `lru_cache_ttl` - A Least Recently Used (LRU) cache with a Time To Live (TTL) feature.
 
-3.2 `threads` - Quickly convert synchronous functions to be concurrency-able. (similar to madisonmay/Tomorrow)
+3.2 `threads` - Quickly convert synchronous functions to be concurrent. (similar to madisonmay/Tomorrow)
 
 3.3 `bg_task` - Avoid asyncio free-flying tasks, better to use the new asyncio.TaskGroup to avoid this in 3.11+. https://github.com/python/cpython/issues/91887
 
@@ -194,7 +194,7 @@ print(morebuiltins.__file__)
 
 ## 6. morebuiltins.download_python
 
-6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m download_python -i` or `python -m download_python -a`(auto download the latest version matched the current platform: x86_64+install_only) or `python -m download_python -auto -k 3.11 -u`
+6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m download_python -i` or `python -m download_python -a`(auto download the latest version matched the current platform: x86_64+install_only) or `python -m download_python --auto -k 3.11 -u`
 
 
 ## 7. morebuiltins.tk
