@@ -1,4 +1,4 @@
-__version__ = "1.2.2"
+__version__ = "1.2.3"
 __all__ = [
     "morebuiltins.utils",
     "morebuiltins.date",
@@ -16,4 +16,5 @@ __all__ = [
     "morebuiltins.snippets.sql",
     "morebuiltins.cmd.systemd.service",
     "morebuiltins.cmd.systemd.timer",
+    "morebuiltins.sqlite",
 ]

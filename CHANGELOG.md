@@ -1,3 +1,6 @@
+### 1.2.3 (2025-03-07)
+1. add `sqlite.KV`: A key-value store using sqlite3. Light-weight `sqlitedict`.
+
 ### 1.2.2 (2025-03-04)
 1. Change the default alphabet in `utils.base_encode` to "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", which follows the order of ASCII characters.
 2. add `utils.SnowFlake` for id generator
