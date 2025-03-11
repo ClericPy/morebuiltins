@@ -22,6 +22,7 @@ class KV:
             pickle.dumps,
             pickle.loads,
         ),
+        key_type="TEXT",
         **kwargs,
     ):
         """A key-value store using sqlite3.
@@ -37,6 +38,7 @@ class KV:
             database (str, optional): database file path. Defaults to ":memory:".
             table (str, optional): table name. Defaults to "table1".
             encoder (typing.Tuple[str, typing.Optional[typing.Callable], typing.Optional[typing.Callable]], optional): encoder for the value. Defaults to ("BLOB", pickle.dumps, pickle.loads).
+            key_type (str, optional): key type. Defaults to "TEXT".
 
         Examples:
 
@@ -91,11 +93,39 @@ class KV:
             1
             >>> kv.count("k")
             1
+            >>> # test int key
+            >>> kv = KV(key_type="INTEGER")
+            >>> kv.set(1, "v1")
+            1
+            >>> kv.get(1)
+            'v1'
+            >>> kv.delete(1)
+            1
+            >>> _ = [kv.set(i, i) for i in range(10000)]
+            >>> kv.count()
+            10000
+            >>> kv[5000]
+            5000
+            >>> # test json value
+            >>> import json
+            >>> kv = KV(encoder=("TEXT", json.dumps, json.loads))
+            >>> kv.set("k1", {"k": "v"})
+            1
+            >>> kv.get("k1")
+            {'k': 'v'}
+            >>> # test zlib compress value
+            >>> import zlib
+            >>> kv = KV(encoder=("BLOB", zlib.compress, zlib.decompress))
+            >>> kv.set("k1", b"v1")
+            1
+            >>> kv.get("k1")
+            b'v1'
         """
         self.database, self.table = (database, table)
         self.value_type, encoder_v, decoder_v = encoder
         self.encoder_v = encoder_v or self.nothing
         self.decoder_v = decoder_v or self.nothing
+        self.key_type = key_type
         self.non_commit_ctx = nullcontext()
         self.init_conn(**kwargs)
         self.column_handlers = {
@@ -112,7 +142,7 @@ class KV:
         self.conn = sqlite3.connect(self.database, **kwargs)
         with self.conn:
             self.conn.execute(
-                f"CREATE TABLE IF NOT EXISTS `{self.table}` (k TEXT PRIMARY KEY, v {self.value_type})",
+                f"CREATE TABLE IF NOT EXISTS `{self.table}` (k {self.key_type} PRIMARY KEY, v {self.value_type})",
             )
 
     def transaction_ctx(self, commit=True):
