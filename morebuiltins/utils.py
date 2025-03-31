@@ -79,6 +79,7 @@ __all__ = [
     "gen_id",
     "timeti",
     "SnowFlake",
+    "cut_file",
 ]
 
 
@@ -1507,18 +1508,18 @@ def i2b(n: int, length=0, byteorder="big", signed=False) -> bytes:
     Returns:
         The converted byte sequence.
 
-    Length  Maximum::
+    Length  Maximum::
 
         1   256B-1
-        2    64K-1
-        3    16M-1
+        2    64K-1
+        3    16M-1
         4     4G-1
         5     1T-1
-        6    64T-1
-        7    16E-1
+        6    64T-1
+        7    16E-1
         8   256Z-1
-        9    32Y-1
-        10    4P-1
+        9    32Y-1
+        10    4P-1
 
     >>> i2b(0)
     b''
@@ -2045,6 +2046,54 @@ class SnowFlake:
             | (self.worker_id_part)
             | self.seq
         )
+
+
+def cut_file(path_or_file, max_bytes, remain_ratio=0.5, ensure_line_start=False):
+    r"""Cut file to max_bytes, remain_ratio is the ratio of the end part to remain, ensure_line_start is to ensure the first line is a complete line
+
+    Args:
+       path_or_file (str/Path/file): input file path or file-like object
+       max_bytes (int): max bytes before cut
+       remain_ratio (float, optional): remain ratio of the end part. Defaults to 0.5.
+       ensure_line_start (bool, optional): ensure the first line is a complete line. Defaults to False.
+
+    Examples:
+    >>> from io import BytesIO
+    >>> f = BytesIO(b"1234567890\n1234567890\n1234567890\n")
+    >>> cut_file(f, 30)
+    >>> f.getvalue()
+    b'890\n1234567890\n'
+    >>> f = BytesIO(b"1234567890\n1234567890\n1234567890\n")
+    >>> cut_file(f, 30, ensure_line_start=True)
+    >>> f.getvalue()
+    b'1234567890\n'
+    >>> f = BytesIO(b"1234567890\n1234567890\n1234567890\n")
+    >>> cut_file(f, 30, remain_ratio=0)
+    >>> f.getvalue()
+    b''
+    """
+    need_close = False
+    try:
+        if isinstance(path_or_file, (str, Path)):
+            f = open(path_or_file, "r+b")
+            need_close = True
+        elif hasattr(path_or_file, "read"):
+            f = path_or_file
+        else:
+            raise TypeError("path_or_file must be str, Path or file-like object")
+        size = f.seek(0, 2)
+        if size > max_bytes:
+            f.seek(int(size - max_bytes * remain_ratio))
+            left = f.read()
+            if ensure_line_start:
+                left = re.sub(b"^[^\n]+\n", b"", left, count=1)
+            f.seek(0)
+            f.truncate()
+            f.write(left)
+            f.flush()
+    finally:
+        if need_close:
+            f.close()
 
 
 if __name__ == "__main__":

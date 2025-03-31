@@ -56,7 +56,7 @@ class ScheduleTimer:
     """
 
     prefix_not = "!"
-    split_or = re.compile(";|\|")
+    split_or = re.compile(r";|\|")
     split_and = re.compile("&")
     split_calc = re.compile("(=+|!=|<=?|>=?|@|/)")
     magic_methods = {
@@ -91,7 +91,7 @@ class ScheduleTimer:
     @staticmethod
     def between(a: str, b: str):
         # many ranges
-        range_regex = re.compile("^(\d+)-(\d+)$")
+        range_regex = re.compile(r"^(\d+)-(\d+)$")
         for time_range in b.split(","):
             if a == time_range:
                 return True

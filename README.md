@@ -129,6 +129,8 @@ print(morebuiltins.__file__)
 
 1.38 `timeti` - Return the number of iterations per second for a given statement.
 
+1.40 `cut_file` - Cut file to max_bytes, remain_ratio is the ratio of the end part to remain, ensure_line_start is to ensure the first line is a complete line
+
 
 ## 2. morebuiltins.date
 

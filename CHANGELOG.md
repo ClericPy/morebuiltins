@@ -1,5 +1,6 @@
 ### 1.2.4 (2025-03-08)
 1. add `key_type` arg to `sqlite.KV`, to support `int` key.
+2. add `utils.cut_file` to cut file with `a+b` mode to limit the file size
 
 ### 1.2.3 (2025-03-07)
 1. add `sqlite.KV`: A key-value store using sqlite3, lightweight `sqlitedict`.

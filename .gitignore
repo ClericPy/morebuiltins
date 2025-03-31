@@ -133,3 +133,4 @@ dmypy.json
 temp*.py
 *.pyz
 logs/
+uv.lock
