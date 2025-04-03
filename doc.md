@@ -1338,7 +1338,7 @@ Demo:
 ---
 
 
-## 3. morebuiltins.functools
+## 3. morebuiltins.funcs
 
 
 
@@ -2667,5 +2667,50 @@ Examples usage:
 
 
 ## 17. morebuiltins.sqlite
+
+
+## 18. morebuiltins.shared_memory
+
+
+
+18.1 `PLock` - A simple process lock using shared memory, for singleton control.
+
+
+```python
+Use `with` context or `close_atexit` to ensure the shared memory is closed in case the process crashes.
+
+Args:
+    name (str): name of the shared memory
+    force (bool, optional): whether to force rewrite the existing shared memory. Defaults to False.
+    close_atexit (bool, optional): whether to close the shared memory at process exit. Defaults to False, to use __del__ or __exit__ instead.
+
+Demo:
+
+    >>> test_pid = 123456 # test pid, often set to None for current process
+    >>> plock = PLock("test_lock", force=False, close_atexit=True, pid=test_pid)
+    >>> plock.locked
+    True
+    >>> try:
+    ...     plock2 = PLock("test_lock", force=False, close_atexit=True, pid=test_pid + 1)
+    ...     raise RuntimeError("Should not be here")
+    ... except RuntimeError:
+    ...     True
+    True
+    >>> plock3 = PLock("test_lock", force=True, close_atexit=True, pid=test_pid + 1)
+    >>> plock3.locked
+    True
+    >>> plock.locked
+    False
+    >>> PLock.wait_for_free(name="test_lock", timeout=0.1, interval=0.01)
+    False
+    >>> plock.close()
+    >>> plock3.close()
+    >>> PLock.wait_for_free(name="test_lock", timeout=0.1, interval=0.01)
+    True
+
+```
+
+
+---
 
 

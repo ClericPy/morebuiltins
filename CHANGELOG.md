@@ -3,7 +3,7 @@
 2. add `key_type` arg to `sqlite.KV`, to support `int` key.
 3. add `utils.cut_file` to cut file with `a+b` mode to limit the file size
 4. add recheck for `utils.set_pid_file`
-5. 
+5. add `shared_memory.PLock` for singleton process with `multiprocessing.shared_memory`, support linux and windows.
 
 
 ### 1.2.3 (2025-03-07)

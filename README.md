@@ -139,7 +139,7 @@ print(morebuiltins.__file__)
 2.2 `Crontab` - Crontab python parser.
 
 
-## 3. morebuiltins.functools
+## 3. morebuiltins.funcs
 
 3.1 `lru_cache_ttl` - A Least Recently Used (LRU) cache with a Time To Live (TTL) feature.
 
@@ -256,6 +256,11 @@ print(morebuiltins.__file__)
 
 
 ## 17. morebuiltins.sqlite
+
+
+## 18. morebuiltins.shared_memory
+
+18.1 `PLock` - A simple process lock using shared memory, for singleton control.
 
 
 <!-- end -->

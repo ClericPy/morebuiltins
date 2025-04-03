@@ -2,7 +2,7 @@ __version__ = "1.3.0"
 __all__ = [
     "morebuiltins.utils",
     "morebuiltins.date",
-    "morebuiltins.functools",
+    "morebuiltins.funcs",
     "morebuiltins.ipc",
     "morebuiltins.request",
     "morebuiltins.download_python",
