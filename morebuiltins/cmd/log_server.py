@@ -12,7 +12,7 @@ from collections import Counter, namedtuple
 from pathlib import Path
 from queue import Empty, Queue
 
-from ..functools import RotatingFileWriter
+from ..funcs import RotatingFileWriter
 from ..ipc import SocketLogHandlerEncoder, SocketServer
 from ..utils import format_error, read_size, ttime
 

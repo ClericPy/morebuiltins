@@ -1191,6 +1191,14 @@ def set_pid_file(
     else:
         pid_str = str(os.getpid())
         path.write_text(pid_str)
+        new_pid = path.read_text().strip()
+        if pid_str != new_pid:
+            if raise_error:
+                raise RuntimeError(
+                    f"{path.as_posix()} is locked by other process {new_pid}"
+                )
+            else:
+                return False
 
         def _release_file():
             if path.is_file() and path.read_text() == pid_str:

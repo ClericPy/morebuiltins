@@ -15,7 +15,7 @@ from string import Template
 from threading import Thread, Timer
 from urllib.parse import parse_qsl, unquote_plus
 
-from ..functools import FuncSchema, get_function
+from ..funcs import FuncSchema, get_function
 
 __all__ = ["launch_ui", "handle_cli", "handle_web", "handle_tk1", "handle_tk2"]
 
