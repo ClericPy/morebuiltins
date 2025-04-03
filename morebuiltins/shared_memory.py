@@ -119,8 +119,9 @@ class PLock:
         self._closed = True
         if self.shm:
             try:
+                locked = self.locked
                 self.shm.close()
-                if self.locked:
+                if locked:
                     # only unlink if self.pid is the owner of the shared memory
                     self.shm.unlink()
             except Exception:

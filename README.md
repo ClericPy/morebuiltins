@@ -46,6 +46,8 @@ print(morebuiltins.__file__)
 
 [Changelog](https://github.com/ClericPy/morebuiltins/blob/master/CHANGELOG.md)
 
+**Compatibility Warning**. rename `morebuiltins.functools` to `morebuiltins.funcs` to avoid conflict with `functools` in python standard library after 1.3.0 (2025-04-03).
+
 ## More Modules:
 
 ---

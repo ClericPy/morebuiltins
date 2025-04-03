@@ -285,7 +285,7 @@ class NamedLock:
                     result = [await i for i in tasks]
                     assert result == [True, True, False], result
 
-                asyncio.get_event_loop().run_until_complete(main())
+                asyncio.run(main())
 
             test_sync()
             test_async()
@@ -559,7 +559,7 @@ class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
 
         import logging
         import time
-        from morebuiltins.functools import SizedTimedRotatingFileHandler
+        from morebuiltins.funcs import SizedTimedRotatingFileHandler
 
         logger = logging.getLogger("test1")
         h = SizedTimedRotatingFileHandler(
@@ -1214,7 +1214,7 @@ def test_bg_task():
         result = (task.done(), len(_bg_tasks))
         assert result == (True, 0), result
 
-    asyncio.get_event_loop().run_until_complete(_test_bg_task())
+    asyncio.run(_test_bg_task())
 
 
 def test_named_lock():
@@ -1273,7 +1273,7 @@ def test_named_lock():
             result = [await i for i in tasks]
             assert result == [True, True, False], result
 
-        asyncio.get_event_loop().run_until_complete(main())
+        asyncio.run(main())
 
     test_sync()
     test_async()
@@ -1304,7 +1304,7 @@ def test_AsyncQueueListener():
         assert text.count("log info") == 5
         assert text.count("log debug") == 0
 
-    asyncio.get_event_loop().run_until_complete(_test()) is True
+    asyncio.run(_test()) is True
 
 
 def test_utils():
@@ -1315,7 +1315,7 @@ def test_utils():
 
 def test():
     global __name__
-    __name__ = "morebuiltins.functools"
+    __name__ = "morebuiltins.funcs"
     import doctest
 
     doctest.testmod()

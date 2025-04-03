@@ -428,14 +428,8 @@ async def _test_ipc_logging():
 
 def test():
     globals().setdefault("print_log", True)  # local test show logs
-    loop = asyncio.get_event_loop()
     for function in [_test_ipc, _test_ipc_logging]:
-        loop.run_until_complete(function())
-    # clear loop running tasks
-    pending = asyncio.all_tasks(loop=loop)
-    for task in pending:
-        task.cancel()
-    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        asyncio.run(function())
 
 
 if __name__ == "__main__":

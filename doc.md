@@ -1521,7 +1521,7 @@ Demo::
                 result = [await i for i in tasks]
                 assert result == [True, True, False], result
 
-            asyncio.get_event_loop().run_until_complete(main())
+            asyncio.run(main())
 
         test_sync()
         test_async()
@@ -1647,7 +1647,7 @@ Demo::
 
     import logging
     import time
-    from morebuiltins.functools import SizedTimedRotatingFileHandler
+    from morebuiltins.funcs import SizedTimedRotatingFileHandler
 
     logger = logging.getLogger("test1")
     h = SizedTimedRotatingFileHandler(
