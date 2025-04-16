@@ -180,6 +180,8 @@ print(morebuiltins.__file__)
 
 4.7 `find_free_port` - Finds and returns an available port number.
 
+4.8 `is_port_free` - Checks if a port is free.
+
 
 ## 5. morebuiltins.request
 

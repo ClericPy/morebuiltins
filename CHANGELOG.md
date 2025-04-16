@@ -4,6 +4,8 @@
 3. add `utils.cut_file` to cut file with `a+b` mode to limit the file size
 4. add recheck for `utils.set_pid_file`
 5. add `shared_memory.PLock` for singleton process with `multiprocessing.shared_memory`, support linux and windows.
+6. add `--StandardOutput` and `--StandardError` to `morebuiltins.cmd.systemd.service`, and update `--Environment` to list type.
+7. add `is_port_free` to `morebuiltins.ipc`.
 
 
 ### 1.2.3 (2025-03-07)

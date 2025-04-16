@@ -16,6 +16,7 @@ __all__ = [
     "SocketServer",
     "SocketClient",
     "find_free_port",
+    "is_port_free",
 ]
 
 
@@ -367,6 +368,30 @@ def find_free_port(host="127.0.0.1", port=0):
         pass
 
 
+def is_port_free(
+    port: int,
+    host="127.0.0.1",
+    family=socket.AF_INET,
+    type=socket.SOCK_STREAM,
+    timeout=0.1,
+):
+    """Checks if a port is free.
+
+    Demo:
+
+    >>> is_port_free(12345)
+    True
+    """
+    with socket.socket(family=family, type=type) as s:
+        if timeout:
+            s.settimeout(timeout)
+        connected = s.connect_ex((host, port))
+        if connected == 0:
+            return False
+        else:
+            return True
+
+
 async def test_client(host="127.0.0.1", port=8090, encoder=None, cases=None):
     async with SocketClient(host=host, port=port, encoder=encoder) as c:
         for case in cases:
@@ -427,6 +452,10 @@ async def _test_ipc_logging():
 
 
 def test():
+    import doctest
+
+    doctest.testmod()
+
     globals().setdefault("print_log", True)  # local test show logs
     for function in [_test_ipc, _test_ipc_logging]:
         asyncio.run(function())

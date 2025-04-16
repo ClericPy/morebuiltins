@@ -1994,6 +1994,23 @@ True
 ---
 
 
+
+4.8 `is_port_free` - Checks if a port is free.
+
+
+```python
+
+Demo:
+
+>>> is_port_free(12345)
+True
+
+```
+
+
+---
+
+
 ## 5. morebuiltins.request
 
 

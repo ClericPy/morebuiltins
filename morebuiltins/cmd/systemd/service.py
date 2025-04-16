@@ -72,10 +72,17 @@ def create_service_file(args: Dict[str, Any]) -> str:
         "RestartSec",
         "Environment",
         "EnvironmentFile",
+        "StandardOutput",
+        "StandardError",
     ]
     for param in service_params:
-        if args.get(param):
-            content.append(f"{param}={args[param]}")
+        value = args.get(param)
+        if value:
+            if isinstance(value, list):
+                for v in value:
+                    content.append(f"Environment={v}")
+            else:
+                content.append(f"{param}={args[param]}")
 
     content.append("\n[Install]")
     content.append(f"WantedBy={args.get('WantedBy', 'multi-user.target')}")
@@ -157,9 +164,23 @@ def service_handler():
     parser.add_argument(
         "-RestartSec", "--RestartSec", help="Restart interval (seconds)"
     )
-    parser.add_argument("-Environment", "--Environment", help="Environment variables")
+    parser.add_argument(
+        "-Environment", "--Environment", help="Environment variables", action="append"
+    )
     parser.add_argument(
         "-EnvironmentFile", "--EnvironmentFile", help="Environment file"
+    )
+    parser.add_argument(
+        "-StandardOutput",
+        "--StandardOutput",
+        help="Standard output, e.g. syslog, journal, append:/tmp/app.log, file:/tmp/app.log",
+        default="",
+    )
+    parser.add_argument(
+        "-StandardError",
+        "--StandardError",
+        help="Standard error, e.g. syslog, journal, append:/tmp/app.log, file:/tmp/app.log",
+        default="",
     )
 
     # Install section arguments
