@@ -1,3 +1,6 @@
+### 1.3.1 (2025-06-19)
+1. add `check_recursion` to `morebuiltins.funcs`, to check if a function is recursive.
+
 ### 1.3.0 (2025-03-08)
 1. **Compatibility Warning**. rename `morebuiltins.functools` to `morebuiltins.funcs` to avoid conflict with `functools` in python standard library.
 2. add `key_type` arg to `sqlite.KV`, to support `int` key.

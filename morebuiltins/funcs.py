@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import importlib
 import importlib.util
@@ -44,6 +45,7 @@ __all__ = [
     "RotatingFileWriter",
     "get_function",
     "to_thread",
+    "check_recursion",
 ]
 
 
@@ -1202,6 +1204,43 @@ class AsyncQueueListener(QueueListener):
 
 # alias for AsyncQueueListener
 async_logger = AsyncQueueListener
+
+
+def check_recursion(function: Callable, return_error=False):
+    """Check if a function is recursive by inspecting its AST.
+    Returns True if the function calls itself, otherwise False.
+
+    Demo::
+        >>> def recursive_func():
+        ...     return recursive_func()
+        >>> check_recursion(recursive_func)
+        True
+        >>> def non_recursive_func():
+        ...     return 1 + 1
+        >>> check_recursion(non_recursive_func)
+        False
+        >>> # print is a std-lib function
+        >>> check_recursion(print, return_error=False)
+        >>> type(check_recursion(print, return_error=True))
+        <class 'TypeError'>
+    """
+    try:
+        source = inspect.getsource(function)
+        tree = ast.parse(source)
+        func_name = function.__name__
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == func_name
+            ):
+                return True
+        return False
+    except Exception as e:
+        if return_error:
+            return e
+        else:
+            return None
 
 
 def test_bg_task():
