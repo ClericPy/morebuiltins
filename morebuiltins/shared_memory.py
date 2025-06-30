@@ -1,12 +1,12 @@
 import atexit
 import os
 import time
-from multiprocessing import shared_memory
+import typing
+from contextlib import closing
 
+from multiprocessing.shared_memory import SharedMemory
 
-__all__ = [
-    "PLock",
-]
+__all__ = ["PLock", "SharedBytes"]
 
 
 class PLock:
@@ -56,6 +56,8 @@ class PLock:
         if close_atexit:
             atexit.register(self.close)
         self.init()
+        if self.shm is None:
+            raise RuntimeError(f"Failed to create shared memory {name}")
 
     @staticmethod
     def wait_for_free(name: str, timeout=3, interval=0.1):
@@ -63,7 +65,7 @@ class PLock:
         start = time.time()
         while time.time() - start < timeout:
             try:
-                shared_memory.SharedMemory(name=name).close()
+                SharedMemory(name=name).close()
                 time.sleep(interval)
             except FileNotFoundError:
                 return True
@@ -74,11 +76,9 @@ class PLock:
             raise RuntimeError("Already closed")
         ok = True
         try:
-            self.shm = shared_memory.SharedMemory(
-                name=self.name, create=True, size=self.DEFAULT_SIZE
-            )
+            self.shm = SharedMemory(name=self.name, create=True, size=self.DEFAULT_SIZE)
         except FileExistsError:
-            self.shm = shared_memory.SharedMemory(name=self.name)
+            self.shm = SharedMemory(name=self.name)
             if not self.force:
                 ok = False
         if not ok:
@@ -96,13 +96,19 @@ class PLock:
     def set_mem_pid(self, pid=None):
         if pid is None:
             pid = self.pid
-        self.shm.buf[: self.DEFAULT_SIZE] = pid.to_bytes(
+        self.buf[: self.DEFAULT_SIZE] = pid.to_bytes(
             self.DEFAULT_SIZE, byteorder=self.DEFAULT_BYTEORDER
         )
 
+    @property
+    def buf(self):
+        if self.shm is None:
+            raise RuntimeError("Shared memory is not initialized")
+        return self.shm.buf
+
     def get_mem_pid(self):
         return int.from_bytes(
-            self.shm.buf[: self.DEFAULT_SIZE], byteorder=self.DEFAULT_BYTEORDER
+            self.buf[: self.DEFAULT_SIZE], byteorder=self.DEFAULT_BYTEORDER
         )
 
     @property
@@ -135,6 +141,103 @@ class PLock:
 
     def __del__(self):
         self.close()
+
+
+class SharedBytes:
+    """Shared Memory for Python, for python 3.8+.
+    This module provides a simple way to create and manage shared memory segments, shared between different processes.
+    Shared memory is faster than other IPC methods like pipes or queues, and it allows for direct access to the memory.
+
+    Demo:
+
+    >>> sb = SharedBytes(name="test", data=b"Hello, World!", unlink_on_exit=True)
+    >>> sb.size
+    18
+    >>> sb.get(name="test")
+    b'Hello, World!'
+    >>> sb.re_create(b"New Data")
+    >>> sb.get(name="test")
+    b'New Data'
+    >>> sb.close()
+    >>> sb.get(name="test", default=b"")  # This will raise ValueError since the shared memory is closed
+    b''
+    """
+
+    closed: bool = True
+    # max_size: 2 ** (i * 8). 1: 256 B, 2: 64 KB, 3: 16 MB, 4: 4 GB, 5: 1 TB, 6: 256 TB, 7: 64 PB, 8: 16 EB, defaults to 5(1TB).
+    head_length: int = 5
+    byteorder: typing.Literal["little", "big"] = "little"
+
+    def __init__(self, name: str, data: bytes, head_length=None, unlink_on_exit=False):
+        self.name = name
+        self.head_length = head_length or self.head_length
+        if unlink_on_exit:
+            atexit.register(self.close)
+        self.create(data)
+
+    @property
+    def size(self) -> int:
+        if self.closed:
+            raise ValueError("Shared memory is closed")
+        return self.shm.size
+
+    def create(self, data: bytes):
+        if not self.closed:
+            raise ValueError("Shared memory is already created, please use re_create")
+        size = len(data)
+        head_length = self.head_length
+        if size > 2 ** (head_length * 8):
+            right_head_length = 0
+            for i in range(head_length, 15):
+                if size < 2 ** (i * 8):
+                    right_head_length = i
+                    break
+            raise ValueError(
+                f"data size {size} is too large, max size is {2 ** (head_length * 8)}, raise head_length at least {right_head_length}"
+            )
+        total_size = head_length + len(data)
+        self.shm = SharedMemory(name=self.name, create=True, size=total_size)
+        head = size.to_bytes(head_length, byteorder=self.byteorder)
+        self.buf[:total_size] = head + data
+        self.closed = False
+
+    @property
+    def buf(self):
+        if self.shm is None:
+            raise RuntimeError("Shared memory is not initialized")
+        return self.shm.buf
+
+    def re_create(self, data: bytes):
+        if self.closed:
+            raise ValueError("Shared memory is closed")
+        self.close()
+        self.create(data)
+
+    def close(self):
+        if not self.closed:
+            self.shm.close()
+            self.shm.unlink()
+            self.closed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    @classmethod
+    def get(cls, name: str, head_length=None, default=...) -> bytes:
+        try:
+            head_length = head_length or cls.head_length
+            with closing(SharedMemory(name=name)) as shm:
+                head = bytes(shm.buf[:head_length])
+                body_length = int.from_bytes(head, byteorder=cls.byteorder)
+                data = bytes(shm.buf[head_length : head_length + body_length])
+                return data
+        except FileNotFoundError:
+            if default is ...:
+                raise KeyError(f"Shared memory {name} not found")
+            return default
 
 
 if __name__ == "__main__":

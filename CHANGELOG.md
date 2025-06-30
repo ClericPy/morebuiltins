@@ -1,5 +1,6 @@
 ### 1.3.1 (2025-06-19)
 1. add `check_recursion` to `morebuiltins.funcs`, to check if a function is recursive.
+2. add `SharedBytes` to `morebuiltins.shared_memory`, a shared memory for bytes, similar to `multiprocessing.shared_memory.SharedMemory` with a header for size.
 
 ### 1.3.0 (2025-03-08)
 1. **Compatibility Warning**. rename `morebuiltins.functools` to `morebuiltins.funcs` to avoid conflict with `functools` in python standard library.
