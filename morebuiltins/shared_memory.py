@@ -151,8 +151,9 @@ class SharedBytes:
     Demo:
 
     >>> sb = SharedBytes(name="test", data=b"Hello, World!", unlink_on_exit=True)
-    >>> sb.size
-    18
+    >>> # The size of the shared memory is 18 bytes (5 bytes for header + 13 bytes for data), but mac os may return more than 18 bytes.
+    >>> sb.size > 10
+    True
     >>> sb.get(name="test")
     b'Hello, World!'
     >>> sb.re_create(b"New Data")
