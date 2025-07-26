@@ -169,6 +169,8 @@ print(morebuiltins.__file__)
 
 3.13 `to_thread` - Asynchronously run function *func* in a separate thread, same as `asyncio.to_thread` in python 3.9+.
 
+3.14 `check_recursion` - Check if a function is recursive by inspecting its AST.
+
 
 ## 4. morebuiltins.ipc
 
@@ -265,6 +267,8 @@ print(morebuiltins.__file__)
 ## 18. morebuiltins.shared_memory
 
 18.1 `PLock` - A simple process lock using shared memory, for singleton control.
+
+18.2 `SharedBytes` - Shared Memory for Python, for python 3.8+.
 
 
 <!-- end -->

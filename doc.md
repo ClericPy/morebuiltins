@@ -1873,6 +1873,33 @@ Demo::
 ---
 
 
+
+3.14 `check_recursion` - Check if a function is recursive by inspecting its AST.
+
+
+```python
+Returns True if the function calls itself, otherwise False.
+
+Demo::
+    >>> def recursive_func():
+    ...     return recursive_func()
+    >>> check_recursion(recursive_func)
+    True
+    >>> def non_recursive_func():
+    ...     return 1 + 1
+    >>> check_recursion(non_recursive_func)
+    False
+    >>> # print is a std-lib function
+    >>> check_recursion(print, return_error=False)
+    >>> type(check_recursion(print, return_error=True))
+    <class 'TypeError'>
+
+```
+
+
+---
+
+
 ## 4. morebuiltins.ipc
 
 
@@ -2724,6 +2751,35 @@ Demo:
     >>> plock3.close()
     >>> PLock.wait_for_free(name="test_lock", timeout=0.1, interval=0.01)
     True
+
+```
+
+
+---
+
+
+
+18.2 `SharedBytes` - Shared Memory for Python, for python 3.8+.
+
+
+```python
+This module provides a simple way to create and manage shared memory segments, shared between different processes.
+Shared memory is faster than other IPC methods like pipes or queues, and it allows for direct access to the memory.
+
+Demo:
+
+>>> sb = SharedBytes(name="test", data=b"Hello, World!", unlink_on_exit=True)
+>>> # The size of the shared memory is 18 bytes (5 bytes for header + 13 bytes for data), but mac os may return more than 18 bytes.
+>>> sb.size > 10
+True
+>>> sb.get(name="test")
+b'Hello, World!'
+>>> sb.re_create(b"New Data")
+>>> sb.get(name="test")
+b'New Data'
+>>> sb.close()
+>>> sb.get(name="test", default=b"")  # This will raise ValueError since the shared memory is closed
+b''
 
 ```
 
