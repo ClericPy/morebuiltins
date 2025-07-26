@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -24,9 +25,11 @@ from typing import (
     Callable,
     Coroutine,
     Dict,
+    List,
     Optional,
     OrderedDict,
     Set,
+    Tuple,
     Union,
 )
 from weakref import WeakSet
@@ -1241,6 +1244,189 @@ def check_recursion(function: Callable, return_error=False):
             return e
         else:
             return None
+
+
+class LineProfiler:
+    """Line-by-line performance profiler."""
+
+    stdout = sys.stdout
+
+    def __init__(self):
+        self.line_times: List[Tuple[int, float, str]] = []
+        self.start_time = 0.0
+        self.total_time = 0.0
+        self.line_cache: Dict[str, list] = {}
+
+    def trace_calls(self, frame, event, arg):
+        """Trace each line of function calls"""
+        if event == "line":
+            current_time = time.perf_counter()
+            line_no = frame.f_lineno
+            filename = frame.f_code.co_filename
+            # Get the code content of current line
+            try:
+                if filename in self.line_cache:
+                    lines = self.line_cache[filename]
+                else:
+                    with open(filename, "r", encoding="utf-8", errors="replace") as f:
+                        lines = f.readlines()
+                    self.line_cache[filename] = lines
+                if lines and line_no <= len(lines):
+                    line_content = lines[
+                        line_no - 1
+                    ].rstrip()  # Only remove right spaces, keep left indentation
+                    # Store original code and filename for later base indentation calculation
+                    if not hasattr(self, "source_lines"):
+                        self.source_lines = lines
+                        self.target_filename = filename
+                else:
+                    line_content = "-"
+            except Exception:
+                line_content = "-"
+                self.line_cache.setdefault(filename, [])
+            self.line_times.append((line_no, current_time, line_content))
+        return self.trace_calls
+
+    def _get_function_base_indent(self, func_name: str):
+        """Get the base indentation level of function definition"""
+        if not hasattr(self, "source_lines"):
+            return 0
+        # Find function definition line
+        for line in self.source_lines:
+            if f"def {func_name}(" in line:
+                # Calculate indentation level of function definition
+                return len(line) - len(line.lstrip())
+        return 0
+
+    def calculate_and_print_stats(self, func_name: str):
+        """Calculate and print statistics for each line"""
+        if len(self.line_times) < 2:
+            return
+        # Calculate base indentation level of function
+        base_indent = self._get_function_base_indent(func_name)
+        print(f"`{func_name}` profiling report:", file=self.stdout)
+        start_time = time.strftime("%Y-%m-%d %H:%M:%S")
+        print(
+            f"{start_time} | Total: {self.total_time * 1000:.3f} ms",
+            file=self.stdout,
+        )
+        # Calculate execution time for each line
+        line_durations = []
+        for i in range(1, len(self.line_times)):
+            prev_time = self.line_times[i - 1][1]
+            curr_time = self.line_times[i][1]
+            duration = curr_time - prev_time
+            line_durations.append(
+                (
+                    self.line_times[i - 1][0],  # line number
+                    duration,  # duration
+                    self.line_times[i - 1][2],  # code content
+                )
+            )
+        # Sort by line number and merge time for same lines
+        line_stats: Dict[int, Dict[str, Any]] = {}
+        for line_no, duration, code in line_durations:
+            if line_no not in line_stats:
+                line_stats[line_no] = {
+                    "total_time": 0,
+                    "count": 0,
+                    "code": code,
+                    "timestamps": [],
+                }
+            line_stats[line_no]["total_time"] += duration
+            line_stats[line_no]["count"] += 1
+        # Print detailed information for each line
+        print(f"{'=' * 95}", file=self.stdout)
+        print(
+            f"{'Line':>6} {'%':>4} {'Total(ms)':>12} {'Count':>8} {'Avg(ms)':>12}  {'Source Code':<40}",
+            file=self.stdout,
+        )
+        print(f"{'-' * 95}", file=self.stdout)
+        sorted_lines = sorted(line_stats.items())
+        for line_no, stats in sorted_lines:
+            total_time_ms = stats["total_time"] * 1000  # convert to milliseconds
+            count = stats["count"]
+            avg_time_ms = total_time_ms / count if count > 0 else 0
+            percentage = int(
+                (stats["total_time"] / self.total_time * 100)
+                if self.total_time > 0
+                else 0
+            )  # convert to integer
+            # Handle code indentation display
+            code = stats["code"]
+            # Get current line indentation
+            current_indent = len(code) - len(code.lstrip())
+            # First level indentation under def (usually 4 spaces)
+            first_level_indent = base_indent + 4
+            # Only keep spaces relative to first level indentation
+            relative_indent = max(0, current_indent - first_level_indent)
+            indent_spaces = " " * relative_indent
+            code_with_relative_indent = indent_spaces + code.lstrip()
+            code_preview = (
+                code_with_relative_indent[:38] + ".."
+                if len(code_with_relative_indent) > 40
+                else code_with_relative_indent
+            )
+            print(
+                f"{line_no:>6} {percentage:>4} {total_time_ms:>12.3f} {count:>8} {avg_time_ms:>12.3f}  {code_preview:<40}",
+                file=self.stdout,
+            )
+        print(f"{'=' * 95}", file=self.stdout, flush=True)
+
+
+def line_profiler(func: Callable) -> Callable:
+    """Decorator to profile a function line-by-line.
+
+    Demo usage:
+        >>> import sys, io
+        >>> LineProfiler.stdout = io.StringIO()  # Redirect stdout to capture print output
+        >>> @line_profiler
+        ... def example_function():
+        ...     result = 0
+        ...     for i in range(10):
+        ...         result += i  # Simulate some work
+        ...     return result
+        >>> example_function()
+        45
+        >>> output = LineProfiler.stdout.getvalue()
+        >>> output.splitlines()[0].startswith("`example_function` profiling report:")
+        True
+        >>> LineProfiler.stdout = sys.stdout  # Restore original stdout
+
+    # `example_function` profiling report:
+    # 2025-07-26 17:09:58 | Total: 1.122 ms
+    # ===============================================================================================
+    #   Line    %    Total(ms)    Count      Avg(ms)  Source Code
+    # -----------------------------------------------------------------------------------------------
+    #      3   73        0.825        1        0.825  -
+    #      4    3        0.040       11        0.004  -
+    #      5    4        0.050       10        0.005  -
+    # ===============================================================================================
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        profiler = LineProfiler()
+        # Record start time
+        start_time = time.perf_counter()
+        profiler.start_time = start_time
+        # Set tracer
+        old_trace = sys.gettrace()
+        sys.settrace(profiler.trace_calls)
+        try:
+            # Execute function
+            result = func(*args, **kwargs)
+        finally:
+            # Restore original tracer
+            sys.settrace(old_trace)
+            # Record end time
+            end_time = time.perf_counter()
+            profiler.total_time = end_time - start_time
+            # Calculate and print statistics
+            profiler.calculate_and_print_stats(func.__name__)
+        return result
+
+    return wrapper
 
 
 def test_bg_task():
