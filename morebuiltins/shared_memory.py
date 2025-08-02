@@ -3,7 +3,6 @@ import os
 import time
 import typing
 from contextlib import closing
-
 from multiprocessing.shared_memory import SharedMemory
 
 __all__ = ["PLock", "SharedBytes"]
@@ -44,12 +43,20 @@ class PLock:
     """
 
     DEFAULT_SIZE = 4  # 4 bytes, means 2^32 = 4GB
-    DEFAULT_BYTEORDER = "little"
+    DEFAULT_BYTEORDER: typing.Literal["little", "big"] = "little"
 
-    def __init__(self, name: str, force=False, close_atexit=False, pid=None):
+    def __init__(
+        self,
+        name: str,
+        force=False,
+        close_atexit=False,
+        pid=None,
+        force_signum: typing.Optional[int] = None,
+    ):
         self.name = name
         self.pid = pid or os.getpid()
         self.force = force
+        self.force_signum = force_signum
         self.shm = None
         # whether the shared memory is closed
         self._closed = False
@@ -60,16 +67,43 @@ class PLock:
             raise RuntimeError(f"Failed to create shared memory {name}")
 
     @staticmethod
-    def wait_for_free(name: str, timeout=3, interval=0.1):
+    def is_free(name: str) -> bool:
+        """Check if the shared memory is free."""
+        try:
+            with closing(SharedMemory(name=name)):
+                return False
+        except FileNotFoundError:
+            return True
+
+    @classmethod
+    def kill_with_name(cls, name: str, sig_num=15):
+        """Kill the process that holds the shared memory."""
+        if cls.is_free(name):
+            return False
+        else:
+            with closing(SharedMemory(name=name)) as shm:
+                mem_pid = int.from_bytes(
+                    shm.buf[: cls.DEFAULT_SIZE], byteorder=cls.DEFAULT_BYTEORDER
+                )
+            try:
+                os.kill(mem_pid, sig_num)
+                return True
+            except ProcessLookupError:
+                return False
+
+    @classmethod
+    def wait_for_free(cls, name: str, timeout=3, interval=0.1):
         """Wait for the shared memory to be free."""
         start = time.time()
-        while time.time() - start < timeout:
-            try:
-                SharedMemory(name=name).close()
-                time.sleep(interval)
-            except FileNotFoundError:
+        while True:
+            free = cls.is_free(name)
+            if free:
                 return True
-        return False
+            elif time.time() - start > timeout:
+                return False
+            else:
+                time.sleep(interval)
+                continue
 
     def init(self):
         if self._closed:
@@ -79,7 +113,10 @@ class PLock:
             self.shm = SharedMemory(name=self.name, create=True, size=self.DEFAULT_SIZE)
         except FileExistsError:
             self.shm = SharedMemory(name=self.name)
-            if not self.force:
+            if self.force:
+                if self.force_signum is not None:
+                    ok = self.kill_with_name(self.name, sig_num=self.force_signum)
+            else:
                 ok = False
         if not ok:
             mem_pid = self.mem_pid

@@ -1,5 +1,9 @@
 ### 1.3.2 (2025-08-02)
 1. fix typing-hint for `morebuiltins.funcs.threads` decorator, now it returns `Callable[..., Future]`.
+2. add force kill methods to `morebuiltins.shared_memory.PLock`:
+   1. add `force_signum` to `morebuiltins.shared_memory.PLock`, to specify the signal number to force kill the process if it exists.
+   2. add `is_free` to `morebuiltins.shared_memory.PLock`, to check if the lock is free.
+   3. add `kill_with_name` to `morebuiltins.shared_memory.PLock`, to kill the process with the given name and signal number.
 
 ### 1.3.1 (2025-06-19)
 1. add `check_recursion` to `morebuiltins.funcs`, to check if a function is recursive.
