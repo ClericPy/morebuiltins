@@ -1,3 +1,6 @@
+### 1.3.2 (2025-08-02)
+1. fix typing-hint for `morebuiltins.funcs.threads` decorator, now it returns `Callable[..., Future]`.
+
 ### 1.3.1 (2025-06-19)
 1. add `check_recursion` to `morebuiltins.funcs`, to check if a function is recursive.
 2. add `SharedBytes` to `morebuiltins.shared_memory`, a shared memory for bytes, similar to `multiprocessing.shared_memory.SharedMemory` with a header for size.

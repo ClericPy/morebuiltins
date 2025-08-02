@@ -10,7 +10,7 @@ import re
 import sys
 import time
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextvars import copy_context
 from functools import partial, wraps
 from gzip import GzipFile
@@ -192,9 +192,9 @@ def threads(n: Optional[int] = None, executor_class=None, **kws):
     pool = (executor_class or ThreadPoolExecutor)(max_workers=n, **kws)
     tasks: WeakSet = WeakSet()
 
-    def decorator(func):
+    def decorator(func) -> Callable[..., Future]:
         @wraps(func)
-        def wrapped(*args, **kwargs):
+        def wrapped(*args, **kwargs) -> Future:
             future = pool.submit(func, *args, **kwargs)
             future.add_done_callback(lambda task: tasks.discard(task))
             tasks.add(future)

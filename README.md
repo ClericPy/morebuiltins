@@ -6,13 +6,15 @@
 
 ## Project Overview:
 
-This project enhances Python’s built-ins with extra functionality, prioritizing no third-party dependencies, performance, reusability, and MIT Licensing for flexible use.
-
-- Minimal Dependencies: Designed to avoid third-party libraries for seamless integration, conflict prevention, and easy packaging via zipapp for pyz distribution.
+This project enhances Python’s built-ins with extra functionality, prioritizing no third-party dependencies, performance, reusability, and MIT Licensing for flexibl- Minima- MIT Licensed: The open-source code is freely usable, modifiable, and distributable.
 - Performance-Driven: It prioritizes efficiency, ensuring enhanced built-ins maintain Python's performance standards.
 - Self-Contained Modules: Functions and modules are standalone for simple reuse without dependencies.
-- MIT Licensed: The open-source code is freely usable, modifiable, and distributable.
+- Well tested: All modules are thoroughly tested for stability and compatibility.
 - Enhanced Built-ins: The project adds tools to Python's core functionality, simplifying and accelerating development.
+- Beginner friendly: Plenty of code snippets and examples for common scenarios, so new Python users can quickly find practical solutions and learn best practices.
+- Command-line ready: Includes CLI tools for downloading Python, building zipapps, running log servers, analyzing dependencies, and more.
+- Minimal Dependencies: Designed to avoid third-party libraries for seamless integration, conflict prevention, and easy packaging via zipapp for pyz distribution.
+ibution.
 
 ## Install
 
