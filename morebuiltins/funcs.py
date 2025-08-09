@@ -14,6 +14,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from contextvars import copy_context
 from functools import partial, wraps
 from gzip import GzipFile
+from io import TextIOBase
 from itertools import chain
 from logging.handlers import QueueHandler, QueueListener, TimedRotatingFileHandler
 from multiprocessing import Queue as ProcessQueue
@@ -29,6 +30,7 @@ from typing import (
     Optional,
     OrderedDict,
     Set,
+    TextIO,
     Tuple,
     Union,
 )
@@ -49,6 +51,7 @@ __all__ = [
     "get_function",
     "to_thread",
     "check_recursion",
+    "LogHelper",
 ]
 
 
@@ -743,6 +746,168 @@ class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
             self.do_compress()
 
 
+class LogHelper:
+    """Quickly bind a logging handler to a logger, with a StreamHandler or SizedTimedRotatingFileHandler.
+
+    The default handler is a StreamHandler to sys.stderr.
+    The default file handler is a SizedTimedRotatingFileHandler, which can rotate logs by both time and size.
+
+    Examples::
+
+        import logging
+        from morebuiltins.log import LogHelper
+
+        LogHelper.shorten_level()
+        logger = LogHelper.bind_handler(name="mylogger", filename=sys.stdout, maxBytes=100 * 1024**2, backupCount=7)
+        # use logging.getLogger to get the same logger instance
+        logger2 = logging.getLogger("mylogger")
+        assert logger is logger2
+        logger.info("This is an info message")
+        logger.fatal("This is a critical message")
+    """
+
+    DEFAULT_FORMAT = (
+        "%(asctime)s %(levelname)-5s %(funcName)s:%(filename)s:%(lineno)s | %(message)s"
+    )
+    DEFAULT_FORMATTER = logging.Formatter(DEFAULT_FORMAT)
+    FILENAME_HANDLER_MAP: Dict[str, logging.Handler] = {}
+
+    @classmethod
+    def close_all_handlers(cls):
+        """Close all handlers in the FILENAME_HANDLER_MAP."""
+        result: List[Tuple[str, bool, Optional[Exception]]] = []
+        for key, handler in list(cls.FILENAME_HANDLER_MAP.items()):
+            try:
+                handler.close()
+                cls.FILENAME_HANDLER_MAP.pop(key, None)
+                result.append((key, True, None))
+            except Exception as e:
+                result.append((key, False, e))
+        return result
+
+    @classmethod
+    def bind_handler(
+        cls,
+        name="main",
+        filename: Union[
+            TextIO, TextIOBase, None, logging.Handler, str, Path
+        ] = sys.stderr,
+        when="h",
+        interval=1,
+        backupCount=0,
+        maxBytes=0,
+        encoding=None,
+        delay=False,
+        utc=False,
+        compress=False,
+        formatter: Union[str, logging.Formatter, None] = DEFAULT_FORMAT,
+        handler_level: Union[None, str, int] = "INFO",
+        logger_level: Union[None, str, int] = "INFO",
+    ):
+        """Bind a logging handler to the specified logger name, with support for file, stream, or custom handler.
+        This sets up the logger with the desired handler, formatter, and log levels.
+
+        Args:
+            name (str, optional): The logger name. Defaults to "main".
+            filename (Union[TextIO, TextIOWrapper, None, logging.Handler, str, Path], optional):
+                The log destination. Can be a file path, stream, handler, or None to clear handlers. Defaults to sys.stderr.
+            when (str, optional): Time interval for log rotation (if file handler). Defaults to "h".
+            interval (int, optional): Rotation interval. Defaults to 1.
+            backupCount (int, optional): Number of backup files to keep. Defaults to 0.
+            maxBytes (int, optional): Maximum file size before rotation. Defaults to 0 (no size-based rotation).
+            encoding (str, optional): File encoding. Defaults to None.
+            delay (bool, optional): Delay file opening until first write. Defaults to False.
+            utc (bool, optional): Use UTC time for file rotation. Defaults to False.
+            compress (bool, optional): Compress rotated log files. Defaults to False.
+            formatter (Union[str, logging.Formatter, None], optional): Formatter or format string. Defaults to DEFAULT_FORMAT.
+            handler_level (Union[None, str, int], optional): Log level for the handler. Defaults to "INFO".
+            logger_level (Union[None, str, int], optional): Log level for the logger. Defaults to "INFO".
+
+        Raises:
+            TypeError: If filename is not a supported type.
+
+        Returns:
+            logging.Logger: The configured logger instance.
+
+        Demo::
+            >>> logger = LogHelper.bind_handler(name="mylogger", filename=sys.stdout)
+            >>> len(logger.handlers)
+            1
+            >>> logger = LogHelper.bind_handler(name="mylogger", filename=sys.stderr)
+            >>> logger2 = logging.getLogger("mylogger")
+            >>> assert logger is logger2
+            >>> len(logger.handlers)
+            2
+            >>> bool(LogHelper.close_all_handlers() or True)
+            True
+        """
+        logger = logging.getLogger(name)
+        if filename is None:
+            logger.handlers.clear()
+            return logger
+        # Check if handler already exists for the given filename
+        elif isinstance(filename, TextIOBase):
+            key = str(id(filename))
+            if key in cls.FILENAME_HANDLER_MAP:
+                handler: logging.Handler = cls.FILENAME_HANDLER_MAP[key]
+            else:
+                handler = logging.StreamHandler(filename)
+                cls.FILENAME_HANDLER_MAP[key] = handler
+        elif isinstance(filename, logging.Handler):
+            key = str(id(filename))
+            if key in cls.FILENAME_HANDLER_MAP:
+                handler = cls.FILENAME_HANDLER_MAP[key]
+            else:
+                handler = filename
+                cls.FILENAME_HANDLER_MAP[key] = handler
+        elif isinstance(filename, str) or isinstance(filename, Path):
+            key = Path(filename).resolve().as_posix()
+            if key in cls.FILENAME_HANDLER_MAP:
+                handler = cls.FILENAME_HANDLER_MAP[key]
+            else:
+                handler = SizedTimedRotatingFileHandler(
+                    key,
+                    when=when,
+                    interval=interval,
+                    backupCount=backupCount,
+                    maxBytes=maxBytes,
+                    encoding=encoding,
+                    delay=delay,
+                    utc=utc,
+                    compress=compress,
+                )
+                cls.FILENAME_HANDLER_MAP[key] = handler
+        else:
+            raise TypeError(
+                f"filename must be str, Path, TextIO, or logging.Handler, not {type(filename)}"
+            )
+        # Update the levels of the handler and logger
+        if handler_level is not None:
+            handler.setLevel(handler_level)
+        if logger_level is not None:
+            logger.setLevel(logger_level)
+        # Set the formatter for the handler
+        if isinstance(formatter, str):
+            formatter = logging.Formatter(formatter)
+        elif isinstance(formatter, logging.Formatter):
+            formatter = formatter
+        else:
+            formatter = logging.Formatter(cls.DEFAULT_FORMAT)
+        handler.setFormatter(formatter)
+        # Add the handler to the logger
+        logger.addHandler(handler)
+        return logger
+
+    @classmethod
+    def shorten_level(
+        cls,
+        mapping: Dict[int, str] = {logging.WARNING: "WARN", logging.CRITICAL: "FATAL"},
+    ):
+        """Shorten the level names less than 5 chars: WARNING to WARN, CRITICAL to FATAL."""
+        for level, name in mapping.items():
+            logging.addLevelName(level, name)
+
+
 def get_type_default(tp, default=None):
     """Get the default value for a type. {int: 0, float: 0.0, bytes: b"", str: "", list: [], tuple: (), set: set(), dict: {}}"""
     return {
@@ -1039,7 +1204,7 @@ class RotatingFileWriter:
                     self.reopen_file()
                     if not self.compress:
                         self.clean_backups(count=None)
-                else:
+                elif self.file:
                     self.file.seek(0)
                     self.file.truncate()
 
@@ -1510,32 +1675,49 @@ def test_AsyncQueueListener():
     async def _test():
         from io import StringIO
 
-        mock_stdout = StringIO()
-        # Create logger with a blocking handler
-        logger = logging.getLogger("example")
-        logger.setLevel(logging.INFO)
-        stream_handler = logging.StreamHandler(stream=mock_stdout)
-        stream_handler.setFormatter(
-            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-        )
-        logger.addHandler(stream_handler)
-        # Use async queue listener
-        async with AsyncQueueListener(logger):
-            # Log won't block the event loop
-            for i in range(5):
-                logger.info("log info")
-                logger.debug("log debug")
-        text = mock_stdout.getvalue()
-        assert text.count("log info") == 5
-        assert text.count("log debug") == 0
+        with StringIO() as mock_stdout:
+            # Create logger with a blocking handler
+            logger = logging.getLogger("example")
+            logger.handlers.clear()
+            logger.setLevel(logging.INFO)
+            stream_handler = logging.StreamHandler(stream=mock_stdout)
+            stream_handler.setFormatter(
+                logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+            )
+            logger.addHandler(stream_handler)
+            # Use async queue listener
+            async with AsyncQueueListener(logger):
+                # Log won't block the event loop
+                for _ in range(5):
+                    logger.info("log info")
+                    logger.debug("log debug")
+            text = mock_stdout.getvalue()
+            assert text.count("log info") == 5, text
+            assert text.count("log debug") == 0, text
+            return True
 
-    asyncio.run(_test()) is True
+    assert asyncio.run(_test()) is True
+
+
+def test_LogHelper():
+    logger = LogHelper.bind_handler(
+        "app_test", filename="app_test.log", maxBytes=1, backupCount=2
+    )
+    for i in range(3):
+        logger.info(str(i))
+    LogHelper.close_all_handlers()
+    count = 0
+    for path in Path(".").glob("app_test.log*"):
+        path.unlink(missing_ok=True)
+        count += 1
+    assert count == 2, count
 
 
 def test_utils():
     test_bg_task()
     test_named_lock()
     test_AsyncQueueListener()
+    test_LogHelper()
 
 
 def test():

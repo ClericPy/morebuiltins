@@ -4,6 +4,7 @@
    1. add `force_signum` to `morebuiltins.shared_memory.PLock`, to specify the signal number to force kill the process if it exists.
    2. add `is_free` to `morebuiltins.shared_memory.PLock`, to check if the lock is free.
    3. add `kill_with_name` to `morebuiltins.shared_memory.PLock`, to kill the process with the given name and signal number.
+3. add `morebuiltins.funcs.LogHelper` to quickly bind a logging handler to a logger, with a StreamHandler or SizedTimedRotatingFileHandler.
 
 ### 1.3.1 (2025-06-19)
 1. add `check_recursion` to `morebuiltins.funcs`, to check if a function is recursive.

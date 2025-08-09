@@ -1900,6 +1900,34 @@ Demo::
 ---
 
 
+
+3.15 `LogHelper` - Quickly bind a logging handler to a logger, with a StreamHandler or SizedTimedRotatingFileHandler.
+
+
+```python
+
+The default handler is a StreamHandler to sys.stderr.
+The default file handler is a SizedTimedRotatingFileHandler, which can rotate logs by both time and size.
+
+Examples::
+
+    import logging
+    from morebuiltins.log import LogHelper
+
+    LogHelper.shorten_level()
+    logger = LogHelper.bind_handler(name="mylogger", filename=sys.stdout, maxBytes=100 * 1024**2, backupCount=7)
+    # use logging.getLogger to get the same logger instance
+    logger2 = logging.getLogger("mylogger")
+    assert logger is logger2
+    logger.info("This is an info message")
+    logger.fatal("This is a critical message")
+
+```
+
+
+---
+
+
 ## 4. morebuiltins.ipc
 
 

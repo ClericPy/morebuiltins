@@ -173,6 +173,8 @@ print(morebuiltins.__file__)
 
 3.14 `check_recursion` - Check if a function is recursive by inspecting its AST.
 
+3.15 `LogHelper` - Quickly bind a logging handler to a logger, with a StreamHandler or SizedTimedRotatingFileHandler.
+
 
 ## 4. morebuiltins.ipc
 
