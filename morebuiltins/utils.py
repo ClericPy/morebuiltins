@@ -1064,6 +1064,7 @@ def xor_encode_decode(data, key):
 def is_running_win32(pid: int):
     with os.popen('tasklist /fo csv /fi "pid eq %s"' % int(pid)) as f:
         f.readline()
+        # the second line is the result
         text = f.readline()
         return bool(text)
 
@@ -1090,7 +1091,9 @@ def is_running(pid):
     Examples:
     >>> is_running(os.getpid() * 10)  # Assume process is not running
     False
-    >>> is_running(os.getpid())  # Check if the current process is running
+    >>> current_pid = os.getpid()
+    >>> # sometimes may return False on Windows due to permission issues!
+    >>> is_running(current_pid) or is_running(current_pid)  # Check if the current process is running
     True
     >>> is_running("not_a_pid")  # Invalid PID input should be handled and return False
     False
@@ -1504,7 +1507,9 @@ class FileDict(dict):
             pass
 
 
-def i2b(n: int, length=0, byteorder="big", signed=False) -> bytes:
+def i2b(
+    n: int, length=0, byteorder: Literal["litter", "big"] = "big", signed=False
+) -> bytes:
     r"""Convert an int to bytes of a specified length, commonly used in TCP communication.
 
     Parameters:
@@ -1704,11 +1709,17 @@ class PathLock:
             self.lock.acquire(blocking=True)
 
     def __exit__(self, *_):
-        with self.GLOBAL_LOCK:
-            try:
-                self.LOCKS.remove(self.path)
-            except ValueError:
-                pass
+        try:
+            if self.GLOBAL_LOCK:
+                locked = self.GLOBAL_LOCK.acquire(blocking=True)
+            else:
+                locked = False
+            self.LOCKS.remove((self.path, self.lock))
+        except ValueError:
+            pass
+        finally:
+            if self.GLOBAL_LOCK and locked:
+                self.GLOBAL_LOCK.release()
         self.lock.release()
 
     async def __aenter__(self):
@@ -1716,11 +1727,17 @@ class PathLock:
         await self.lock.acquire()
 
     async def __aexit__(self, *_):
-        with self.GLOBAL_LOCK:
-            try:
-                self.ALOCKS.remove(self.path)
-            except ValueError:
-                pass
+        try:
+            if self.GLOBAL_ALOCK:
+                locked = await self.GLOBAL_ALOCK.acquire()
+            else:
+                locked = False
+            self.ALOCKS.remove((self.path, self.lock))
+        except ValueError:
+            pass
+        finally:
+            if self.GLOBAL_ALOCK and locked:
+                self.GLOBAL_ALOCK.release()
         self.lock.release()
 
 

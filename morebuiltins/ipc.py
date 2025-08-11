@@ -239,10 +239,11 @@ class SocketServer:
             await writer.wait_closed()
 
     async def close(self):
-        if self.is_serving():
+        if self.server and self.is_serving():
             self.server.close()
             await self.server.wait_closed()
-            self._shutdown_ev.set()
+            if self._shutdown_ev:
+                self._shutdown_ev.set()
             if self.end_callback:
                 if asyncio.iscoroutinefunction(self.end_callback):
                     await self.end_callback()
@@ -262,6 +263,8 @@ class SocketServer:
             )
             await self.server.start_serving()
         else:
+            if not hasattr(asyncio, "start_unix_server"):
+                raise RuntimeError("asyncio.start_unix_server is not available")
             self.server = await asyncio.start_unix_server(
                 self.connect_callback, path=self.host, **self.connect_kwargs
             )
@@ -282,8 +285,10 @@ class SocketServer:
 
     def shutdown(self):
         "sync close"
-        if self.is_serving():
-            self.server.get_loop().call_soon_threadsafe(self._shutdown_ev.set)
+        if self.server and self.is_serving():
+            self.server.get_loop().call_soon_threadsafe(
+                lambda: self._shutdown_ev.set if self._shutdown_ev else None
+            )
 
     async def __aenter__(self):
         await self.start()

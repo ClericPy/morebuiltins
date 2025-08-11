@@ -16,6 +16,12 @@ This project enhances Python’s built-ins with extra functionality, prioritizin
 - Minimal Dependencies: Designed to avoid third-party libraries for seamless integration, conflict prevention, and easy packaging via zipapp for pyz distribution.
 ibution.
 
+## Compatibility Break Warnings
+1. **1.3.2 (2025-08-02)**
+   1. move `async_logger`, `AsyncQueueListener`, `LogHelper`, `RotatingFileWriter`, and `SizedTimedRotatingFileHandler` from `morebuiltins.funcs` to `morebuiltins.logs`.
+2. **1.3.0 (2025-03-08)**
+   1. rename `morebuiltins.functools` to `morebuiltins.funcs` to avoid conflict with `functools` in python standard library.
+
 ## Install
 
 - From [pypi.org](https://pypi.org/project/morebuiltins/)
@@ -157,23 +163,17 @@ print(morebuiltins.__file__)
 
 3.6 `InlinePB` - Inline progress bar.
 
-3.7 `SizedTimedRotatingFileHandler` - TimedRotatingFileHandler with maxSize, to avoid files that are too large.
+3.7 `get_type_default` - Get the default value for a type. {int: 0, float: 0.0, bytes: b"", str: "", list: [], tuple: (), set: set(), dict: {}}
 
-3.8 `get_type_default` - Get the default value for a type. {int: 0, float: 0.0, bytes: b"", str: "", list: [], tuple: (), set: set(), dict: {}}
+3.8 `func_cmd` - Handle function with argparse, typing-hint is nessessary.
 
-3.9 `func_cmd` - Handle function with argparse, typing-hint is nessessary.
+3.9 `file_import` - Import function from file path.
 
-3.10 `file_import` - Import function from file path.
+3.10 `get_function` - Get the function object from entrypoint.
 
-3.11 `RotatingFileWriter` - RotatingFileWriter class for writing to a file with rotation support.
+3.11 `to_thread` - Asynchronously run function *func* in a separate thread, same as `asyncio.to_thread` in python 3.9+.
 
-3.12 `get_function` - Get the function object from entrypoint.
-
-3.13 `to_thread` - Asynchronously run function *func* in a separate thread, same as `asyncio.to_thread` in python 3.9+.
-
-3.14 `check_recursion` - Check if a function is recursive by inspecting its AST.
-
-3.15 `LogHelper` - Quickly bind a logging handler to a logger, with a StreamHandler or SizedTimedRotatingFileHandler.
+3.12 `check_recursion` - Check if a function is recursive by inspecting its AST.
 
 
 ## 4. morebuiltins.ipc

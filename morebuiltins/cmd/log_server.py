@@ -11,7 +11,7 @@ from collections import Counter, namedtuple
 from pathlib import Path
 from queue import Empty, Queue
 
-from ..funcs import RotatingFileWriter
+from ..logs import RotatingFileWriter
 from ..ipc import SocketLogHandlerEncoder, SocketServer
 from ..utils import format_error, read_size, ttime
 
@@ -310,7 +310,8 @@ class LogServer(SocketServer):
         self.send_log(msg)
         self.shutdown()
         self._write_queue.put(self.STOP_SIG)
-        self.loop.call_soon_threadsafe(self._shutdown_ev.set)
+        if self._shutdown_ev:
+            self.loop.call_soon_threadsafe(self._shutdown_ev.set)
 
     def __del__(self):
         for f in self._opened_files.values():

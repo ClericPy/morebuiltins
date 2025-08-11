@@ -625,7 +625,9 @@ True if the process is running; False otherwise.
 Examples:
 >>> is_running(os.getpid() * 10)  # Assume process is not running
 False
->>> is_running(os.getpid())  # Check if the current process is running
+>>> current_pid = os.getpid()
+>>> # sometimes may return False on Windows due to permission issues!
+>>> is_running(current_pid) or is_running(current_pid)  # Check if the current process is running
 True
 >>> is_running("not_a_pid")  # Invalid PID input should be handled and return False
 False
@@ -1637,56 +1639,7 @@ Demo::
 
 
 
-3.7 `SizedTimedRotatingFileHandler` - TimedRotatingFileHandler with maxSize, to avoid files that are too large.
-
-
-```python
-
-
-Demo::
-
-    import logging
-    import time
-    from morebuiltins.funcs import SizedTimedRotatingFileHandler
-
-    logger = logging.getLogger("test1")
-    h = SizedTimedRotatingFileHandler(
-        "logs/test1.log", "d", 1, 3, maxBytes=1, ensure_dir=True
-    )
-    h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-    logger.addHandler(h)
-
-    for i in range(5):
-        logger.warning(str(i) * 102400)
-        time.sleep(1)
-    # 102434 test1.log
-    # 102434 test1.log.20241113_231000
-    # 102434 test1.log.20241113_231001
-    # 102434 test1.log.20241113_231002
-    logger = logging.getLogger("test2")
-    h = SizedTimedRotatingFileHandler(
-        "logs/test2.log", "d", 1, 3, maxBytes=1, compress=True
-    )
-    h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-    logger.addHandler(h)
-
-    for i in range(5):
-        logger.warning(str(i) * 102400)
-        time.sleep(1)
-    # 102434 test2.log
-    #    186 test2.log.20241113_231005.gz
-    #    186 test2.log.20241113_231006.gz
-    #    186 test2.log.20241113_231007.gz
-
-
-```
-
-
----
-
-
-
-3.8 `get_type_default` - Get the default value for a type. {int: 0, float: 0.0, bytes: b"", str: "", list: [], tuple: (), set: set(), dict: {}}
+3.7 `get_type_default` - Get the default value for a type. {int: 0, float: 0.0, bytes: b"", str: "", list: [], tuple: (), set: set(), dict: {}}
 
 
 
@@ -1696,7 +1649,7 @@ Demo::
 
 
 
-3.9 `func_cmd` - Handle function with argparse, typing-hint is nessessary.
+3.8 `func_cmd` - Handle function with argparse, typing-hint is nessessary.
 
 
 ```python
@@ -1766,7 +1719,7 @@ Demo::
 
 
 
-3.10 `file_import` - Import function from file path.
+3.9 `file_import` - Import function from file path.
 
 
 ```python
@@ -1784,70 +1737,7 @@ Demo::
 
 
 
-3.11 `RotatingFileWriter` - RotatingFileWriter class for writing to a file with rotation support.
-
-
-```python
-
-Demo::
-
-    >>> # test normal usage
-    >>> writer = RotatingFileWriter("test.log", max_size=10 * 1024, max_backups=1)
-    >>> writer.write("1" * 10)
-    >>> writer.path.stat().st_size
-    0
-    >>> writer.flush()
-    >>> writer.path.stat().st_size
-    10
-    >>> writer.clean_backups(writer.max_backups)
-    >>> writer.unlink_file()
-    >>> # test rotating
-    >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=2)
-    >>> writer.write("1" * 15)
-    >>> writer.write("1" * 15)
-    >>> writer.write("1" * 15, flush=True)
-    >>> writer.path.stat().st_size
-    15
-    >>> len(writer.backup_path_list())
-    2
-    >>> writer.clean_backups(writer.max_backups)
-    >>> writer.unlink_file()
-    >>> # test no backups
-    >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=0)
-    >>> writer.write("1" * 15)
-    >>> writer.write("1" * 15)
-    >>> writer.write("1" * 15, flush=True)
-    >>> writer.path.stat().st_size
-    15
-    >>> len(writer.backup_path_list())
-    0
-    >>> writer.clean_backups(writer.max_backups)
-    >>> len(writer.backup_path_list())
-    0
-    >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=3)
-    >>> writer.print("1" * 100)
-    >>> writer.unlink(rotate=False)
-    >>> len(writer.backup_path_list())
-    1
-    >>> writer.unlink(rotate=True)
-    >>> len(writer.backup_path_list())
-    0
-    >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=3, compress=True)
-    >>> writer.print("1" * 100)
-    >>> len(writer.backup_path_list())
-    1
-    >>> writer.unlink(rotate=True)
-    >>> len(writer.backup_path_list())
-    0
-
-```
-
-
----
-
-
-
-3.12 `get_function` - Get the function object from entrypoint.
+3.10 `get_function` - Get the function object from entrypoint.
 
 
 ```python
@@ -1864,7 +1754,7 @@ Demo::
 
 
 
-3.13 `to_thread` - Asynchronously run function *func* in a separate thread, same as `asyncio.to_thread` in python 3.9+.
+3.11 `to_thread` - Asynchronously run function *func* in a separate thread, same as `asyncio.to_thread` in python 3.9+.
 
 
 
@@ -1874,7 +1764,7 @@ Demo::
 
 
 
-3.14 `check_recursion` - Check if a function is recursive by inspecting its AST.
+3.12 `check_recursion` - Check if a function is recursive by inspecting its AST.
 
 
 ```python
@@ -1893,34 +1783,6 @@ Demo::
     >>> check_recursion(print, return_error=False)
     >>> type(check_recursion(print, return_error=True))
     <class 'TypeError'>
-
-```
-
-
----
-
-
-
-3.15 `LogHelper` - Quickly bind a logging handler to a logger, with a StreamHandler or SizedTimedRotatingFileHandler.
-
-
-```python
-
-The default handler is a StreamHandler to sys.stderr.
-The default file handler is a SizedTimedRotatingFileHandler, which can rotate logs by both time and size.
-
-Examples::
-
-    import logging
-    from morebuiltins.log import LogHelper
-
-    LogHelper.shorten_level()
-    logger = LogHelper.bind_handler(name="mylogger", filename=sys.stdout, maxBytes=100 * 1024**2, backupCount=7)
-    # use logging.getLogger to get the same logger instance
-    logger2 = logging.getLogger("mylogger")
-    assert logger is logger2
-    logger.info("This is an info message")
-    logger.fatal("This is a critical message")
 
 ```
 
