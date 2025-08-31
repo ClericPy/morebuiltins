@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import logging
 import re
 import sys
@@ -60,7 +61,7 @@ class LogHelper:
     FILENAME_HANDLER_MAP: Dict[str, logging.Handler] = {}
 
     @classmethod
-    def close_all_handlers(cls):
+    def close_all_handlers(cls) -> List[Tuple[str, bool, Optional[Exception]]]:
         """Close all handlers in the FILENAME_HANDLER_MAP."""
         result: List[Tuple[str, bool, Optional[Exception]]] = []
         for key, handler in list(cls.FILENAME_HANDLER_MAP.items()):
@@ -75,7 +76,7 @@ class LogHelper:
     @classmethod
     def bind_handler(
         cls,
-        name="main",
+        name: Optional[str] = "main",
         filename: Union[
             TextIO, TextIOBase, None, logging.Handler, str, Path
         ] = sys.stderr,
@@ -90,6 +91,7 @@ class LogHelper:
         formatter: Union[str, logging.Formatter, None] = DEFAULT_FORMAT,
         handler_level: Union[None, str, int] = "INFO",
         logger_level: Union[None, str, int] = "INFO",
+        queue: Union[bool, None, Queue, ProcessQueue] = False,
     ):
         """Bind a logging handler to the specified logger name, with support for file, stream, or custom handler.
         This sets up the logger with the desired handler, formatter, and log levels.
@@ -127,6 +129,12 @@ class LogHelper:
             2
             >>> bool(LogHelper.close_all_handlers() or True)
             True
+            >>> logger = LogHelper.bind_handler(name="mylogger1", queue=True)
+            >>> logger.handlers[0]
+            <QueueHandler (NOTSET)>
+            >>> logger = LogHelper.bind_handler(name="mylogger2", queue=False)
+            >>> logger.handlers[0]
+            <StreamHandler <stderr> (INFO)>
         """
         logger = logging.getLogger(name)
         if filename is None:
@@ -183,6 +191,14 @@ class LogHelper:
         handler.setFormatter(formatter)
         # Add the handler to the logger
         logger.addHandler(handler)
+        if queue:
+            if queue is True:
+                queue = Queue()
+            elif not isinstance(queue, (Queue, ProcessQueue)):
+                raise TypeError("queue must be a Queue, ProcessQueue, True, or False")
+            async_listener = AsyncQueueListener(logger, queue=queue)
+            async_listener.start()
+            atexit.register(async_listener.stop)
         return logger
 
     @classmethod
