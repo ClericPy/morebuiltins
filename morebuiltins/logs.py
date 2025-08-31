@@ -111,6 +111,8 @@ class LogHelper:
             formatter (Union[str, logging.Formatter, None], optional): Formatter or format string. Defaults to DEFAULT_FORMAT.
             handler_level (Union[None, str, int], optional): Log level for the handler. Defaults to "INFO".
             logger_level (Union[None, str, int], optional): Log level for the logger. Defaults to "INFO".
+            queue (Union[bool, None, Queue, ProcessQueue], optional): If True, use a Queue for async logging.
+                If a Queue or ProcessQueue is provided, it will be used directly. Defaults to False.
 
         Raises:
             TypeError: If filename is not a supported type.
