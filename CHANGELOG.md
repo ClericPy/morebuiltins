@@ -9,6 +9,7 @@
 3. add `morebuiltins.logs.LogHelper` to quickly bind a logging handler to a logger, with a StreamHandler or SizedTimedRotatingFileHandler.
 4. **Compatibility Warnings**:
    1. move `async_logger`, `AsyncQueueListener`, `LogHelper`, `RotatingFileWriter`, and `SizedTimedRotatingFileHandler` from `morebuiltins.funcs` to `morebuiltins.logs`.
+5. add `ContextFilter` for logging, to add context variables to log records.
 
 ### 1.3.1 (2025-06-19)
 1. add `check_recursion` to `morebuiltins.funcs`, to check if a function is recursive.

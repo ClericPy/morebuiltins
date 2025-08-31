@@ -3,10 +3,12 @@ import logging
 import re
 import sys
 import time
-from contextvars import copy_context
+import typing
+from contextvars import ContextVar, copy_context
 from functools import partial
 from gzip import GzipFile
 from io import TextIOBase
+from logging import Filter
 from logging.handlers import QueueHandler, QueueListener, TimedRotatingFileHandler
 from multiprocessing import Queue as ProcessQueue
 from pathlib import Path
@@ -21,6 +23,7 @@ __all__ = [
     "LogHelper",
     "RotatingFileWriter",
     "SizedTimedRotatingFileHandler",
+    "ContextFilter",
 ]
 
 
@@ -692,6 +695,52 @@ class AsyncQueueListener(QueueListener):
 
 # alias for AsyncQueueListener
 async_logger = AsyncQueueListener
+
+
+class ContextFilter(Filter):
+    """A logging filter that injects context variables into extra of log records. ContextVar is used to manage context-specific data in a thread-safe / async-safe manner.
+    RequestID / TraceID / TaskID can be used to trace logs belonging to the same request or operation across different threads or async tasks.
+
+    Example::
+
+        import random
+        import time
+        import typing
+        from concurrent.futures import ThreadPoolExecutor
+        from contextvars import ContextVar
+        from logging import Filter, Formatter, StreamHandler, getLogger
+        from threading import current_thread
+
+        def test(trace_id: int = 0):
+            trace_id_var.set(trace_id)
+            for _ in range(3):
+                time.sleep(random.random())
+                logger.debug(f"msg from thread: {current_thread().ident}")
+
+
+        trace_id_var: ContextVar = ContextVar("trace_id")
+        logger = getLogger()
+        logger.addFilter(ContextFilter({"trace_id": trace_id_var}))
+        formatter = Formatter("%(asctime)s | [%(trace_id)s] %(message)s")
+        handler = StreamHandler()
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel("DEBUG")
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future = [executor.submit(test, _) for _ in range(3)]
+
+    """
+
+    def __init__(self, context_vars: typing.Dict[str, ContextVar], name: str = ""):
+        super().__init__(name)
+        self._context_vars = context_vars
+
+    def filter(self, record):
+        record_dict = record.__dict__
+        for key, var in self._context_vars.items():
+            record_dict.setdefault(key, var.get(None))
+        return True
 
 
 def test_LogHelper():

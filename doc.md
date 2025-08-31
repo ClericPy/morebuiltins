@@ -2677,3 +2677,257 @@ b''
 ---
 
 
+## 19. morebuiltins.logs
+
+
+
+19.1 `async_logger` - Asynchronous non-blocking QueueListener that manages logger handlers.
+
+
+```python
+logger is a logging.Logger instance.
+queue is a Queue or ProcessQueue instance.
+respect_handler_level is a boolean that determines if the handler level should be respected.
+
+Example:
+
+    async def main():
+        # Create logger with a blocking handler
+        logger = logging.getLogger("example")
+        logger.setLevel(logging.INFO)
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        )
+        logger.addHandler(stream_handler)
+        # Use async queue listener
+        async with AsyncQueueListener(logger):
+            # Log won't block the event loop
+            for i in range(5):
+                logger.info("log info")
+                logger.debug("log debug")
+                await asyncio.sleep(0.01)
+
+```
+
+
+---
+
+
+
+19.2 `AsyncQueueListener` - Asynchronous non-blocking QueueListener that manages logger handlers.
+
+
+```python
+logger is a logging.Logger instance.
+queue is a Queue or ProcessQueue instance.
+respect_handler_level is a boolean that determines if the handler level should be respected.
+
+Example:
+
+    async def main():
+        # Create logger with a blocking handler
+        logger = logging.getLogger("example")
+        logger.setLevel(logging.INFO)
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        )
+        logger.addHandler(stream_handler)
+        # Use async queue listener
+        async with AsyncQueueListener(logger):
+            # Log won't block the event loop
+            for i in range(5):
+                logger.info("log info")
+                logger.debug("log debug")
+                await asyncio.sleep(0.01)
+
+```
+
+
+---
+
+
+
+19.3 `LogHelper` - Quickly bind a logging handler to a logger, with a StreamHandler or SizedTimedRotatingFileHandler.
+
+
+```python
+
+The default handler is a StreamHandler to sys.stderr.
+The default file handler is a SizedTimedRotatingFileHandler, which can rotate logs by both time and size.
+
+Examples::
+
+    import logging
+    from morebuiltins.log import LogHelper
+
+    LogHelper.shorten_level()
+    logger = LogHelper.bind_handler(name="mylogger", filename=sys.stdout, maxBytes=100 * 1024**2, backupCount=7)
+    # use logging.getLogger to get the same logger instance
+    logger2 = logging.getLogger("mylogger")
+    assert logger is logger2
+    logger.info("This is an info message")
+    logger.fatal("This is a critical message")
+
+```
+
+
+---
+
+
+
+19.4 `RotatingFileWriter` - RotatingFileWriter class for writing to a file with rotation support.
+
+
+```python
+
+Demo::
+
+    >>> # test normal usage
+    >>> writer = RotatingFileWriter("test.log", max_size=10 * 1024, max_backups=1)
+    >>> writer.write("1" * 10)
+    >>> writer.path.stat().st_size
+    0
+    >>> writer.flush()
+    >>> writer.path.stat().st_size
+    10
+    >>> writer.clean_backups(writer.max_backups)
+    >>> writer.unlink_file()
+    >>> # test rotating
+    >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=2)
+    >>> writer.write("1" * 15)
+    >>> writer.write("1" * 15)
+    >>> writer.write("1" * 15, flush=True)
+    >>> writer.path.stat().st_size
+    15
+    >>> len(writer.backup_path_list())
+    2
+    >>> writer.clean_backups(writer.max_backups)
+    >>> writer.unlink_file()
+    >>> # test no backups
+    >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=0)
+    >>> writer.write("1" * 15)
+    >>> writer.write("1" * 15)
+    >>> writer.write("1" * 15, flush=True)
+    >>> writer.path.stat().st_size
+    15
+    >>> len(writer.backup_path_list())
+    0
+    >>> writer.clean_backups(writer.max_backups)
+    >>> len(writer.backup_path_list())
+    0
+    >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=3)
+    >>> writer.print("1" * 100)
+    >>> writer.unlink(rotate=False)
+    >>> len(writer.backup_path_list())
+    1
+    >>> writer.unlink(rotate=True)
+    >>> len(writer.backup_path_list())
+    0
+    >>> writer = RotatingFileWriter("test.log", max_size=20, max_backups=3, compress=True)
+    >>> writer.print("1" * 100)
+    >>> len(writer.backup_path_list())
+    1
+    >>> writer.unlink(rotate=True)
+    >>> len(writer.backup_path_list())
+    0
+
+```
+
+
+---
+
+
+
+19.5 `SizedTimedRotatingFileHandler` - TimedRotatingFileHandler with maxSize, to avoid files that are too large.
+
+
+```python
+
+
+Demo::
+
+    import logging
+    import time
+    from morebuiltins.funcs import SizedTimedRotatingFileHandler
+
+    logger = logging.getLogger("test1")
+    h = SizedTimedRotatingFileHandler(
+        "logs/test1.log", "d", 1, 3, maxBytes=1, ensure_dir=True
+    )
+    h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(h)
+
+    for i in range(5):
+        logger.warning(str(i) * 102400)
+        time.sleep(1)
+    # 102434 test1.log
+    # 102434 test1.log.20241113_231000
+    # 102434 test1.log.20241113_231001
+    # 102434 test1.log.20241113_231002
+    logger = logging.getLogger("test2")
+    h = SizedTimedRotatingFileHandler(
+        "logs/test2.log", "d", 1, 3, maxBytes=1, compress=True
+    )
+    h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(h)
+
+    for i in range(5):
+        logger.warning(str(i) * 102400)
+        time.sleep(1)
+    # 102434 test2.log
+    #    186 test2.log.20241113_231005.gz
+    #    186 test2.log.20241113_231006.gz
+    #    186 test2.log.20241113_231007.gz
+
+
+```
+
+
+---
+
+
+
+19.6 `ContextFilter` - A logging filter that injects context variables into extra of log records. ContextVar is used to manage context-specific data in a thread-safe / async-safe manner.
+
+
+```python
+RequestID / TraceID / TaskID can be used to trace logs belonging to the same request or operation across different threads or async tasks.
+
+Example::
+
+    import random
+    import time
+    import typing
+    from concurrent.futures import ThreadPoolExecutor
+    from contextvars import ContextVar
+    from logging import Filter, Formatter, StreamHandler, getLogger
+    from threading import current_thread
+
+    def test(trace_id: int = 0):
+        trace_id_var.set(trace_id)
+        for _ in range(3):
+            time.sleep(random.random())
+            logger.debug(f"msg from thread: {current_thread().ident}")
+
+
+    trace_id_var: ContextVar = ContextVar("trace_id")
+    logger = getLogger()
+    logger.addFilter(ContextFilter({"trace_id": trace_id_var}))
+    formatter = Formatter("%(asctime)s | [%(trace_id)s] %(message)s")
+    handler = StreamHandler()
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel("DEBUG")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future = [executor.submit(test, _) for _ in range(3)]
+
+
+```
+
+
+---
+
+

@@ -275,6 +275,21 @@ print(morebuiltins.__file__)
 18.2 `SharedBytes` - Shared Memory for Python, for python 3.8+.
 
 
+## 19. morebuiltins.logs
+
+19.1 `async_logger` - Asynchronous non-blocking QueueListener that manages logger handlers.
+
+19.2 `AsyncQueueListener` - Asynchronous non-blocking QueueListener that manages logger handlers.
+
+19.3 `LogHelper` - Quickly bind a logging handler to a logger, with a StreamHandler or SizedTimedRotatingFileHandler.
+
+19.4 `RotatingFileWriter` - RotatingFileWriter class for writing to a file with rotation support.
+
+19.5 `SizedTimedRotatingFileHandler` - TimedRotatingFileHandler with maxSize, to avoid files that are too large.
+
+19.6 `ContextFilter` - A logging filter that injects context variables into extra of log records. ContextVar is used to manage context-specific data in a thread-safe / async-safe manner.
+
+
 <!-- end -->
 
 ## cmd utils

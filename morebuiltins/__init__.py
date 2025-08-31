@@ -20,4 +20,5 @@ __all__ = [
     "morebuiltins.cmd.systemd.timer",
     "morebuiltins.sqlite",
     "morebuiltins.shared_memory",
+    "morebuiltins.logs",
 ]
