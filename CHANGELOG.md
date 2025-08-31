@@ -1,5 +1,8 @@
 ## Changelog
 
+### 1.3.3 (2025-09-01)
+1. add `morebuiltins.logs.LogHelper.handle_crash` to log uncaught exceptions.
+
 ### 1.3.2 (2025-08-02)
 1. fix typing-hint for `morebuiltins.funcs.threads` decorator, now it returns `Callable[..., Future]`.
 2. add force kill methods to `morebuiltins.shared_memory.PLock`:

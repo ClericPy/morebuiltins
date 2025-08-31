@@ -212,6 +212,12 @@ class LogHelper:
         for level, name in mapping.items():
             logging.addLevelName(level, name)
 
+    @classmethod
+    def handle_crash(cls, logger: logging.Logger, msg="[Uncaught Exception]"):
+        sys.excepthook = lambda exctype, value, tb: logger.critical(
+            msg, exc_info=(exctype, value, tb)
+        )
+
 
 class RotatingFileWriter:
     """RotatingFileWriter class for writing to a file with rotation support.
