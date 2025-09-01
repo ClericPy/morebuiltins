@@ -2759,8 +2759,9 @@ The default file handler is a SizedTimedRotatingFileHandler, which can rotate lo
 
 Examples::
 
+    # 1. Bind a StreamHandler to the "mylogger" logger, output to sys.stdout
     import logging
-    from morebuiltins.log import LogHelper
+    from morebuiltins.logs import LogHelper
 
     LogHelper.shorten_level()
     logger = LogHelper.bind_handler(name="mylogger", filename=sys.stdout, maxBytes=100 * 1024**2, backupCount=7)
@@ -2769,6 +2770,23 @@ Examples::
     assert logger is logger2
     logger.info("This is an info message")
     logger.fatal("This is a critical message")
+
+    # 2. Bind file and stderr in the same logger
+    import sys
+    import logging
+    from morebuiltins.logs import LogHelper
+    LogHelper.shorten_level()
+    logger = LogHelper.bind_handler(name="mylogger", filename="mylog.log", maxBytes=100 * 1024**2, backupCount=7)
+    logger = LogHelper.bind_handler(name="mylogger", filename=sys.stderr)
+    logger.info("This is an info message")
+
+    # 3. Use queue=True to make logging non-blocking, both file and stderr
+    import sys
+    from morebuiltins.logs import LogHelper
+    LogHelper.shorten_level()
+    logger = LogHelper.bind_handler(name="mylogger", filename="mylog.log", maxBytes=100 * 1024**2, backupCount=7, queue=True)
+    logger = LogHelper.bind_handler(name="mylogger", filename=sys.stderr, queue=True)
+    logger.info("This is an info message")
 
 ```
 
