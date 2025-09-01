@@ -2,6 +2,7 @@
 
 ### 1.3.3 (2025-09-01)
 1. add `morebuiltins.logs.LogHelper.handle_crash` to log uncaught exceptions.
+2. fix `morebuiltins.logs.LogHelper.bind_handler` to avoid adding duplicate queue handlers.
 
 ### 1.3.2 (2025-08-02)
 1. fix typing-hint for `morebuiltins.funcs.threads` decorator, now it returns `Callable[..., Future]`.

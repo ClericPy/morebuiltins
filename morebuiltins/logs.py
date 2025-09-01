@@ -42,8 +42,9 @@ class LogHelper:
 
     Examples::
 
+        # 1. Bind a StreamHandler to the "mylogger" logger, output to sys.stdout
         import logging
-        from morebuiltins.log import LogHelper
+        from morebuiltins.logs import LogHelper
 
         LogHelper.shorten_level()
         logger = LogHelper.bind_handler(name="mylogger", filename=sys.stdout, maxBytes=100 * 1024**2, backupCount=7)
@@ -52,6 +53,23 @@ class LogHelper:
         assert logger is logger2
         logger.info("This is an info message")
         logger.fatal("This is a critical message")
+
+        # 2. Bind file and stderr in the same logger
+        import sys
+        import logging
+        from morebuiltins.logs import LogHelper
+        LogHelper.shorten_level()
+        logger = LogHelper.bind_handler(name="mylogger", filename="mylog.log", maxBytes=100 * 1024**2, backupCount=7)
+        logger = LogHelper.bind_handler(name="mylogger", filename=sys.stderr)
+        logger.info("This is an info message")
+
+        # 3. Use queue=True to make logging non-blocking, both file and stderr
+        import sys
+        from morebuiltins.logs import LogHelper
+        LogHelper.shorten_level()
+        logger = LogHelper.bind_handler(name="mylogger", filename="mylog.log", maxBytes=100 * 1024**2, backupCount=7, queue=True)
+        logger = LogHelper.bind_handler(name="mylogger", filename=sys.stderr, queue=True)
+        logger.info("This is an info message")
     """
 
     DEFAULT_FORMAT = (
@@ -192,15 +210,28 @@ class LogHelper:
             formatter = logging.Formatter(cls.DEFAULT_FORMAT)
         handler.setFormatter(formatter)
         # Add the handler to the logger
-        logger.addHandler(handler)
         if queue:
             if queue is True:
                 queue = Queue()
             elif not isinstance(queue, (Queue, ProcessQueue)):
                 raise TypeError("queue must be a Queue, ProcessQueue, True, or False")
-            async_listener = AsyncQueueListener(logger, queue=queue)
-            async_listener.start()
-            atexit.register(async_listener.stop)
+            if (
+                len(logger.handlers) == 1
+                and isinstance(logger.handlers[0], QueueHandler)
+                and isinstance(logger.handlers[0].listener, AsyncQueueListener)
+            ):
+                # already a QueueHandler
+                async_listener: AsyncQueueListener = logger.handlers[0].listener
+                async_listener.bind_new_handler(handler)
+                return logger
+            else:
+                logger.addHandler(handler)
+                async_listener = AsyncQueueListener(logger, queue=queue)
+                async_listener.start()
+                atexit.register(async_listener.stop)
+        else:
+            if handler not in logger.handlers:
+                logger.addHandler(handler)
         return logger
 
     @classmethod
@@ -671,10 +702,11 @@ class AsyncQueueListener(QueueListener):
         respect_handler_level=True,
     ):
         self.logger = logger
+        self.queue_id = id(queue)
         self.queue = queue or Queue()
-        # Store original handlers
+        # Store original handlers to restore later
         self.original_handlers = list(logger.handlers)
-        # Get handlers that might block
+        # Get handlers that might block, send to parent class
         self.blocking_handlers = [
             h for h in self.original_handlers if not isinstance(h, QueueHandler)
         ]
@@ -684,6 +716,14 @@ class AsyncQueueListener(QueueListener):
             *self.blocking_handlers,
             respect_handler_level=respect_handler_level,
         )
+        self._started = self._stopped = False
+
+    def bind_new_handler(self, handler: logging.Handler):
+        if isinstance(handler, QueueHandler):
+            raise TypeError("handler cannot be a QueueHandler")
+        self.original_handlers.append(handler)
+        self.blocking_handlers.append(handler)
+        self.handlers = tuple(self.blocking_handlers)
 
     def _switch_to_queue_handler(self):
         """Switch handlers in a blocking context"""
@@ -691,7 +731,9 @@ class AsyncQueueListener(QueueListener):
         for handler in self.original_handlers:
             self.logger.removeHandler(handler)
         # Add queue handler
-        self.logger.addHandler(QueueHandler(self.queue))
+        queue_handler = QueueHandler(self.queue)
+        queue_handler.listener = self
+        self.logger.addHandler(queue_handler)
 
     def _restore_original_handlers(self):
         """Restore original handlers in a blocking context"""
@@ -702,12 +744,16 @@ class AsyncQueueListener(QueueListener):
             self.logger.addHandler(handler)
 
     def stop(self):
-        super().stop()
-        self._restore_original_handlers()
+        if self._started and not self._stopped:
+            self._stopped = True
+            super().stop()
+            self._restore_original_handlers()
 
     def start(self):
-        self._switch_to_queue_handler()
-        super().start()
+        if not self._started:
+            self._started = True
+            self._switch_to_queue_handler()
+            super().start()
 
     async def __aenter__(self):
         await to_thread(self.start)
