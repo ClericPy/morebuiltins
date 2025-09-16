@@ -1864,7 +1864,11 @@ def base_decode(
 
 
 def gen_id(rand_len=4) -> str:
-    """Generate a unique ID based on the current time and random bytes
+    """Generate a unique ID based on the current time and random bytes.
+
+    If rand_len=0 the length of ID will be 18, rand_len=4 the length of ID will be 22.
+    ID format:
+    - {YYMMDD_HHMMSS}_{4-digit base62 of microsecond}{rand_len urandom hex string}
 
     Args:
         rand_len (int, optional): Defaults to 4.
@@ -1880,12 +1884,17 @@ def gen_id(rand_len=4) -> str:
     >>> ids = [time.sleep(0.000001) or gen_id() for _ in range(1000)]
     >>> len(set(ids))
     1000
+    >>> [len(gen_id(i)[:]) for i in range(10)]
+    [18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
     """
     now = datetime.now()
     s1 = now.strftime("%y%m%d_%H%M%S")
     s2 = base_encode(now.microsecond)
-    s2 = f"{s2:>04}{os.urandom(rand_len // 2).hex()}"
-    return f"{s1}_{s2}"
+    if rand_len:
+        s3 = os.urandom(rand_len // 2 + 1).hex()[:rand_len]
+    else:
+        s3 = ""
+    return f"{s1}_{s2:>04}{s3}"
 
 
 def timeti(
@@ -1934,7 +1943,7 @@ class SnowFlake:
         seq_bit=12,  # between 0 and 4095
         start_date="2025-01-01",
     ):
-        r"""Generate unique IDs using Twitter's Snowflake algorithm.
+        r"""Generate unique IDs using Twitter's Snowflake algorithm. The Snowflake algorithm is an efficient, distributed, globally unique, and ordered ID generation algorithm suitable for large-scale distributed systems.
 
         The ID is composed of:
         - 41 bits timestamp in milliseconds since a custom epoch
