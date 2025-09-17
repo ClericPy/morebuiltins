@@ -739,21 +739,44 @@ def check_recursion(function: Callable, return_error=False):
             return None
 
 
+class LineTime(object):
+    __slots__ = ("line_no", "start_time", "end_time", "code")
+
+    def __init__(
+        self, line_no: int, start_time: float, end_time: Optional[float], code: str
+    ):
+        self.line_no = line_no
+        self.start_time = start_time
+        self.end_time = end_time
+        self.code = code
+
+
 class LineProfiler:
     """Line-by-line performance profiler."""
 
     stdout = sys.stdout
 
-    def __init__(self):
-        self.line_times: List[Tuple[int, float, str]] = []
+    def __init__(self) -> None:
+        self.line_times: List[LineTime] = []
         self.start_time = 0.0
         self.total_time = 0.0
         self.line_cache: Dict[str, list] = {}
+        self.filled = 0
 
     def trace_calls(self, frame, event, arg):
         """Trace each line of function calls"""
+        current_time = time.perf_counter()
+        if self.filled < len(self.line_times):
+            self.filled += 1
+            last_item = self.line_times[-1]
+            if last_item.end_time is None:
+                self.line_times[-1] = LineTime(
+                    last_item.line_no,
+                    last_item.start_time,
+                    current_time,
+                    last_item.code,
+                )
         if event == "line":
-            current_time = time.perf_counter()
             line_no = frame.f_lineno
             filename = frame.f_code.co_filename
             # Get the code content of current line
@@ -777,7 +800,7 @@ class LineProfiler:
             except Exception:
                 line_content = "-"
                 self.line_cache.setdefault(filename, [])
-            self.line_times.append((line_no, current_time, line_content))
+            self.line_times.append(LineTime(line_no, current_time, None, line_content))
         return self.trace_calls
 
     def _get_function_base_indent(self, func_name: str):
@@ -797,23 +820,23 @@ class LineProfiler:
             return
         # Calculate base indentation level of function
         base_indent = self._get_function_base_indent(func_name)
+        print(f"{'=' * 95}", file=self.stdout)
         print(f"`{func_name}` profiling report:", file=self.stdout)
         start_time = time.strftime("%Y-%m-%d %H:%M:%S")
         print(
-            f"{start_time} | Total: {self.total_time * 1000:.3f} ms",
+            f"Start at {start_time} | Total: {self.total_time * 1000:.3f} ms",
             file=self.stdout,
         )
         # Calculate execution time for each line
         line_durations = []
-        for i in range(1, len(self.line_times)):
-            prev_time = self.line_times[i - 1][1]
-            curr_time = self.line_times[i][1]
-            duration = curr_time - prev_time
+        for item in self.line_times:
+            if item.end_time is None:
+                continue
             line_durations.append(
                 (
-                    self.line_times[i - 1][0],  # line number
-                    duration,  # duration
-                    self.line_times[i - 1][2],  # code content
+                    item.line_no,  # line number
+                    item.end_time - item.start_time,  # duration
+                    item.code,  # code content
                 )
             )
         # Sort by line number and merge time for same lines
@@ -882,19 +905,20 @@ def line_profiler(func: Callable) -> Callable:
         >>> example_function()
         45
         >>> output = LineProfiler.stdout.getvalue()
-        >>> output.splitlines()[0].startswith("`example_function` profiling report:")
+        >>> output.splitlines()[0].startswith("=" * 95) and "`example_function` profiling report:" in output
         True
         >>> LineProfiler.stdout = sys.stdout  # Restore original stdout
 
-    # `example_function` profiling report:
-    # 2025-07-26 17:09:58 | Total: 1.122 ms
-    # ===============================================================================================
-    #   Line    %    Total(ms)    Count      Avg(ms)  Source Code
-    # -----------------------------------------------------------------------------------------------
-    #      3   73        0.825        1        0.825  -
-    #      4    3        0.040       11        0.004  -
-    #      5    4        0.050       10        0.005  -
-    # ===============================================================================================
+===============================================================================================
+`example_function` profiling report:
+Start at 2025-07-26 17:09:58 | Total: 1.122 ms
+===============================================================================================
+  Line    %    Total(ms)    Count      Avg(ms)  Source Code
+-----------------------------------------------------------------------------------------------
+     3   73        0.825        1        0.825  -
+     4    3        0.040       11        0.004  -
+     5    4        0.050       10        0.005  -
+===============================================================================================
     """
 
     @wraps(func)

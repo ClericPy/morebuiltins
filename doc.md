@@ -1163,10 +1163,14 @@ Examples:
 
 
 
-1.37 `gen_id` - Generate a unique ID based on the current time and random bytes
+1.37 `gen_id` - Generate a unique ID based on the current time and random bytes.
 
 
 ```python
+
+If rand_len=0 the length of ID will be 18, rand_len=4 the length of ID will be 22.
+ID format:
+- {YYMMDD_HHMMSS}_{4-digit base62 of microsecond}{rand_len urandom hex string}
 
 Args:
     rand_len (int, optional): Defaults to 4.
@@ -1182,6 +1186,8 @@ True
 >>> ids = [time.sleep(0.000001) or gen_id() for _ in range(1000)]
 >>> len(set(ids))
 1000
+>>> [len(gen_id(i)[:]) for i in range(10)]
+[18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
 
 ```
 

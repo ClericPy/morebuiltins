@@ -2,6 +2,7 @@
 
 ### 1.3.4 (2025-09-17)
 1. fix `morebuiltins.utils.gen_id` wrong length issue.
+2. fix `morebuiltins.funcs.LineProfiler` to handle nested function calls correctly.
 
 ### 1.3.3 (2025-09-01)
 1. add `morebuiltins.logs.LogHelper.handle_crash` to log uncaught exceptions.
