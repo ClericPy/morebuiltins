@@ -2265,10 +2265,32 @@ Demo::
 
 ```python
 
-Server side:
-    python -m morebuiltins.cmd.log_server --log-dir=./logs --host 127.0.0.1 --port 8901
+### Server demo1:
+    start log server in terminal, only collect logs and print to console
+    > python -m morebuiltins.cmd.log_server
 
-Client side:
+### Server demo2:
+    custom options to log to "logs" directory, default rotates at 10MB with 5 backups
+    > python -m morebuiltins.cmd.log_server --log-dir=./logs --host 127.0.0.1 --port 8901
+
+### Server demo3:
+    python code
+
+```python
+import asyncio
+
+from morebuiltins.cmd.log_server import LogServer
+
+
+async def main():
+    async with LogServer() as ls:
+        await ls.wait_closed()
+
+
+asyncio.run(main())
+```
+
+### Client demo1:
 
 ```python
 import logging
@@ -2296,27 +2318,24 @@ for _ in range(5):
 # [client] 2024-08-10 19:30:07,114 - temp3.py - hello world!
 ```
 
+### Client demo2:
+
+```python
+from morebuiltins.cmd.log_server import get_logger
+
+logger = get_logger("dir/test.log")
+# logger = get_logger("dir/test.log", host="localhost", port=8901)
+logger.debug("debug")
+logger.info("info")
+logger.warning("warning")
+# 2025-10-11 01:30:35,151 | DEBUG | log_server.py:416 - Set formatter for logger 'dir/test.log': %(asctime)s | %(levelname)-5s | %(filename)+8s:%(lineno)+3s - %(message)s
+# 2025-10-11 01:30:35,151 | DEBUG | temp.py:  4 - debug
+# 2025-10-11 01:30:35,152 | INFO  | temp.py:  5 - info
+# 2025-10-11 01:30:35,152 | WARN  | temp.py:  6 - warning
+```
+
 More docs:
-    python -m morebuiltins.cmd.log_server -h
-    usage: log_server.py [-h] [--host HOST] [--port PORT] [--log-dir LOG_DIR] [--name NAME] [--server-log-args SERVER_LOG_ARGS] [--handle-signals HANDLE_SIGNALS] [--max-queue-size MAX_QUEUE_SIZE]
-                        [--max-queue-buffer MAX_QUEUE_BUFFER] [--log-stream LOG_STREAM]
-
-    options:
-    -h, --help            show this help message and exit
-    --host HOST
-    --port PORT
-    --log-dir LOG_DIR     log dir to save log files, if empty, log to stdout with --log-stream
-    --name NAME           log server name
-    --server-log-args SERVER_LOG_ARGS
-                            max_size,max_backups for log files, default: 10485760,5 == 10MB each log file, 1 name.log + 5 backups
-    --handle-signals HANDLE_SIGNALS
-    --max-queue-size MAX_QUEUE_SIZE
-                            max queue size for log queue, log will be in memory queue before write to file
-    --max-queue-buffer MAX_QUEUE_BUFFER
-                            chunk size of lines before write to file
-    --log-stream LOG_STREAM
-                            log to stream, if --log-stream='' will mute the stream log
-
+    > python -m morebuiltins.cmd.log_server -h
 
 ```
 

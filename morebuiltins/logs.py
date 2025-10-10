@@ -73,7 +73,7 @@ class LogHelper:
     """
 
     DEFAULT_FORMAT = (
-        "%(asctime)s | %(levelname)-5s | %(filename)+8s:%(lineno)+3s - %(message)s"
+        "%(asctime)s | %(levelname)-5s | %(filename)-8s(%(lineno)s) - %(message)s"
     )
     DEFAULT_FORMATTER = logging.Formatter(DEFAULT_FORMAT)
     FILENAME_HANDLER_MAP: Dict[str, logging.Handler] = {}
@@ -352,7 +352,7 @@ class RotatingFileWriter:
                 self.path.parent.rmdir()
 
     def close(self):
-        return self.close_file()
+        return self.shutdown()
 
     def __enter__(self):
         return self
@@ -433,6 +433,8 @@ class RotatingFileWriter:
             self.clean_backups()
 
     def need_rotate(self, new_length):
+        if not self.file:
+            return False
         return self.max_size and self.file.tell() + new_length > self.max_size
 
     def ensure_file(self, new_length=0):
@@ -465,11 +467,15 @@ class RotatingFileWriter:
                             break
 
     def flush(self):
+        if not self.file:
+            raise RuntimeError("file is not opened")
         self.file.flush()
 
     def write(self, text: str, flush=False):
         self._check_exist_count += 1
         self.ensure_file(len(text))
+        if not self.file:
+            raise RuntimeError("file is not opened")
         self.file.write(text)
         if flush:
             self.file.flush()

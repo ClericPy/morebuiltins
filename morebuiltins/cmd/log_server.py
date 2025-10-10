@@ -1,32 +1,62 @@
 import asyncio
+import atexit
 import json
 import logging
+import logging.handlers
 import os
 import signal
 import sys
 import time
 import traceback
 import typing
-from collections import Counter, namedtuple
+from collections import Counter
 from pathlib import Path
 from queue import Empty, Queue
 
-from ..logs import RotatingFileWriter
 from ..ipc import SocketLogHandlerEncoder, SocketServer
+from ..logs import LogHelper, RotatingFileWriter
 from ..utils import format_error, read_size, ttime
 
 __all__ = ["LogServer"]
 
-QueueMsg = namedtuple("QueueMsg", ["name", "text", "file_args"])
+
+class QueueMsg:
+    __slots__ = ("name", "record")
+
+    def __init__(self, name: str, record: dict):
+        self.name = name
+        self.record = record
 
 
 class LogServer(SocketServer):
     """Log Server for SocketHandler, create a socket server with asyncio.start_server. Update settings of rotation/formatter with extra: {"max_size": 1024**2, "formatter": logging.Formatter(fmt="%(asctime)s - %(filename)s - %(message)s")}
 
-    Server side:
-        python -m morebuiltins.cmd.log_server --log-dir=./logs --host 127.0.0.1 --port 8901
+    ### Server demo1:
+        start log server in terminal, only collect logs and print to console
+        > python -m morebuiltins.cmd.log_server
 
-    Client side:
+    ### Server demo2:
+        custom options to log to "logs" directory, default rotates at 10MB with 5 backups
+        > python -m morebuiltins.cmd.log_server --log-dir=./logs --host 127.0.0.1 --port 8901
+
+    ### Server demo3:
+        python code
+
+    ```python
+    import asyncio
+
+    from morebuiltins.cmd.log_server import LogServer
+
+
+    async def main():
+        async with LogServer() as ls:
+            await ls.wait_closed()
+
+
+    asyncio.run(main())
+    ```
+
+    ### Client demo1:
 
     ```python
     import logging
@@ -54,43 +84,44 @@ class LogServer(SocketServer):
     # [client] 2024-08-10 19:30:07,114 - temp3.py - hello world!
     ```
 
+    ### Client demo2:
+
+    ```python
+    from morebuiltins.cmd.log_server import get_logger
+
+    logger = get_logger("dir/test.log")
+    # logger = get_logger("dir/test.log", host="localhost", port=8901)
+    logger.debug("debug")
+    logger.info("info")
+    logger.warning("warning")
+    # 2025-10-11 01:30:35,151 | DEBUG | log_server.py:416 - Set formatter for logger 'dir/test.log': %(asctime)s | %(levelname)-5s | %(filename)+8s:%(lineno)+3s - %(message)s
+    # 2025-10-11 01:30:35,151 | DEBUG | temp.py:  4 - debug
+    # 2025-10-11 01:30:35,152 | INFO  | temp.py:  5 - info
+    # 2025-10-11 01:30:35,152 | WARN  | temp.py:  6 - warning
+    ```
+
     More docs:
-        python -m morebuiltins.cmd.log_server -h
-        usage: log_server.py [-h] [--host HOST] [--port PORT] [--log-dir LOG_DIR] [--name NAME] [--server-log-args SERVER_LOG_ARGS] [--handle-signals HANDLE_SIGNALS] [--max-queue-size MAX_QUEUE_SIZE]
-                            [--max-queue-buffer MAX_QUEUE_BUFFER] [--log-stream LOG_STREAM]
-
-        options:
-        -h, --help            show this help message and exit
-        --host HOST
-        --port PORT
-        --log-dir LOG_DIR     log dir to save log files, if empty, log to stdout with --log-stream
-        --name NAME           log server name
-        --server-log-args SERVER_LOG_ARGS
-                                max_size,max_backups for log files, default: 10485760,5 == 10MB each log file, 1 name.log + 5 backups
-        --handle-signals HANDLE_SIGNALS
-        --max-queue-size MAX_QUEUE_SIZE
-                                max queue size for log queue, log will be in memory queue before write to file
-        --max-queue-buffer MAX_QUEUE_BUFFER
-                                chunk size of lines before write to file
-        --log-stream LOG_STREAM
-                                log to stream, if --log-stream='' will mute the stream log
-
+        > python -m morebuiltins.cmd.log_server -h
     """
 
-    STOP_SIG = object()
+    STOP_SIG = {"msg": object()}
+    DEFAULT_HOST = "127.0.0.1"
+    DEFAULT_PORT = 8901
 
     def __init__(
         self,
-        host="127.0.0.1",
-        port=8901,
+        host=DEFAULT_HOST,
+        port=DEFAULT_PORT,
         log_dir=None,
         name="log_server",
         server_log_args=(10 * 1024**2, 5),
         handle_signals=(2, 15),
         max_queue_size=100000,
         max_queue_buffer=20000,
-        log_stream=sys.stdout,
+        log_stream=sys.stderr,
         compress=False,
+        shorten_level=False,
+        idle_close_time=300,
     ):
         super().__init__(
             host,
@@ -109,14 +140,18 @@ class LogServer(SocketServer):
         }
         self.log_stream = log_stream
         self.compress = compress
+        if shorten_level:
+            LogHelper.shorten_level()
+        self.idle_close_time = idle_close_time
         self.log_dir = Path(log_dir).resolve() if log_dir else None
         if self.log_dir:
             self.log_dir.mkdir(exist_ok=True, parents=True)
         self.handle_signals = handle_signals
         self.max_queue_size = max_queue_size
         self.max_queue_buffer = max_queue_buffer
-
-        self._opened_files: typing.Dict[str, RotatingFileWriter] = {}
+        self._formatters_cache = {}
+        self._default_formatter = LogHelper.DEFAULT_FORMATTER
+        self._opened_files = typing.cast(typing.Dict[str, RotatingFileWriter], {})
         self._write_queue = Queue(maxsize=max_queue_size)
         self._shutdown_signals = 0
         self._write_chunks = []
@@ -130,7 +165,9 @@ class LogServer(SocketServer):
 
     async def end_callback(self):
         await self.loop.run_in_executor(
-            self._default_executor, self._write_queue.put, self.STOP_SIG
+            self._default_executor,
+            self._write_queue.put,
+            QueueMsg(name=self.name, record=self.STOP_SIG),
         )
         await self._queue_consumer_task
 
@@ -140,14 +177,24 @@ class LogServer(SocketServer):
         )
 
     def send_log(
-        self, msg: str, error: typing.Optional[Exception] = None, level="INFO"
+        self, msg: str, error: typing.Optional[Exception] = None, level=logging.INFO
     ):
-        now = time.time()
-        ms = str(now).split(".", 1)[1][:3]
         if error:
             msg = f"{msg} | {format_error(error)}"
-        msg = f"{ttime(now)},{ms} | {level: >5} | {msg}"
-        self._write_queue.put((self.name, msg, self.server_log_args))
+        record = {
+            "name": self.name,
+            "filename": "log_server.py",
+            "pathname": "log_server.py",
+            "lineno": 0,
+            "args": (),
+            "msg": msg,
+            "levelno": level,
+            "levelname": logging.getLevelName(level),
+            "exc_info": {},
+        }
+        record.update(self.server_log_args)
+        q_msg = QueueMsg(name=self.name, record=record)
+        self._write_queue.put(q_msg)
 
     def get_targets(self, name: str, max_size=5 * 1024**2, max_backups=1):
         targets = []
@@ -165,8 +212,12 @@ class LogServer(SocketServer):
                 targets.append(fw)
             else:
                 try:
+                    path = self.log_dir.joinpath(name)
+                    # fill .log suffix
+                    if not path.suffix:
+                        path = path.with_suffix(".log")
                     fw = RotatingFileWriter(
-                        self.log_dir.joinpath(f"{name}.log"),
+                        path,
                         max_size=max_size,
                         max_backups=max_backups,
                         compress=self.compress,
@@ -175,18 +226,13 @@ class LogServer(SocketServer):
                     self.send_log(
                         f"error in get_targets({name!r}, {max_size!r}, {max_backups!r})",
                         e,
-                        level="ERROR",
+                        level=logging.ERROR,
                     )
-                targets.append(
-                    self._opened_files.setdefault(
-                        name,
-                        fw,
-                    )
-                )
+                targets.append(self._opened_files.setdefault(name, fw))
         return targets
 
     def write_queue_consumer(self):
-        self.send_log("started write_worker daemon")
+        self.send_log("start write_queue_consumer daemon")
         stopped = False
         interval = 30
         last_log_time = time.time()
@@ -197,7 +243,9 @@ class LogServer(SocketServer):
                     try:
                         if index == 0:
                             try:
-                                q_msg: QueueMsg = self._write_queue.get(timeout=1)
+                                q_msg = typing.cast(
+                                    QueueMsg, self._write_queue.get(timeout=1)
+                                )
                             except Empty:
                                 if self._write_queue.qsize():
                                     continue
@@ -205,31 +253,46 @@ class LogServer(SocketServer):
                                     break
                         else:
                             q_msg = self._write_queue.get_nowait()
-                        if q_msg is self.STOP_SIG:
+                        name, record = q_msg.name, q_msg.record
+                        if record is self.STOP_SIG:
                             if not stopped:
                                 self.send_log("stopping write_worker daemon")
-                                new_lines[q_msg] = q_msg
                                 stopped = True
                             continue
-                        name, line, file_args = q_msg
+                        if "formatter" in record:
+                            formatter = record["formatter"]
+                            if formatter and isinstance(formatter, logging.Formatter):
+                                self._formatters_cache[name] = formatter
+                            else:
+                                self._formatters_cache.pop(name, None)
+                                formatter = self._default_formatter
+                        else:
+                            formatter = self._formatters_cache.get(
+                                name, self._default_formatter
+                            )
+                        line = formatter.format(
+                            logging.LogRecord(level=record.get("levelno", 0), **record)
+                        )
+                        file_args = {
+                            k: record.get(k) for k in {"max_size", "max_backups"}
+                        }
+                        file_args = {
+                            k: v for k, v in file_args.items() if v is not None
+                        }
                         if name in new_lines:
                             data = new_lines[name]
                             data["file_args"] = file_args
+                            data["lines"].append(line)
                         else:
-                            data = {"file_args": file_args, "lines": []}
+                            data = {"file_args": file_args, "lines": [line]}
                             new_lines[name] = data
-                        data["lines"].append(line)
                     except Empty:
                         break
                 if new_lines:
                     self._write_chunks.append(new_lines)
                     for name, data in new_lines.items():
-                        if name is self.STOP_SIG:
-                            stopped = True
-                            continue
-                        file_args = data["file_args"]
                         lines = data["lines"]
-                        targets = self.get_targets(name, **file_args)
+                        targets = self.get_targets(name, **data["file_args"])
                         for log_file in targets:
                             try:
                                 if log_file is self.log_stream:
@@ -242,7 +305,9 @@ class LogServer(SocketServer):
                                 log_file.flush()
                             except Exception as e:
                                 self.send_log(
-                                    f"error in write_worker ({name})", e, level="WARN"
+                                    f"error in write_worker ({name})",
+                                    e,
+                                    level=logging.WARNING,
                                 )
                         if name != self.name:
                             self._lines_counter[name] += len(data["lines"])
@@ -255,6 +320,22 @@ class LogServer(SocketServer):
                         start = ttime(last_log_time, fmt="%H:%M:%S")
                         end = ttime(now, fmt="%H:%M:%S")
                         last_log_time = now
+                        for name in self._lines_counter:
+                            try:
+                                fw = self._opened_files[name]
+                                fw.flush()
+                                # check idle close
+                                if fw.path.is_file():
+                                    mtime = fw.path.stat().st_mtime
+                                    if now - mtime > self.idle_close_time:
+                                        fw = self._opened_files.pop(name, None)
+                                        if fw:
+                                            fw.close()
+                                        self.send_log(
+                                            f"closed idle log file: {name} (last modified: {ttime(mtime)})"
+                                        )
+                            except KeyError:
+                                pass
                         lines_msg = json.dumps(
                             {
                                 name: value
@@ -275,7 +356,7 @@ class LogServer(SocketServer):
                         self._lines_counter.clear()
                         self._size_counter.clear()
             except Exception as e:
-                self.send_log("error in write_queue_consumer", e, level="ERROR")
+                self.send_log("error in write_queue_consumer", e, level=logging.ERROR)
                 print(format_error(e), file=sys.stderr, flush=True)
                 traceback.print_exc()
                 self.shutdown()
@@ -287,18 +368,9 @@ class LogServer(SocketServer):
         try:
             if not isinstance(record, dict):
                 raise TypeError("item must be a dict")
-            name = record["name"]
-            if "formatter" in record:
-                text = record["formatter"].format(logging.LogRecord(level=0, **record))
-            else:
-                text = record["msg"]
-            file_args = {
-                k: v for k, v in record.items() if k in {"max_size", "max_backups"}
-            }
-            q_msg = QueueMsg(name=name, text=text, file_args=file_args)
-            self._write_queue.put_nowait(q_msg)
+            self._write_queue.put_nowait(QueueMsg(name=record["name"], record=record))
         except Exception as e:
-            self.send_log("error in default_handler", e, level="WARN")
+            self.send_log("error in default_handler", e, level=logging.WARNING)
         finally:
             del record
 
@@ -309,7 +381,7 @@ class LogServer(SocketServer):
         msg = f"received signal: {sig}, count: {self._shutdown_signals}"
         self.send_log(msg)
         self.shutdown()
-        self._write_queue.put(self.STOP_SIG)
+        self._write_queue.put(QueueMsg(name=self.name, record=self.STOP_SIG))
         if self._shutdown_ev:
             self.loop.call_soon_threadsafe(self._shutdown_ev.set)
 
@@ -318,18 +390,68 @@ class LogServer(SocketServer):
             f.close()
 
 
+def get_logger(
+    name: str,
+    host: str = LogServer.DEFAULT_HOST,
+    port: int = LogServer.DEFAULT_PORT,
+    log_level: int = logging.DEBUG,
+    socket_handler_level: int = logging.DEBUG,
+    formatter: typing.Optional[logging.Formatter] = LogHelper.DEFAULT_FORMATTER,
+    shorten_level: bool = True,
+    streaming: typing.Optional[typing.TextIO] = sys.stderr,
+    streaming_level: int = logging.DEBUG,
+) -> logging.Logger:
+    "Get a singleton logger that sends logs to the LogServer."
+    logger = logging.getLogger(name)
+    logger.setLevel(log_level)
+    for h in logger.handlers:
+        if (
+            isinstance(h, logging.handlers.SocketHandler)
+            and h.host == host
+            and h.port == port
+        ):
+            return logger
+    h = logging.handlers.SocketHandler(host, port)
+    h.createSocket()
+    if not h.sock:
+        raise ConnectionError(f"Cannot connect to log server at {host}:{port}")
+    h.setLevel(socket_handler_level)
+    logger.addHandler(h)
+    atexit.register(h.close)
+    if shorten_level:
+        LogHelper.shorten_level()
+    if streaming:
+        sh = logging.StreamHandler(streaming)
+        sh.setLevel(streaming_level)
+        logger.addHandler(sh)
+    if formatter:
+        _style = getattr(formatter, "_style", None)
+        if _style:
+            fmt = getattr(formatter, "_fmt", None)
+        else:
+            fmt = getattr(formatter, "_fmt", None)
+        for handler in logger.handlers:
+            handler.setFormatter(formatter)
+        logger.log(
+            socket_handler_level,
+            f"Set formatter for logger {name!r}: {fmt}",
+            extra={"formatter": formatter},
+        )
+    return logger
+
+
 async def main():
     import argparse
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", default=8901, type=int)
+    parser = argparse.ArgumentParser(usage=LogServer.__doc__.replace("%", "%%"))
+    parser.add_argument("--host", default=LogServer.DEFAULT_HOST)
+    parser.add_argument("--port", default=LogServer.DEFAULT_PORT, type=int)
     parser.add_argument(
         "-t",
         "--log-dir",
         default="",
         dest="log_dir",
-        help="log dir to save log files, if empty, log to stdout with --log-stream",
+        help="log dir to save log files, if empty, log to stderr with --log-stream",
     )
     parser.add_argument("--name", default="log_server", help="log server name")
     parser.add_argument(
@@ -353,18 +475,26 @@ async def main():
     )
     parser.add_argument(
         "--log-stream",
-        default="sys.stdout",
-        help="log to stream, if --log-stream='' will mute the stream log",
+        default="sys.stderr",
+        help="log to stream, if --log-stream='' or --log-stream=null will mute the stream log",
     )
     parser.add_argument(
         "--compress",
         action="store_true",
         help="compress log files with gzip",
     )
+    parser.add_argument(
+        "--shorten-level",
+        dest="shorten_level",
+        action="store_true",
+        help="shorten log level names",
+    )
+    parser.add_argument(
+        "--idle-close-time", dest="idle_close_time", type=int, default=300
+    )
     args = parser.parse_args()
-    log_stream = {"sys.stdout": sys.stdout, "sys.stderr": sys.stderr, "": ""}[
-        args.log_stream
-    ]
+    stream_choices = {"sys.stdout": sys.stdout, "sys.stderr": sys.stderr}
+    log_stream = stream_choices.get(args.log_stream, "null")
     async with LogServer(
         host=args.host,
         port=args.port,
@@ -376,6 +506,8 @@ async def main():
         max_queue_buffer=args.max_queue_buffer,
         log_stream=log_stream,
         compress=args.compress,
+        shorten_level=args.shorten_level,
+        idle_close_time=args.idle_close_time,
     ) as ls:
         await ls.wait_closed()
 
