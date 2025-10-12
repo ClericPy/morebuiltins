@@ -174,7 +174,7 @@ class SocketServer:
     def __init__(
         self,
         host: str = "127.0.0.1",
-        port: int = 8090,
+        port: Optional[int] = 8090,
         handler: Optional[Callable] = None,
         encoder: Optional[IPCEncoder] = None,
         connect_kwargs: Optional[dict] = None,
@@ -263,11 +263,13 @@ class SocketServer:
             )
             await self.server.start_serving()
         else:
-            if not hasattr(asyncio, "start_unix_server"):
+            start_unix_server = getattr(asyncio, "start_unix_server", None)
+            if start_unix_server:
+                self.server = await start_unix_server(
+                    self.connect_callback, path=self.host, **self.connect_kwargs
+                )
+            else:
                 raise RuntimeError("asyncio.start_unix_server is not available")
-            self.server = await asyncio.start_unix_server(
-                self.connect_callback, path=self.host, **self.connect_kwargs
-            )
         if self.start_callback:
             if asyncio.iscoroutinefunction(self.start_callback):
                 await self.start_callback()
@@ -287,7 +289,7 @@ class SocketServer:
         "sync close"
         if self.server and self.is_serving():
             self.server.get_loop().call_soon_threadsafe(
-                lambda: self._shutdown_ev.set if self._shutdown_ev else None
+                lambda: self._shutdown_ev.set() if self._shutdown_ev else None
             )
 
     async def __aenter__(self):
@@ -302,7 +304,7 @@ class SocketClient:
     def __init__(
         self,
         host: str = "127.0.0.1",
-        port: int = 8090,
+        port: Optional[int] = 8090,
         encoder: Optional[IPCEncoder] = None,
         connect_kwargs: Optional[dict] = None,
     ):
@@ -317,7 +319,10 @@ class SocketClient:
                 self.host, self.port, **self.connect_kwargs
             )
         else:
-            self.reader, self.writer = await asyncio.open_unix_connection(
+            open_unix_connection = getattr(asyncio, "open_unix_connection", None)
+            if not open_unix_connection:
+                raise RuntimeError("asyncio.open_unix_connection is not available")
+            self.reader, self.writer = await open_unix_connection(
                 path=self.host, **self.connect_kwargs
             )
         self.lock = asyncio.Lock()
@@ -397,7 +402,11 @@ def is_port_free(
             return True
 
 
-async def test_client(host="127.0.0.1", port=8090, encoder=None, cases=None):
+async def test_client(
+    host="127.0.0.1", port: Optional[int] = 8090, encoder=None, cases=None
+):
+    if cases is None:
+        raise ValueError("cases is None")
     async with SocketClient(host=host, port=port, encoder=encoder) as c:
         for case in cases:
             await c.send(case)
@@ -452,6 +461,8 @@ async def _test_ipc_logging():
 
         # ensure test case
         await asyncio.sleep(0.1)
+        if not h.sock:
+            raise RuntimeError("socket is None")
         assert pickle.loads(h.sock.recv(100000)[4:])["name"] == logger.name
         h.sock.close()
 
