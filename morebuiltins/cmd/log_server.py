@@ -1,5 +1,4 @@
 import asyncio
-import atexit
 import json
 import logging
 import logging.handlers
@@ -12,12 +11,19 @@ import typing
 from collections import Counter
 from pathlib import Path
 from queue import Empty, Queue
+from threading import Event as SyncEvent
+from threading import Thread
 
 from ..ipc import SocketLogHandlerEncoder, SocketServer
 from ..logs import LogHelper, RotatingFileWriter
 from ..utils import format_error, read_size, ttime
 
 __all__ = ["LogServer"]
+
+
+CONNECTED_HANDLERS: typing.Dict[
+    tuple, typing.Union[logging.handlers.SocketHandler, logging.NullHandler]
+] = {}
 
 
 class QueueMsg:
@@ -131,37 +137,73 @@ class LogServer(SocketServer):
             start_callback=self.start_callback,
             end_callback=self.end_callback,
         )
-        # ensure has running loop
-        self.loop = asyncio.get_running_loop()
-        self.name = name
-        self.server_log_args = {
-            "max_size": server_log_args[0],
-            "max_backups": server_log_args[1],
-        }
-        self.log_stream = log_stream
-        self.compress = compress
+        self.init_settings_sync(
+            name=name,
+            shorten_level=shorten_level,
+            handle_signals=handle_signals,
+            max_queue_size=max_queue_size,
+            max_queue_buffer=max_queue_buffer,
+            log_stream=log_stream,
+            compress=compress,
+            log_dir=log_dir,
+            idle_close_time=idle_close_time,
+            server_log_args=server_log_args,
+        )
+
+    def init_settings_sync(
+        self,
+        name: str,
+        shorten_level=False,
+        handle_signals=(2, 15),
+        max_queue_size=100000,
+        max_queue_buffer=20000,
+        log_stream=sys.stderr,
+        compress=False,
+        log_dir=None,
+        idle_close_time=300,
+        server_log_args=(10 * 1024**2, 5),
+    ):
         if shorten_level:
             LogHelper.shorten_level()
-        self.idle_close_time = idle_close_time
+        self.name = name
+        self.log_stream = log_stream
+        self.compress = compress
+        self._idle_close_time = idle_close_time
         self.log_dir = Path(log_dir).resolve() if log_dir else None
         if self.log_dir:
             self.log_dir.mkdir(exist_ok=True, parents=True)
-        self.handle_signals = handle_signals
-        self.max_queue_size = max_queue_size
-        self.max_queue_buffer = max_queue_buffer
-        self._formatters_cache = {}
+        self._server_log_args = {
+            "max_size": server_log_args[0],
+            "max_backups": server_log_args[1],
+        }
+        self._loop: typing.Optional[asyncio.AbstractEventLoop] = None
+        self._shutdown_signals = 0
+        self._lines_counter: Counter = Counter()
+        self._size_counter: Counter = Counter()
+        self._formatters_cache: typing.Dict[str, logging.Formatter] = {}
         self._default_formatter = LogHelper.DEFAULT_FORMATTER
         self._opened_files = typing.cast(typing.Dict[str, RotatingFileWriter], {})
-        self._write_queue = Queue(maxsize=max_queue_size)
-        self._shutdown_signals = 0
-        self._write_chunks = []
-        self._lines_counter = Counter()
-        self._size_counter = Counter()
+        self.max_queue_size = max_queue_size
+        self._write_queue: Queue = Queue(maxsize=max_queue_size)
+        self.max_queue_buffer = max_queue_buffer
+        self.handle_signals = handle_signals
+        for sig in handle_signals:
+            signal.signal(sig, self.handle_signal)
+
+    async def __aenter__(self):
+        await super().__aenter__()
         self._queue_consumer_task = self.loop.run_in_executor(
             self._default_executor, self.write_queue_consumer
         )
-        for sig in handle_signals:
-            signal.signal(sig, self.handle_signal)
+        return self
+
+    @property
+    def loop(self):
+        if not self._loop:
+            if not self.server:
+                raise RuntimeError("server is not started")
+            self._loop = self.server.get_loop()
+        return self._loop
 
     async def end_callback(self):
         await self.loop.run_in_executor(
@@ -192,7 +234,7 @@ class LogServer(SocketServer):
             "levelname": logging.getLevelName(level),
             "exc_info": {},
         }
-        record.update(self.server_log_args)
+        record.update(self._server_log_args)
         q_msg = QueueMsg(name=self.name, record=record)
         self._write_queue.put(q_msg)
 
@@ -238,6 +280,8 @@ class LogServer(SocketServer):
         last_log_time = time.time()
         while not stopped:
             try:
+                if self._shutdown_ev and self._shutdown_ev.is_set():
+                    stopped = True
                 new_lines = {}
                 for index in range(self.max_queue_buffer):
                     try:
@@ -289,7 +333,6 @@ class LogServer(SocketServer):
                     except Empty:
                         break
                 if new_lines:
-                    self._write_chunks.append(new_lines)
                     for name, data in new_lines.items():
                         lines = data["lines"]
                         targets = self.get_targets(name, **data["file_args"])
@@ -327,7 +370,7 @@ class LogServer(SocketServer):
                                 # check idle close
                                 if fw.path.is_file():
                                     mtime = fw.path.stat().st_mtime
-                                    if now - mtime > self.idle_close_time:
+                                    if now - mtime > self._idle_close_time:
                                         fw = self._opened_files.pop(name, None)
                                         if fw:
                                             fw.close()
@@ -389,6 +432,53 @@ class LogServer(SocketServer):
         for f in self._opened_files.values():
             f.close()
 
+    async def run_wrapper(self):
+        async with self:
+            await self.wait_closed()
+
+    def wait_close_sync(self, timeout=None):
+        return self.shutdown_event.wait(timeout=timeout)
+
+    def __enter__(self):
+        "Sync entry, start log server in a thread."
+        self.shutdown_event = SyncEvent()
+        self._thread = Thread(
+            target=asyncio.run, args=(self.run_wrapper(),), daemon=True
+        )
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        for _ in range(50):
+            self.shutdown()
+            self._thread.join(timeout=0.1)
+            if not self._thread.is_alive():
+                break
+        return self
+
+
+def clear_handlers():
+    for handler in CONNECTED_HANDLERS.values():
+        if hasattr(handler, "close"):
+            handler.close()
+
+
+def create_handler(host: str, port: int, level=logging.DEBUG):
+    if not CONNECTED_HANDLERS:
+        import atexit
+
+        atexit.register(clear_handlers)
+        CONNECTED_HANDLERS[("", 0)] = (
+            logging.NullHandler()
+        )  # dummy to avoid multiple register
+    h = logging.handlers.SocketHandler(host, port)
+    h.createSocket()
+    if not h.sock:
+        raise ConnectionError(f"Cannot connect to log server at {host}:{port}")
+    h.setLevel(level)
+    CONNECTED_HANDLERS[(h.host, h.port)] = h
+    return h
+
 
 def get_logger(
     name: str,
@@ -402,24 +492,20 @@ def get_logger(
     streaming_level: int = logging.DEBUG,
 ) -> logging.Logger:
     "Get a singleton logger that sends logs to the LogServer."
+    if shorten_level:
+        LogHelper.shorten_level()
     logger = logging.getLogger(name)
     logger.setLevel(log_level)
     for h in logger.handlers:
-        if (
-            isinstance(h, logging.handlers.SocketHandler)
-            and h.host == host
-            and h.port == port
-        ):
-            return logger
-    h = logging.handlers.SocketHandler(host, port)
-    h.createSocket()
-    if not h.sock:
-        raise ConnectionError(f"Cannot connect to log server at {host}:{port}")
-    h.setLevel(socket_handler_level)
+        if isinstance(h, logging.handlers.SocketHandler):
+            host_key = (h.host, h.port)
+            if host_key in CONNECTED_HANDLERS and host_key == (host, port):
+                # existing handler with same host and port
+                if formatter:
+                    CONNECTED_HANDLERS[host_key].setFormatter(formatter)
+                return logger
+    h = create_handler(host, port, level=socket_handler_level)
     logger.addHandler(h)
-    atexit.register(h.close)
-    if shorten_level:
-        LogHelper.shorten_level()
     if streaming:
         sh = logging.StreamHandler(streaming)
         sh.setLevel(streaming_level)
@@ -443,7 +529,7 @@ def get_logger(
 async def main():
     import argparse
 
-    parser = argparse.ArgumentParser(usage=LogServer.__doc__.replace("%", "%%"))
+    parser = argparse.ArgumentParser(usage=(LogServer.__doc__ or "").replace("%", "%%"))
     parser.add_argument("--host", default=LogServer.DEFAULT_HOST)
     parser.add_argument("--port", default=LogServer.DEFAULT_PORT, type=int)
     parser.add_argument(
