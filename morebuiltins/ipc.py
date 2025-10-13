@@ -240,10 +240,12 @@ class SocketServer:
 
     async def close(self):
         if self.server and self.is_serving():
-            self.server.close()
-            await self.server.wait_closed()
             if self._shutdown_ev:
                 self._shutdown_ev.set()
+            self.server.close()
+            self.server.close_clients()
+            self.server.abort_clients()
+            await self.server.wait_closed()
             if self.end_callback:
                 if asyncio.iscoroutinefunction(self.end_callback):
                     await self.end_callback()
@@ -289,7 +291,10 @@ class SocketServer:
         "sync close"
         if self.server and self.is_serving():
             self.server.get_loop().call_soon_threadsafe(
-                lambda: self._shutdown_ev.set() if self._shutdown_ev else None
+                lambda: [
+                    self._shutdown_ev.set() if self._shutdown_ev else None,
+                    self.server.close() if self.server else None,
+                ]
             )
 
     async def __aenter__(self):

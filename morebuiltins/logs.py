@@ -73,7 +73,7 @@ class LogHelper:
     """
 
     DEFAULT_FORMAT = (
-        "%(asctime)s | %(levelname)-5s | %(filename)-8s(%(lineno)s) - %(message)s"
+        "%(asctime)s | %(name)s | %(levelname)-5s | %(filename)-8s(%(lineno)s) - %(message)s"
     )
     DEFAULT_FORMATTER = logging.Formatter(DEFAULT_FORMAT)
     FILENAME_HANDLER_MAP: Dict[str, logging.Handler] = {}

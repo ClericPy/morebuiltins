@@ -14,9 +14,9 @@ from queue import Empty, Queue
 from threading import Event as SyncEvent
 from threading import Thread
 
-from ..ipc import SocketLogHandlerEncoder, SocketServer
-from ..logs import LogHelper, RotatingFileWriter
-from ..utils import format_error, read_size, ttime
+from morebuiltins.ipc import SocketLogHandlerEncoder, SocketServer
+from morebuiltins.logs import LogHelper, RotatingFileWriter
+from morebuiltins.utils import format_error, read_size, ttime
 
 __all__ = ["LogServer"]
 
@@ -197,6 +197,10 @@ class LogServer(SocketServer):
         )
         return self
 
+    async def __aexit__(self, *_errors):
+        await asyncio.sleep(0.01)
+        await super().__aexit__(*_errors)
+
     @property
     def loop(self):
         if not self._loop:
@@ -206,11 +210,7 @@ class LogServer(SocketServer):
         return self._loop
 
     async def end_callback(self):
-        await self.loop.run_in_executor(
-            self._default_executor,
-            self._write_queue.put,
-            QueueMsg(name=self.name, record=self.STOP_SIG),
-        )
+        self._write_queue.put_nowait(QueueMsg(name=self.name, record=self.STOP_SIG))
         await self._queue_consumer_task
 
     def start_callback(self):
@@ -281,6 +281,7 @@ class LogServer(SocketServer):
         while not stopped:
             try:
                 if self._shutdown_ev and self._shutdown_ev.is_set():
+                    self.send_log("stopping write_worker daemon(shutdown)")
                     stopped = True
                 new_lines = {}
                 for index in range(self.max_queue_buffer):
@@ -291,16 +292,13 @@ class LogServer(SocketServer):
                                     QueueMsg, self._write_queue.get(timeout=1)
                                 )
                             except Empty:
-                                if self._write_queue.qsize():
-                                    continue
-                                else:
-                                    break
+                                break
                         else:
                             q_msg = self._write_queue.get_nowait()
                         name, record = q_msg.name, q_msg.record
                         if record is self.STOP_SIG:
                             if not stopped:
-                                self.send_log("stopping write_worker daemon")
+                                self.send_log("stopping write_worker daemon(signal)")
                                 stopped = True
                             continue
                         if "formatter" in record:
@@ -338,12 +336,7 @@ class LogServer(SocketServer):
                         targets = self.get_targets(name, **data["file_args"])
                         for log_file in targets:
                             try:
-                                if log_file is self.log_stream:
-                                    head = f"[{name}] "
-                                    body = f"\n{head}".join(lines)
-                                    lines_text = f"{head}{body}\n"
-                                else:
-                                    lines_text = "\n".join(lines)
+                                lines_text = "\n".join(lines)
                                 log_file.write(f"{lines_text}\n")
                                 log_file.flush()
                             except Exception as e:
@@ -404,6 +397,7 @@ class LogServer(SocketServer):
                 traceback.print_exc()
                 self.shutdown()
                 break
+        self.send_log("stopped write_queue_consumer daemon")
 
     async def default_handler(self, record: dict):
         # record demo:
@@ -449,11 +443,11 @@ class LogServer(SocketServer):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        for _ in range(50):
-            self.shutdown()
-            self._thread.join(timeout=0.1)
-            if not self._thread.is_alive():
-                break
+        # delay a bit to ensure all logs are processed. or use async with LogServer(...) as ls: ...
+        time.sleep(0.01)
+        self._write_queue.put_nowait(QueueMsg(name=self.name, record=self.STOP_SIG))
+        self.shutdown()
+        self._thread.join(timeout=1)
         return self
 
 
@@ -488,7 +482,8 @@ def get_logger(
     socket_handler_level: int = logging.DEBUG,
     formatter: typing.Optional[logging.Formatter] = LogHelper.DEFAULT_FORMATTER,
     shorten_level: bool = True,
-    streaming: typing.Optional[typing.TextIO] = sys.stderr,
+    # sys.stderr, sys.stdout, None
+    streaming: typing.Optional[typing.TextIO] = None,
     streaming_level: int = logging.DEBUG,
 ) -> logging.Logger:
     "Get a singleton logger that sends logs to the LogServer."
@@ -598,5 +593,25 @@ async def main():
         await ls.wait_closed()
 
 
+def sync_test():
+    with LogServer() as ls:
+        logger = get_logger("test_logger", host=ls.host, port=ls.port)
+        for i in range(5):
+            logger.info(f"test socket logging message {i + 1}")
+
+
+async def async_test():
+    async with LogServer() as ls:
+        logger = get_logger("test_logger", host=ls.host, port=ls.port)
+        for i in range(5):
+            logger.info(f"test socket logging message {i + 1}")
+
+
+def entrypoint():
+    return asyncio.run(main())
+    # return asyncio.run(async_test())
+    # return sync_test()
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    entrypoint()
