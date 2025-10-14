@@ -63,7 +63,7 @@ class LogSetting(Validator):
     formatter: logging.Formatter = DefaultLogSetting.formatter
     max_size: int = DefaultLogSetting.max_size
     max_backups: int = DefaultLogSetting.max_backups
-    level_specs: list[int] = field(default_factory=list)
+    level_specs: list = typing.cast(typing.List[int], field(default_factory=list))
     create_time: str = field(default_factory=ttime)
 
     @property
