@@ -5,6 +5,7 @@ import logging
 import logging.handlers
 import os
 import pickle
+import re
 import shutil
 import signal
 import sys
@@ -74,14 +75,26 @@ class LogSetting(Validator):
         return getattr(self.formatter, "datefmt", "")
 
     def __post_init__(self):
+        formatter = self.formatter
+        if isinstance(formatter, str):
+            # base64 formatter
+            self.formatter = self.pickle_from_base64(formatter)
+        elif isinstance(formatter, logging.Formatter):
+            pass
+        else:
+            self.formatter = DefaultLogSetting.formatter
         for index, level in enumerate(self.level_specs):
             if isinstance(level, int):
                 continue
             level = str(level).upper()
             if level not in logging._nameToLevel:
-                raise ValueError(
-                    f"level_specs[{index}] invalid log level name: {level}"
-                )
+                if re.match(r"^Level \d+$", level):
+                    level = level.split()[-1]
+                    return int(level)
+                else:
+                    raise ValueError(
+                        f"level_specs[{index}] invalid log level name: {level}"
+                    )
             self.level_specs[index] = logging._nameToLevel[level]
         super().__post_init__()
 
@@ -98,29 +111,24 @@ class LogSetting(Validator):
         return pickle.loads(base64.b64decode(data.encode("utf-8")))
 
     @classmethod
-    def from_dict(
-        cls, formatter: typing.Union[str, logging.Formatter, None] = None, **kwargs
-    ):
-        if isinstance(formatter, str):
-            # base64 formatter
-            kwargs["formatter"] = cls.pickle_from_base64(formatter)
-        elif isinstance(formatter, logging.Formatter):
-            kwargs["formatter"] = formatter
-        else:
-            kwargs["formatter"] = DefaultLogSetting.formatter
+    def from_dict(cls, **kwargs):
         kwargs = {k: v for k, v in kwargs.items() if k in cls.__annotations__}
         return cls(**kwargs)
 
     def to_dict_with_meta(self) -> dict:
-        data = asdict(self)
-        data["formatter"] = self.pickle_to_base64(self.formatter)
-        data["fmt"] = self.fmt
-        data["datefmt"] = self.datefmt
+        meta: dict = {
+            "create_time": self.create_time,
+            "fmt": self.fmt,
+            "datefmt": self.datefmt,
+        }
+        meta.update(asdict(self))
+        # base64 formatter
+        meta["formatter"] = self.pickle_to_base64(self.formatter)
         # int to str
-        data["level_specs"] = [
+        meta["level_specs"] = [
             logging.getLevelName(level) for level in self.level_specs
         ]
-        return data
+        return meta
 
     def __eq__(self, other):
         if not isinstance(other, LogSetting):
@@ -329,6 +337,7 @@ class LogServer(SocketServer):
     async def __aexit__(self, *_errors):
         await asyncio.sleep(0.01)
         await super().__aexit__(*_errors)
+        await asyncio.to_thread(self.close_opened_files)
 
     @staticmethod
     def default_settings():
@@ -382,12 +391,16 @@ class LogServer(SocketServer):
         name: str,
         max_size=DefaultLogSetting.max_size,
         max_backups=DefaultLogSetting.max_backups,
+        level_spec: typing.Optional[int] = None,
     ):
         targets = []
-        if self.log_stream:
-            targets.append(self.log_stream)
-        elif name == self.name:
+        if name == self.name:
+            # server log always to stderr
             targets.append(sys.stderr)
+        elif self.log_stream:
+            if not level_spec:
+                # spec log only to file
+                targets.append(self.log_stream)
         if self.log_dir:
             if name in self._opened_files:
                 fw = self._opened_files[name]
@@ -408,13 +421,18 @@ class LogServer(SocketServer):
                         max_backups=max_backups,
                         compress=self.compress,
                     )
+                    self._opened_files[name] = fw
+                    targets.append(fw)
                 except Exception as e:
                     self.send_log(
-                        f"error in get_targets({name!r}, {max_size!r}, {max_backups!r})",
+                        f"get targets error ({name!r}, {max_size!r}, {max_backups!r}) {e!r}",
                         e,
                         level=logging.ERROR,
                     )
-                targets.append(self._opened_files.setdefault(name, fw))
+        if level_spec is not None:
+            for t in targets:
+                if isinstance(t, RotatingFileWriter):
+                    setattr(t, "level_spec", level_spec)
         return targets
 
     def save_new_setting(self, name, setting: LogSetting):
@@ -522,16 +540,36 @@ class LogServer(SocketServer):
                 for name, record_list in new_lines.items():
                     setting = self.get_setting(name)
                     _format = setting.formatter.format
-                    lines = [_format(record) for record in record_list]
+                    lines = [
+                        (record.levelno, _format(record)) for record in record_list
+                    ]
                     targets = self.get_targets(
                         name,
                         max_size=setting.max_size,
                         max_backups=setting.max_backups,
                     )
+                    if setting.level_specs:
+                        for levelno in setting.level_specs:
+                            levelname = (
+                                logging.getLevelName(levelno).lower().replace(" ", "-")
+                            )
+                            alias_name = f"{name}_{levelname}"
+                            targets.extend(
+                                self.get_targets(
+                                    alias_name,
+                                    max_size=setting.max_size,
+                                    max_backups=setting.max_backups,
+                                    level_spec=levelno,
+                                )
+                            )
+                    text_counter = 0
                     for log_file in targets:
                         try:
-                            lines_text = "\n".join(lines)
-                            log_file.write(f"{lines_text}\n")
+                            levelno = getattr(log_file, "level_spec", 0)
+                            _lines = [text for level, text in lines if level >= levelno]
+                            lines_text = "\n".join(_lines) + "\n"
+                            text_counter += len(lines_text)
+                            log_file.write(lines_text)
                             log_file.flush()
                         except Exception as e:
                             self.send_log(
@@ -541,9 +579,7 @@ class LogServer(SocketServer):
                             )
                     if name != self.name:
                         self._lines_counter[name] += len(lines)
-                        self._size_counter[name] += sum(
-                            [len(line) for line in lines]
-                        ) + len(lines)
+                        self._size_counter[name] += text_counter
                 if self._lines_counter:
                     now = time.time()
                     if now - last_log_time > interval:
@@ -617,8 +653,15 @@ class LogServer(SocketServer):
             self.loop.call_soon_threadsafe(self._shutdown_ev.set)
 
     def __del__(self):
-        for f in self._opened_files.values():
-            f.close()
+        self.close_opened_files()
+
+    def close_opened_files(self):
+        while self._opened_files:
+            _, fw = self._opened_files.popitem()
+            try:
+                fw.close()
+            except Exception as e:
+                pass
 
     async def run_wrapper(self):
         async with self:
@@ -642,7 +685,7 @@ class LogServer(SocketServer):
         self._write_queue.put_nowait(STOP_SIG)
         self.shutdown()
         self._thread.join(timeout=1)
-        return self
+        self.close_opened_files()
 
 
 CONNECTED_HANDLERS: typing.Dict[
@@ -823,26 +866,27 @@ async def main():
         await ls.wait_closed()
 
 
-def sync_test():
-    with LogServer() as ls:
-        logger = get_logger("test_logger", host=ls.host, port=ls.port)
-        for i in range(5):
-            logger.info(f"log server test message {i + 1}")
-
-
 async def async_test():
     async with LogServer(log_dir="logs"):
-        logger = get_logger("test_logger", level_specs=[logging.ERROR])
+        logger = get_logger("test_async", level_specs=[logging.ERROR, logging.INFO])
         for i in range(5):
             logger.info(f"log server test message {i + 1}")
         logger.error(f"log server test message {i + 1}")
-    shutil.rmtree("logs")
+    # shutil.rmtree("logs", ignore_errors=True)
+
+
+def sync_test():
+    # return asyncio.run(async_test())
+    with LogServer(log_dir="logs"):
+        logger = get_logger("test_sync", level_specs=[logging.ERROR, 13])
+        for i in range(5):
+            logger.info(f"log server test message {i + 1}")
+    # shutil.rmtree("logs", ignore_errors=True)
 
 
 def entrypoint():
-    return asyncio.run(main())
-    # return asyncio.run(async_test())
     # return sync_test()
+    return asyncio.run(main())
 
 
 if __name__ == "__main__":
