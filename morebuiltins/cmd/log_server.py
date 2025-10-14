@@ -153,20 +153,26 @@ class LogSetting(Validator):
 
 
 class LogServer(SocketServer):
-    """Log Server for SocketHandler, create a socket server with asyncio.start_server. Update settings of rotation/formatter with extra: {"max_size": 1024**2, "formatter": logging.Formatter(fmt="%(asctime)s - %(filename)s - %(message)s")}
+    """Log server for SocketHandler, create a socket server with asyncio.start_server. Custom formatter or rotation strategy with extra in log record.
+
+    [WARNING]: Ensure your log msg is "" if you only want to update settings, or the msg will be skipped.
+
+    logger.info("", extra={"log_setting": {"formatter": formatter, "max_size": 1024**2, "level_specs": [logging.ERROR]}})
+
 
     ### Server demo1:
         start log server in terminal, only collect logs and print to console
         > python -m morebuiltins.cmd.log_server
 
     ### Server demo2:
-        custom options to log to "logs" directory, default rotates at 10MB with 5 backups
-        > python -m morebuiltins.cmd.log_server --log-dir=./logs --host 127.0.0.1 --port 8901
+        custom options to log to "logs" directory, default rotates at 10MB with 5 backups, no log_stream, enable compress
+        > python -m morebuiltins.cmd.log_server --log-dir=./logs --host 127.0.0.1 --port 8901 --log-stream=None --compress
 
     ### Server demo3:
         python code
 
     ```python
+    # Server side
     import asyncio
 
     from morebuiltins.cmd.log_server import LogServer
@@ -183,6 +189,7 @@ class LogServer(SocketServer):
     ### Client demo1:
 
     ```python
+    # Client side(no dependency on morebuiltins)
     import logging
     import logging.handlers
 
@@ -191,16 +198,21 @@ class LogServer(SocketServer):
     h = logging.handlers.SocketHandler("127.0.0.1", 8901)
     h.setLevel(logging.DEBUG)
     logger.addHandler(h)
-    for _ in range(5):
-        logger.info(
-            "hello world!",
-            extra={
+    logger.info(
+        "",
+        extra={
+            "log_setting": {
                 "max_size": 1024**2,
                 "formatter": logging.Formatter(
                     fmt="%(asctime)s - %(filename)s - %(message)s"
                 ),
-            },
-        )
+                "level_specs": [logging.ERROR],
+            }
+        },
+    )
+    for _ in range(5):
+        logger.info("hello world!")
+
     # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
     # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
     # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
@@ -308,10 +320,13 @@ class LogServer(SocketServer):
         for sig in self.handle_signals:
             signal.signal(sig, self.handle_signal)
         self._log_settings = self.load_settings()
+        if self.name in self._log_settings:
+            self._log_settings[self.name] = self._server_log_setting
+        self.send_log("", init_setting=True)
 
     def load_settings(self):
         result = typing.cast(typing.Dict[str, LogSetting], {})
-        if not self.setting_path:
+        if not (self.setting_path and self.setting_path.is_file()):
             return result
         try:
             with self.setting_path.open("r", encoding="utf-8") as f:
@@ -358,7 +373,6 @@ class LogServer(SocketServer):
     def start_callback(self):
         self.send_log(
             f"started log server on {self.host}:{self.port}, handle_signals={self.handle_signals}, max_queue_size={self.max_queue_size}, max_queue_buffer={self.max_queue_buffer}, log_stream={getattr(self.log_stream, 'name', None)}, compress={self.compress}, log_dir={self.log_dir}, setting={self._server_log_setting}",
-            init_setting=True,
         )
 
     def send_log(
@@ -660,7 +674,7 @@ class LogServer(SocketServer):
             _, fw = self._opened_files.popitem()
             try:
                 fw.close()
-            except Exception as e:
+            except Exception:
                 pass
 
     async def run_wrapper(self):
@@ -723,10 +737,9 @@ def get_logger(
     log_level: int = logging.DEBUG,
     socket_handler_level: int = logging.DEBUG,
     shorten_level: bool = True,
-    # sys.stderr, sys.stdout, None
-    streaming: typing.Optional[typing.TextIO] = None,
+    streaming: typing.Optional[typing.TextIO] = None,  # sys.stderr, sys.stdout, None
     streaming_level: int = logging.DEBUG,
-    # custom settings
+    # custom settings for log files
     formatter: typing.Optional[logging.Formatter] = LogHelper.DEFAULT_FORMATTER,
     max_size: int = DefaultLogSetting.max_size,
     max_backups: int = DefaultLogSetting.max_backups,
@@ -736,7 +749,8 @@ def get_logger(
     For easy use, you can use original logging.handlers.SocketHandler, but you need to manage the handler yourself.
 
     Demo::
-        # python -m morebuiltins.cmd.log_server --host localhost --port 8901
+
+        # python -m morebuiltins.cmd.log_server --host localhost --port 8901 --log-dir logs
         import logging
         import logging.handlers
         logger = logging.getLogger("client")
@@ -744,12 +758,16 @@ def get_logger(
         h = logging.handlers.SocketHandler("localhost", 8901)
         h.setLevel(logging.DEBUG)
         logger.addHandler(h)
-        # add custom settings
+        # Add custom settings
+        # Add error log to a specific log file; use a custom formatter and max_size; set msg to ""
         formatter = logging.Formatter(fmt="%(asctime)s - %(filename)s - %(message)s")
-        # add error log to specific log file
-        logger.info("", extra={"max_size": 1024**2, "formatter": formatter, "level_specs": [logging.ERROR]})
+        logger.info("", extra={"log_setting": {"formatter": formatter, "max_size": 1024**2, "level_specs": [logging.ERROR]}})
         for _ in range(5):
             logger.info("hello world!")
+        # Send some error logs
+        logger.error("this is an error!")
+        # The remote log server will create a "client_error.log" file in log_dir if settings are applied
+
     """
     if shorten_level:
         LogHelper.shorten_level()

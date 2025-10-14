@@ -4,7 +4,12 @@
 1. fix `morebuiltins.utils.gen_id` wrong length issue.
 2. fix `morebuiltins.funcs.LineProfiler` to handle nested function calls correctly.
 3. update `morebuiltins.cmd.log_server` to support close idle file handlers after 300 seconds.
-4. add `get_logger` to `morebuiltins.cmd.log_server` to get a logger with `SocketHandler` to send logs to `LogServer`.
+4. add `get_logger` to `morebuiltins.cmd.log_server` to get a **singleton** logger with `SocketHandler` to send logs to `LogServer`.
+5. [**Compatibility Warnings**] Refactor of `morebuiltins.cmd.log_server`:
+   1. use `LogSetting` struct instead of untyped dict, client send dict with `LogSetting` structure.
+   2. add `level_specs` filter to specify log levels of files, like `[logging.ERROR, logging.CRITICAL]`.
+   3. add cache file for log settings, readable by both server and human.
+   4. THIS IS A BREAKING CHANGE, old clients may not work with new server.
 
 ### 1.3.3 (2025-09-01)
 1. add `morebuiltins.logs.LogHelper.handle_crash` to log uncaught exceptions.

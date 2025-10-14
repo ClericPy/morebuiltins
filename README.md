@@ -17,9 +17,12 @@ This project enhances Python’s built-ins with extra functionality, prioritizin
 ibution.
 
 ## Compatibility Break Warnings
-1. **1.3.2 (2025-08-02)**
+
+1. **1.3.4 (2025-09-17)**
+   1. Refactor of `morebuiltins.cmd.log_server`
+2. **1.3.2 (2025-08-02)**
    1. move `async_logger`, `AsyncQueueListener`, `LogHelper`, `RotatingFileWriter`, and `SizedTimedRotatingFileHandler` from `morebuiltins.funcs` to `morebuiltins.logs`.
-2. **1.3.0 (2025-03-08)**
+3. **1.3.0 (2025-03-08)**
    1. rename `morebuiltins.functools` to `morebuiltins.funcs` to avoid conflict with `functools` in python standard library.
 
 ## Install
@@ -221,7 +224,7 @@ print(morebuiltins.__file__)
 
 ## 9. morebuiltins.cmd.log_server
 
-9.1 `LogServer` - Log Server for SocketHandler, create a socket server with asyncio.start_server. Update settings of rotation/formatter with extra: {"max_size": 1024**2, "formatter": logging.Formatter(fmt="%(asctime)s - %(filename)s - %(message)s")}
+9.1 `LogServer` - Log server for SocketHandler, create a socket server with asyncio.start_server. Custom formatter or rotation strategy with extra in log record.
 
 
 ## 10. morebuiltins.cmd.proxy_checker

@@ -2260,23 +2260,29 @@ Demo::
 
 
 
-9.1 `LogServer` - Log Server for SocketHandler, create a socket server with asyncio.start_server. Update settings of rotation/formatter with extra: {"max_size": 1024**2, "formatter": logging.Formatter(fmt="%(asctime)s - %(filename)s - %(message)s")}
+9.1 `LogServer` - Log server for SocketHandler, create a socket server with asyncio.start_server. Custom formatter or rotation strategy with extra in log record.
 
 
 ```python
+
+[WARNING]: Ensure your log msg is "" if you only want to update settings, or the msg will be skipped.
+
+logger.info("", extra={"log_setting": {"formatter": formatter, "max_size": 1024**2, "level_specs": [logging.ERROR]}})
+
 
 ### Server demo1:
     start log server in terminal, only collect logs and print to console
     > python -m morebuiltins.cmd.log_server
 
 ### Server demo2:
-    custom options to log to "logs" directory, default rotates at 10MB with 5 backups
-    > python -m morebuiltins.cmd.log_server --log-dir=./logs --host 127.0.0.1 --port 8901
+    custom options to log to "logs" directory, default rotates at 10MB with 5 backups, no log_stream, enable compress
+    > python -m morebuiltins.cmd.log_server --log-dir=./logs --host 127.0.0.1 --port 8901 --log-stream=None --compress
 
 ### Server demo3:
     python code
 
 ```python
+# Server side
 import asyncio
 
 from morebuiltins.cmd.log_server import LogServer
@@ -2293,6 +2299,7 @@ asyncio.run(main())
 ### Client demo1:
 
 ```python
+# Client side(no dependency on morebuiltins)
 import logging
 import logging.handlers
 
@@ -2301,16 +2308,21 @@ logger.setLevel(logging.DEBUG)
 h = logging.handlers.SocketHandler("127.0.0.1", 8901)
 h.setLevel(logging.DEBUG)
 logger.addHandler(h)
-for _ in range(5):
-    logger.info(
-        "hello world!",
-        extra={
+logger.info(
+    "",
+    extra={
+        "log_setting": {
             "max_size": 1024**2,
             "formatter": logging.Formatter(
                 fmt="%(asctime)s - %(filename)s - %(message)s"
             ),
-        },
-    )
+            "level_specs": [logging.ERROR],
+        }
+    },
+)
+for _ in range(5):
+    logger.info("hello world!")
+
 # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
 # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
 # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
