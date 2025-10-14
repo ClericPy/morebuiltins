@@ -243,8 +243,12 @@ class SocketServer:
             if self._shutdown_ev:
                 self._shutdown_ev.set()
             self.server.close()
-            self.server.close_clients()
-            self.server.abort_clients()
+            if hasattr(self.server, "close_clients"):
+                # 3.13+
+                self.server.close_clients()
+                self.server.abort_clients()
+            else:
+                pass
             await self.server.wait_closed()
             if self.end_callback:
                 if asyncio.iscoroutinefunction(self.end_callback):
