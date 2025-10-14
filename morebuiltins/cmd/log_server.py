@@ -1,8 +1,11 @@
 import asyncio
+import base64
 import json
 import logging
 import logging.handlers
 import os
+import pickle
+import shutil
 import signal
 import sys
 import time
@@ -22,11 +25,6 @@ from morebuiltins.utils import Validator, format_error, read_size, ttime
 __all__ = ["LogServer"]
 
 
-CONNECTED_HANDLERS: typing.Dict[
-    tuple, typing.Union[logging.handlers.SocketHandler, logging.NullHandler]
-] = {}
-
-
 class QueueMsg:
     __slots__ = ("name", "record")
 
@@ -43,10 +41,20 @@ class DefaultLogSetting:
     formatter: logging.Formatter = LogHelper.DEFAULT_FORMATTER
     max_size: int = 10 * 1024**2
     max_backups: int = 1
-    max_queue_size: int = 100000
-    max_queue_buffer: int = 20000
 
     _key_name = "log_setting"
+
+    # log server options
+    host: str = "127.0.0.1"
+    port: int = 8901
+    log_dir: typing.Optional[str] = None
+    max_queue_size: int = 100000
+    max_queue_buffer: int = 20000
+    handler_signals: tuple = (2, 15)  # SIGINT, SIGTERM
+    log_stream: typing.Optional[typing.TextIO] = sys.stderr
+    compress: bool = False
+    shorten_level: bool = False
+    idle_close_time: int = 60
 
 
 @dataclass
@@ -54,15 +62,65 @@ class LogSetting(Validator):
     formatter: logging.Formatter = DefaultLogSetting.formatter
     max_size: int = DefaultLogSetting.max_size
     max_backups: int = DefaultLogSetting.max_backups
-    level_specs: list[str] = field(default_factory=list)
+    level_specs: list[int] = field(default_factory=list)
+    create_time: str = field(default_factory=ttime)
+
+    @property
+    def fmt(self) -> str:
+        return getattr(self.formatter, "_fmt", "")
+
+    @property
+    def datefmt(self) -> str:
+        return getattr(self.formatter, "datefmt", "")
+
+    def __post_init__(self):
+        for index, level in enumerate(self.level_specs):
+            if isinstance(level, int):
+                continue
+            level = str(level).upper()
+            if level not in logging._nameToLevel:
+                raise ValueError(
+                    f"level_specs[{index}] invalid log level name: {level}"
+                )
+            self.level_specs[index] = logging._nameToLevel[level]
+        super().__post_init__()
 
     @classmethod
     def get_default(cls):
         return cls()
 
+    @staticmethod
+    def pickle_to_base64(obj) -> str:
+        return base64.b64encode(pickle.dumps(obj)).decode("utf-8")
+
+    @staticmethod
+    def pickle_from_base64(data: str):
+        return pickle.loads(base64.b64decode(data.encode("utf-8")))
+
     @classmethod
-    def from_dict(cls, **kwargs):
+    def from_dict(
+        cls, formatter: typing.Union[str, logging.Formatter, None] = None, **kwargs
+    ):
+        if isinstance(formatter, str):
+            # base64 formatter
+            kwargs["formatter"] = cls.pickle_from_base64(formatter)
+        elif isinstance(formatter, logging.Formatter):
+            kwargs["formatter"] = formatter
+        else:
+            kwargs["formatter"] = DefaultLogSetting.formatter
+        kwargs = {k: v for k, v in kwargs.items() if k in cls.__annotations__}
         return cls(**kwargs)
+
+    def to_dict_with_meta(self) -> dict:
+        data = asdict(self)
+        data["formatter"] = self.pickle_to_base64(self.formatter)
+        data["fmt"] = self.fmt
+        data["datefmt"] = self.datefmt
+        # int to str
+        data["level_specs"] = [
+            logging.getLevelName(level) for level in self.level_specs
+        ]
+        return data
 
     def __eq__(self, other):
         if not isinstance(other, LogSetting):
@@ -162,24 +220,20 @@ class LogServer(SocketServer):
         > python -m morebuiltins.cmd.log_server -h
     """
 
-    DEFAULT_HOST = "127.0.0.1"
-    DEFAULT_PORT = 8901
-    HANDLER_SIGNALS = (2, 15)  # SIGINT, SIGTERM
-
     def __init__(
         self,
-        host=DEFAULT_HOST,
-        port=DEFAULT_PORT,
-        log_dir=None,
+        host=DefaultLogSetting.host,
+        port=DefaultLogSetting.port,
+        log_dir=DefaultLogSetting.log_dir,
         name="log_server",
         max_size=DefaultLogSetting.max_size,
         max_backups=DefaultLogSetting.max_backups,
         max_queue_size=DefaultLogSetting.max_queue_size,
         max_queue_buffer=DefaultLogSetting.max_queue_buffer,
-        log_stream=sys.stderr,
-        compress=False,
-        shorten_level=True,
-        idle_close_time=300,
+        log_stream=DefaultLogSetting.log_stream,
+        compress=DefaultLogSetting.compress,
+        shorten_level=DefaultLogSetting.shorten_level,
+        idle_close_time=DefaultLogSetting.idle_close_time,
     ):
         super().__init__(
             host,
@@ -208,10 +262,10 @@ class LogServer(SocketServer):
         shorten_level=True,
         max_queue_size=DefaultLogSetting.max_queue_size,
         max_queue_buffer=DefaultLogSetting.max_queue_buffer,
-        log_stream=sys.stderr,
-        compress=False,
-        log_dir=None,
-        idle_close_time=300,
+        log_stream=DefaultLogSetting.log_stream,
+        compress=DefaultLogSetting.compress,
+        log_dir=DefaultLogSetting.log_dir,
+        idle_close_time=DefaultLogSetting.idle_close_time,
         max_size=DefaultLogSetting.max_size,
         max_backups=DefaultLogSetting.max_backups,
     ):
@@ -224,6 +278,11 @@ class LogServer(SocketServer):
         self.log_dir = Path(log_dir).resolve() if log_dir else None
         if self.log_dir:
             self.log_dir.mkdir(exist_ok=True, parents=True)
+            self.setting_path: typing.Optional[Path] = self.log_dir.joinpath(
+                f"{self.name}_settings.jsonl"
+            )
+        else:
+            self.setting_path = None
         self._server_log_setting = LogSetting(
             max_size=max_size, max_backups=max_backups
         )
@@ -237,10 +296,28 @@ class LogServer(SocketServer):
         self.max_queue_size = max_queue_size
         self._write_queue: Queue = Queue(maxsize=max_queue_size)
         self.max_queue_buffer = max_queue_buffer
-        self.handle_signals = self.HANDLER_SIGNALS
-        for sig in self.HANDLER_SIGNALS:
+        self.handle_signals = DefaultLogSetting.handler_signals
+        for sig in self.handle_signals:
             signal.signal(sig, self.handle_signal)
-        self._log_settings = typing.cast(typing.Dict[str, LogSetting], {})
+        self._log_settings = self.load_settings()
+
+    def load_settings(self):
+        result = typing.cast(typing.Dict[str, LogSetting], {})
+        if not self.setting_path:
+            return result
+        try:
+            with self.setting_path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    data = json.loads(line)
+                    name = data["name"]
+                    setting = LogSetting.from_dict(**data["setting"])
+                    result[name] = setting
+            self.send_log(
+                f"Loaded log settings from {self.setting_path}, {len(result)} items"
+            )
+        except Exception as e:
+            self.send_log(f"Failed to load log settings from {self.setting_path}: {e}")
+        return result
 
     async def __aenter__(self):
         await super().__aenter__()
@@ -252,6 +329,10 @@ class LogServer(SocketServer):
     async def __aexit__(self, *_errors):
         await asyncio.sleep(0.01)
         await super().__aexit__(*_errors)
+
+    @staticmethod
+    def default_settings():
+        return DefaultLogSetting
 
     @property
     def loop(self):
@@ -341,6 +422,31 @@ class LogServer(SocketServer):
             return False
         self._log_settings[name] = setting
         self.send_log(f"`{name}` update setting: {setting}", level=logging.INFO)
+        self.dump_settings()
+        return True
+
+    def dump_settings(self):
+        """Dump & Load settings to setting_path as jsonl format, with a readable meta data."""
+        if not self.setting_path:
+            return True
+        temp = self.setting_path.with_suffix(".tmp")
+        lines = [
+            json.dumps(
+                {"name": name, "setting": setting.to_dict_with_meta()},
+                ensure_ascii=False,
+            )
+            for name, setting in self._log_settings.items()
+        ]
+        text = "\n".join(lines) + "\n"
+        try:
+            temp.write_text(text, encoding="utf-8")
+            shutil.move(temp.as_posix(), self.setting_path.as_posix())
+        except Exception as e:
+            self.send_log(
+                f"error in dump_settings {traceback.format_exc()}",
+                e,
+                level=logging.WARNING,
+            )
 
     def save_setting(self, name, record: dict):
         if DefaultLogSetting._key_name in record:
@@ -539,6 +645,11 @@ class LogServer(SocketServer):
         return self
 
 
+CONNECTED_HANDLERS: typing.Dict[
+    tuple, typing.Union[logging.handlers.SocketHandler, logging.NullHandler]
+] = {}
+
+
 def clear_handlers():
     for handler in CONNECTED_HANDLERS.values():
         if hasattr(handler, "close"):
@@ -564,8 +675,8 @@ def create_handler(host: str, port: int, level=logging.DEBUG):
 
 def get_logger(
     name: str,
-    host: str = LogServer.DEFAULT_HOST,
-    port: int = LogServer.DEFAULT_PORT,
+    host: str = DefaultLogSetting.host,
+    port: int = DefaultLogSetting.port,
     log_level: int = logging.DEBUG,
     socket_handler_level: int = logging.DEBUG,
     shorten_level: bool = True,
@@ -576,9 +687,27 @@ def get_logger(
     formatter: typing.Optional[logging.Formatter] = LogHelper.DEFAULT_FORMATTER,
     max_size: int = DefaultLogSetting.max_size,
     max_backups: int = DefaultLogSetting.max_backups,
-    level_specs: typing.Optional[typing.List[str]] = None,
+    level_specs: typing.Optional[typing.List[int]] = None,
 ) -> logging.Logger:
-    "Get a singleton logger that sends logs to the LogServer."
+    """Get a singleton logger that sends logs to the LogServer.
+    For easy use, you can use original logging.handlers.SocketHandler, but you need to manage the handler yourself.
+
+    Demo::
+        # python -m morebuiltins.cmd.log_server --host localhost --port 8901
+        import logging
+        import logging.handlers
+        logger = logging.getLogger("client")
+        logger.setLevel(logging.DEBUG)
+        h = logging.handlers.SocketHandler("localhost", 8901)
+        h.setLevel(logging.DEBUG)
+        logger.addHandler(h)
+        # add custom settings
+        formatter = logging.Formatter(fmt="%(asctime)s - %(filename)s - %(message)s")
+        # add error log to specific log file
+        logger.info("", extra={"max_size": 1024**2, "formatter": formatter, "level_specs": [logging.ERROR]})
+        for _ in range(5):
+            logger.info("hello world!")
+    """
     if shorten_level:
         LogHelper.shorten_level()
     logger = logging.getLogger(name)
@@ -619,8 +748,8 @@ async def main():
     import argparse
 
     parser = argparse.ArgumentParser(usage=(LogServer.__doc__ or "").replace("%", "%%"))
-    parser.add_argument("--host", default=LogServer.DEFAULT_HOST)
-    parser.add_argument("--port", default=LogServer.DEFAULT_PORT, type=int)
+    parser.add_argument("--host", default=DefaultLogSetting.host)
+    parser.add_argument("--port", default=DefaultLogSetting.port, type=int)
     parser.add_argument(
         "-t",
         "--log-dir",
@@ -702,15 +831,17 @@ def sync_test():
 
 
 async def async_test():
-    async with LogServer() as ls:
-        logger = get_logger("test_logger", host=ls.host, port=ls.port)
+    async with LogServer(log_dir="logs"):
+        logger = get_logger("test_logger", level_specs=[logging.ERROR])
         for i in range(5):
             logger.info(f"log server test message {i + 1}")
+        logger.error(f"log server test message {i + 1}")
+    shutil.rmtree("logs")
 
 
 def entrypoint():
-    # return asyncio.run(main())
-    return asyncio.run(async_test())
+    return asyncio.run(main())
+    # return asyncio.run(async_test())
     # return sync_test()
 
 
