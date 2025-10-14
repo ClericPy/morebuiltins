@@ -9,6 +9,7 @@ import time
 import traceback
 import typing
 from collections import Counter
+from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Event as SyncEvent
@@ -16,7 +17,7 @@ from threading import Thread
 
 from morebuiltins.ipc import SocketLogHandlerEncoder, SocketServer
 from morebuiltins.logs import LogHelper, RotatingFileWriter
-from morebuiltins.utils import format_error, read_size, ttime
+from morebuiltins.utils import Validator, format_error, read_size, ttime
 
 __all__ = ["LogServer"]
 
@@ -32,6 +33,33 @@ class QueueMsg:
     def __init__(self, name: str, record: dict):
         self.name = name
         self.record = record
+
+
+class DefaultLogSetting:
+    formatter = LogHelper.DEFAULT_FORMATTER
+    max_size = 10 * 1024**2
+    max_backups = 1
+
+    _key_name = "log_setting"
+
+
+@dataclass
+class LogSetting(Validator):
+    formatter: logging.Formatter = DefaultLogSetting.formatter
+    max_size: int = DefaultLogSetting.max_size
+    max_backups: int = DefaultLogSetting.max_backups
+    level_specs: list[str] = field(default_factory=list)
+
+    def __eq__(self, other):
+        if not isinstance(other, LogSetting):
+            return False
+        return (
+            self.formatter._fmt == other.formatter._fmt
+            and str(self.formatter.datefmt) == str(other.formatter.datefmt)
+            and self.max_size == other.max_size
+            and self.max_backups == other.max_backups
+            and self.level_specs == other.level_specs
+        )
 
 
 class LogServer(SocketServer):
@@ -113,6 +141,7 @@ class LogServer(SocketServer):
     STOP_SIG = {"msg": object()}
     DEFAULT_HOST = "127.0.0.1"
     DEFAULT_PORT = 8901
+    HANDLER_SIGNALS = (2, 15)  # SIGINT, SIGTERM
 
     def __init__(
         self,
@@ -121,7 +150,6 @@ class LogServer(SocketServer):
         log_dir=None,
         name="log_server",
         server_log_args=(10 * 1024**2, 5),
-        handle_signals=(2, 15),
         max_queue_size=100000,
         max_queue_buffer=20000,
         log_stream=sys.stderr,
@@ -140,7 +168,6 @@ class LogServer(SocketServer):
         self.init_settings_sync(
             name=name,
             shorten_level=shorten_level,
-            handle_signals=handle_signals,
             max_queue_size=max_queue_size,
             max_queue_buffer=max_queue_buffer,
             log_stream=log_stream,
@@ -154,7 +181,6 @@ class LogServer(SocketServer):
         self,
         name: str,
         shorten_level=False,
-        handle_signals=(2, 15),
         max_queue_size=100000,
         max_queue_buffer=20000,
         log_stream=sys.stderr,
@@ -172,10 +198,9 @@ class LogServer(SocketServer):
         self.log_dir = Path(log_dir).resolve() if log_dir else None
         if self.log_dir:
             self.log_dir.mkdir(exist_ok=True, parents=True)
-        self._server_log_args = {
-            "max_size": server_log_args[0],
-            "max_backups": server_log_args[1],
-        }
+        self._server_log_setting = LogSetting(
+            max_size=server_log_args[0], max_backups=server_log_args[1]
+        )
         self._loop: typing.Optional[asyncio.AbstractEventLoop] = None
         self._shutdown_signals = 0
         self._lines_counter: Counter = Counter()
@@ -186,8 +211,8 @@ class LogServer(SocketServer):
         self.max_queue_size = max_queue_size
         self._write_queue: Queue = Queue(maxsize=max_queue_size)
         self.max_queue_buffer = max_queue_buffer
-        self.handle_signals = handle_signals
-        for sig in handle_signals:
+        self.handle_signals = self.HANDLER_SIGNALS
+        for sig in self.HANDLER_SIGNALS:
             signal.signal(sig, self.handle_signal)
 
     async def __aenter__(self):
@@ -234,7 +259,7 @@ class LogServer(SocketServer):
             "levelname": logging.getLevelName(level),
             "exc_info": {},
         }
-        record.update(self._server_log_args)
+        record["log_setting"] = self._server_log_setting
         q_msg = QueueMsg(name=self.name, record=record)
         self._write_queue.put(q_msg)
 
@@ -541,7 +566,6 @@ async def main():
         dest="server_log_args",
         help="max_size,max_backups for log files, default: 10485760,5 == 10MB each log file, 1 name.log + 5 backups",
     )
-    parser.add_argument("--handle-signals", default="2,15", dest="handle_signals")
     parser.add_argument(
         "--max-queue-size",
         default=100000,
@@ -565,10 +589,10 @@ async def main():
         help="compress log files with gzip",
     )
     parser.add_argument(
-        "--shorten-level",
-        dest="shorten_level",
+        "--origin-level",
+        dest="origin_level",
         action="store_true",
-        help="shorten log level names",
+        help="use original log level names, not shortened",
     )
     parser.add_argument(
         "--idle-close-time", dest="idle_close_time", type=int, default=300
@@ -582,12 +606,11 @@ async def main():
         log_dir=args.log_dir,
         name=args.name,
         server_log_args=tuple(map(int, args.server_log_args.split(","))),
-        handle_signals=tuple(map(int, args.handle_signals.split(","))),
         max_queue_size=args.max_queue_size,
         max_queue_buffer=args.max_queue_buffer,
         log_stream=log_stream,
         compress=args.compress,
-        shorten_level=args.shorten_level,
+        shorten_level=not args.origin_level,
         idle_close_time=args.idle_close_time,
     ) as ls:
         await ls.wait_closed()
@@ -608,8 +631,8 @@ async def async_test():
 
 
 def entrypoint():
-    return asyncio.run(main())
-    # return asyncio.run(async_test())
+    # return asyncio.run(main())
+    return asyncio.run(async_test())
     # return sync_test()
 
 
