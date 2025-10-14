@@ -1944,7 +1944,7 @@ True
 ```python
 
 >>> import time
->>> r = req.get("https://postman-echo.com/get?a=2", timeout=3, params={"b": "3"})
+>>> r = req.get("https://postman-echo.com/get?a=2", headers={"User-Agent": "Chrome"}, timeout=3, params={"b": "3"})
 >>> r.url
 'https://postman-echo.com/get?a=2&b=3'
 >>> r.ok
@@ -1953,12 +1953,12 @@ True
 200
 >>> r.text.startswith('{')
 True
->>> r = req.post("https://postman-echo.com/post?a=2", timeout=3, params={"b": "3"}, data=b"mock data")
+>>> r = req.post("https://postman-echo.com/post?a=2", headers={"User-Agent": "Chrome"}, timeout=3, params={"b": "3"}, data=b"mock data")
 >>> r.json()["data"]
 'mock data'
 >>> r.json()["args"]
 {'a': '2', 'b': '3'}
->>> r = req.post("https://postman-echo.com/post?a=2", timeout=3, json={"data": "yes json"})
+>>> r = req.post("https://postman-echo.com/post?a=2", headers={"User-Agent": "Chrome"}, timeout=3, json={"data": "yes json"})
 >>> r.json()["json"]
 {'data': 'yes json'}
 
