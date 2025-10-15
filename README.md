@@ -178,6 +178,8 @@ print(morebuiltins.__file__)
 
 3.12 `check_recursion` - Check if a function is recursive by inspecting its AST.
 
+3.13 `debounce` - Debounce a function, delaying its execution until after a specified wait time.
+
 
 ## 4. morebuiltins.ipc
 

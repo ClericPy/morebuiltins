@@ -1796,6 +1796,34 @@ Demo::
 ---
 
 
+
+3.13 `debounce` - Debounce a function, delaying its execution until after a specified wait time.
+
+
+```python
+
+Args:
+    wait (float): The amount of time to wait before executing the function.
+
+Demo::
+
+    >>> @debounce(0.1)
+    ... def test():
+    ...     print("Function executed")
+    >>> test()
+    Function executed
+    >>> test()
+    >>> time.sleep(0.1)
+    >>> test()
+    Function executed
+    >>> test()
+
+```
+
+
+---
+
+
 ## 4. morebuiltins.ipc
 
 

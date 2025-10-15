@@ -22,7 +22,6 @@ from typing import (
     Optional,
     OrderedDict,
     Set,
-    Tuple,
     Union,
 )
 from weakref import WeakSet
@@ -40,6 +39,7 @@ __all__ = [
     "get_function",
     "to_thread",
     "check_recursion",
+    "debounce",
 ]
 
 
@@ -893,32 +893,32 @@ class LineProfiler:
 def line_profiler(func: Callable) -> Callable:
     """Decorator to profile a function line-by-line.
 
-    Demo usage:
-        >>> import sys, io
-        >>> LineProfiler.stdout = io.StringIO()  # Redirect stdout to capture print output
-        >>> @line_profiler
-        ... def example_function():
-        ...     result = 0
-        ...     for i in range(10):
-        ...         result += i  # Simulate some work
-        ...     return result
-        >>> example_function()
-        45
-        >>> output = LineProfiler.stdout.getvalue()
-        >>> output.splitlines()[0].startswith("=" * 95) and "`example_function` profiling report:" in output
-        True
-        >>> LineProfiler.stdout = sys.stdout  # Restore original stdout
+        Demo usage:
+            >>> import sys, io
+            >>> LineProfiler.stdout = io.StringIO()  # Redirect stdout to capture print output
+            >>> @line_profiler
+            ... def example_function():
+            ...     result = 0
+            ...     for i in range(10):
+            ...         result += i  # Simulate some work
+            ...     return result
+            >>> example_function()
+            45
+            >>> output = LineProfiler.stdout.getvalue()
+            >>> output.splitlines()[0].startswith("=" * 95) and "`example_function` profiling report:" in output
+            True
+            >>> LineProfiler.stdout = sys.stdout  # Restore original stdout
 
-===============================================================================================
-`example_function` profiling report:
-Start at 2025-07-26 17:09:58 | Total: 1.122 ms
-===============================================================================================
-  Line    %    Total(ms)    Count      Avg(ms)  Source Code
------------------------------------------------------------------------------------------------
-     3   73        0.825        1        0.825  -
-     4    3        0.040       11        0.004  -
-     5    4        0.050       10        0.005  -
-===============================================================================================
+    ===============================================================================================
+    `example_function` profiling report:
+    Start at 2025-07-26 17:09:58 | Total: 1.122 ms
+    ===============================================================================================
+      Line    %    Total(ms)    Count      Avg(ms)  Source Code
+    -----------------------------------------------------------------------------------------------
+         3   73        0.825        1        0.825  -
+         4    3        0.040       11        0.004  -
+         5    4        0.050       10        0.005  -
+    ===============================================================================================
     """
 
     @wraps(func)
@@ -944,6 +944,52 @@ Start at 2025-07-26 17:09:58 | Total: 1.122 ms
         return result
 
     return wrapper
+
+
+def debounce(wait: float):
+    """Debounce a function, delaying its execution until after a specified wait time.
+
+    Args:
+        wait (float): The amount of time to wait before executing the function.
+
+    Demo::
+
+        >>> @debounce(0.1)
+        ... def test():
+        ...     print("Function executed")
+        >>> test()
+        Function executed
+        >>> test()
+        >>> time.sleep(0.1)
+        >>> test()
+        Function executed
+        >>> test()
+    """
+    def decorator(fn):
+        last_call = 0
+
+        async def async_wrapper(*args, **kwargs):
+            nonlocal last_call
+            current_time = time.time()
+            if current_time - last_call < wait:
+                return
+            last_call = current_time
+            return await fn(*args, **kwargs)
+
+        def sync_wrapper(*args, **kwargs):
+            nonlocal last_call
+            current_time = time.time()
+            if current_time - last_call < wait:
+                return
+            last_call = current_time
+            return fn(*args, **kwargs)
+
+        if asyncio.iscoroutinefunction(fn):
+            return async_wrapper
+        else:
+            return sync_wrapper
+
+    return decorator
 
 
 def test_bg_task():

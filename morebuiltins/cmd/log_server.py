@@ -115,6 +115,18 @@ class LogSetting(Validator):
         kwargs = {k: v for k, v in kwargs.items() if k in cls.__annotations__}
         return cls(**kwargs)
 
+    @staticmethod
+    def level_to_name(level: int):
+        levelToName = {
+            logging.CRITICAL: "CRITICAL",
+            logging.ERROR: "ERROR",
+            logging.WARNING: "WARNING",
+            logging.INFO: "INFO",
+            logging.DEBUG: "DEBUG",
+            logging.NOTSET: "NOTSET",
+        }
+        return levelToName.get(level, f"Level {level}")
+
     def to_dict_with_meta(self) -> dict:
         meta: dict = {
             "create_time": self.create_time,
@@ -125,9 +137,7 @@ class LogSetting(Validator):
         # base64 formatter
         meta["formatter"] = self.pickle_to_base64(self.formatter)
         # int to str
-        meta["level_specs"] = [
-            logging.getLevelName(level) for level in self.level_specs
-        ]
+        meta["level_specs"] = [self.level_to_name(level) for level in self.level_specs]
         return meta
 
     def __eq__(self, other):
@@ -392,7 +402,7 @@ class LogServer(SocketServer):
             "args": (),
             "msg": msg,
             "levelno": level,
-            "levelname": logging.getLevelName(level),
+            "levelname": LogSetting.level_to_name(level),
             "exc_info": {},
         }
         if init_setting:
@@ -565,7 +575,9 @@ class LogServer(SocketServer):
                     if setting.level_specs:
                         for levelno in setting.level_specs:
                             levelname = (
-                                logging.getLevelName(levelno).lower().replace(" ", "-")
+                                LogSetting.level_to_name(levelno)
+                                .lower()
+                                .replace(" ", "-")
                             )
                             alias_name = f"{name}_{levelname}"
                             targets.extend(
@@ -903,7 +915,7 @@ def sync_test():
 
 
 def entrypoint():
-    # return sync_test()
+    return sync_test()
     return asyncio.run(main())
 
 
