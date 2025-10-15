@@ -1,4 +1,4 @@
-__version__ = "1.3.4"
+__version__ = "1.3.5"
 
 # this __all__ is used for documentation generation, not for imports
 __all__ = [

@@ -79,7 +79,10 @@ class ProxyChecker(object):
         finally:
             if writer:
                 writer.close()
-                await writer.wait_closed()
+                try:
+                    await writer.wait_closed()
+                except OSError:
+                    pass
 
     async def check(self, proxy: str):
         ok = cost = error = None

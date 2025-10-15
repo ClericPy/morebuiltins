@@ -1,6 +1,10 @@
 ## Changelog
 
-### 1.3.4 (2025-09-17)
+### 1.3.5 (2025-10-15)
+1. fix writer.wait_closed() ConnectionResetError in ipc.py, proxy_checker.py, log_server.py
+2. 
+
+### 1.3.4 (2025-10-15)
 1. fix `morebuiltins.utils.gen_id` wrong length issue.
 2. fix `morebuiltins.funcs.LineProfiler` to handle nested function calls correctly.
 3. update `morebuiltins.cmd.log_server` to support close idle file handlers after 300 seconds.

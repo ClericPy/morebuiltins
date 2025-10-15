@@ -236,7 +236,10 @@ class SocketServer:
                     await writer.drain()
         finally:
             writer.close()
-            await writer.wait_closed()
+            try:
+                await writer.wait_closed()
+            except OSError:
+                pass
 
     async def close(self):
         if self.server and self.is_serving():
@@ -340,7 +343,10 @@ class SocketClient:
     async def __aexit__(self, *_):
         if self.writer:
             self.writer.close()
-            await self.writer.wait_closed()
+            try:
+                await self.writer.wait_closed()
+            except OSError:
+                pass
 
     async def send(self, item: Any):
         assert self.writer, "use `async with`"
