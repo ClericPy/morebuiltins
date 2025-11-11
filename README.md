@@ -138,7 +138,7 @@ print(morebuiltins.__file__)
 
 1.36 `base_decode` - Decode a base-N string to a number.
 
-1.37 `gen_id` - Generate a unique ID based on the current time and random bytes.
+1.37 `gen_id` - Generate a readable & unique ID based on the current time(ms) and random bytes.
 
 1.38 `timeti` - Return the number of iterations per second for a given statement.
 

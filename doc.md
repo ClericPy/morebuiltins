@@ -1163,14 +1163,29 @@ Examples:
 
 
 
-1.37 `gen_id` - Generate a unique ID based on the current time and random bytes.
+1.37 `gen_id` - Generate a readable & unique ID based on the current time(ms) and random bytes.
 
 
 ```python
+The performance is about 400000 IDs per second.
 
 If rand_len=0 the length of ID will be 18, rand_len=4 the length of ID will be 22.
 ID format:
 - {YYMMDD_HHMMSS}_{4-digit base62 of microsecond}{rand_len urandom hex string}
+
+The following table shows the relationship between rand_len and the safe range of unique IDs per microsecond:
+
+rand_len |  urandom_size  |    Safe Range
+---------------------------------------------
+     2    |         1      |       10
+     4    |         2      |      100
+     6    |         3      |     1000
+     8    |         4      |    10000
+    10    |         5      |   100000
+    12    |         6      |  1000000
+    14    |         7      | 10000000
+
+Seems like rand_len -> 10 ** (rand_len // 2) safe range.
 
 Args:
     rand_len (int, optional): Defaults to 4.
@@ -1188,6 +1203,8 @@ True
 1000
 >>> [len(gen_id(i)[:]) for i in range(10)]
 [18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
+>>> # gen_id() => 251111_235204_0xYfc4f8
+>>> # gen_id(sep="") => 2511112352291nTq972c
 
 ```
 

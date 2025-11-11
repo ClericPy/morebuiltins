@@ -1863,12 +1863,27 @@ def base_decode(
     return result
 
 
-def gen_id(rand_len=4) -> str:
-    """Generate a unique ID based on the current time and random bytes.
+def gen_id(rand_len=4, sep="_") -> str:
+    """Generate a readable & unique ID based on the current time(ms) and random bytes.
+    The performance is about 400000 IDs per second.
 
     If rand_len=0 the length of ID will be 18, rand_len=4 the length of ID will be 22.
     ID format:
     - {YYMMDD_HHMMSS}_{4-digit base62 of microsecond}{rand_len urandom hex string}
+
+    The following table shows the relationship between rand_len and the safe range of unique IDs per microsecond:
+
+    rand_len |  urandom_size  |    Safe Range
+    ---------------------------------------------
+         2    |         1      |       10
+         4    |         2      |      100
+         6    |         3      |     1000
+         8    |         4      |    10000
+        10    |         5      |   100000
+        12    |         6      |  1000000
+        14    |         7      | 10000000
+
+    Seems like rand_len -> 10 ** (rand_len // 2) safe range.
 
     Args:
         rand_len (int, optional): Defaults to 4.
@@ -1886,15 +1901,17 @@ def gen_id(rand_len=4) -> str:
     1000
     >>> [len(gen_id(i)[:]) for i in range(10)]
     [18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
+    >>> # gen_id() => 251111_235204_0xYfc4f8
+    >>> # gen_id(sep="") => 2511112352291nTq972c
     """
     now = datetime.now()
-    s1 = now.strftime("%y%m%d_%H%M%S")
+    s1 = now.strftime(f"%y%m%d{sep}%H%M%S")
     s2 = base_encode(now.microsecond)
     if rand_len:
         s3 = os.urandom(rand_len // 2 + 1).hex()[:rand_len]
     else:
         s3 = ""
-    return f"{s1}_{s2:>04}{s3}"
+    return f"{s1}{sep}{s2:>04}{s3:0>{rand_len}}"
 
 
 def timeti(

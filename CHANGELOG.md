@@ -3,6 +3,7 @@
 ### 1.3.5 (2025-10-15)
 1. fix writer.wait_closed() ConnectionResetError in ipc.py, proxy_checker.py, log_server.py
 2. add `morebuiltins.funcs.debounce` decorator to debounce function calls.
+3. add `sep` arg to `morebuiltins.utils.gen_id` to customize the separator between date and time.
 
 ### 1.3.4 (2025-10-15)
 1. fix `morebuiltins.utils.gen_id` wrong length issue.
