@@ -3031,3 +3031,60 @@ Example::
 ---
 
 
+
+19.7 `LoggerStream` - LoggerStream constructor.
+
+
+```python
+
+Args:
+    skip_same_head (bool, optional): Whether to skip the same log head. Defaults to True.
+        True:
+            24-08-10 19:30:07 This is a log message.
+            This is another log message.
+            24-08-10 19:30:08 This is a new log message.
+        False:
+            24-08-10 19:30:07 This is a log message.
+            24-08-10 19:30:07 This is another log message.
+
+Example::
+
+    # 1. Basic usage
+    logger = LoggerStream(skip_same_head=True)
+    logger.write("This is a log message.\n")
+    logger.write("This is another log message.\n")
+    logger.write("This is a new log message.\n")
+
+    # 2. Redirect sys.stdout
+    import sys
+    sys.stdout = LoggerStream(skip_same_head=False)
+    print("This is a log message.")
+    print("This is a log message.")
+    # 24-08-10 19:30:07 This is a log message.
+    # 24-08-10 19:30:07 This is a log message.
+
+    # 3. Overwrite built-in print function
+    LoggerStream.install_print()
+    print(123)
+    print(123)
+    # 24-08-10 19:30:07 123
+    # 123
+    LoggerStream.restore_print()
+    LoggerStream.install_print(writer=open("log.txt", "a").write)
+
+    # 4. Subclass and override writer method
+    class CustomLoggerStream(LoggerStream):
+        def __init__(self, skip_same_head=True):
+            super().__init__(skip_same_head=skip_same_head)
+            self.logger = setup_your_logger_somehow()
+
+        def writer(self, msg: str):
+            # Custom implementation to write log message
+            self.logger.info(msg)
+
+```
+
+
+---
+
+

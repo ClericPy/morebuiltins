@@ -4,6 +4,10 @@
 1. fix writer.wait_closed() ConnectionResetError in ipc.py, proxy_checker.py, log_server.py
 2. add `morebuiltins.funcs.debounce` decorator to debounce function calls.
 3. add `sep` arg to `morebuiltins.utils.gen_id` to customize the separator between date and time.
+4. add `LoggerStream` to `morebuiltins.logs` to redirect sys.stdout/sys.stderr with prefix.
+   1. Use `sys.stdout = LoggerStream()` to redirect all stdout to LoggerStream, which sends logs to the logging system / file / custom writer.
+   2. `LoggerStream.replace_print_ctx`: A context manager to temporarily replace the print function within a block of code.
+      1. add time prefix to each print line.
 
 ### 1.3.4 (2025-10-15)
 1. fix `morebuiltins.utils.gen_id` wrong length issue.

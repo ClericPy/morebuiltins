@@ -294,6 +294,8 @@ print(morebuiltins.__file__)
 
 19.6 `ContextFilter` - A logging filter that injects context variables into extra of log records. ContextVar is used to manage context-specific data in a thread-safe / async-safe manner.
 
+19.7 `LoggerStream` - LoggerStream constructor.
+
 
 <!-- end -->
 

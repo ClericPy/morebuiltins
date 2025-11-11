@@ -5,6 +5,7 @@ import re
 import sys
 import time
 import typing
+from contextlib import contextmanager
 from contextvars import ContextVar, copy_context
 from functools import partial
 from gzip import GzipFile
@@ -25,6 +26,7 @@ __all__ = [
     "RotatingFileWriter",
     "SizedTimedRotatingFileHandler",
     "ContextFilter",
+    "LoggerStream",
 ]
 
 
@@ -72,9 +74,7 @@ class LogHelper:
         logger.info("This is an info message")
     """
 
-    DEFAULT_FORMAT = (
-        "%(asctime)s | %(name)s | %(levelname)-5s | %(filename)-8s(%(lineno)s) - %(message)s"
-    )
+    DEFAULT_FORMAT = "%(asctime)s | %(name)s | %(levelname)-5s | %(filename)-8s(%(lineno)s) - %(message)s"
     DEFAULT_FORMATTER = logging.Formatter(DEFAULT_FORMAT)
     FILENAME_HANDLER_MAP: Dict[str, logging.Handler] = {}
 
@@ -819,6 +819,211 @@ class ContextFilter(Filter):
         return True
 
 
+class LoggerStream:
+    r"""LoggerStream constructor.
+
+    Args:
+        skip_same_head (bool, optional): Whether to skip the same log head. Defaults to True.
+            True:
+                24-08-10 19:30:07 This is a log message.
+                This is another log message.
+                24-08-10 19:30:08 This is a new log message.
+            False:
+                24-08-10 19:30:07 This is a log message.
+                24-08-10 19:30:07 This is another log message.
+
+    Example::
+
+        # 1. Basic usage
+        logger = LoggerStream(skip_same_head=True)
+        logger.write("This is a log message.\n")
+        logger.write("This is another log message.\n")
+        logger.write("This is a new log message.\n")
+
+        # 2. Redirect sys.stdout
+        import sys
+        sys.stdout = LoggerStream(skip_same_head=False)
+        print("This is a log message.")
+        print("This is a log message.")
+        # 24-08-10 19:30:07 This is a log message.
+        # 24-08-10 19:30:07 This is a log message.
+
+        # 3. Overwrite built-in print function
+        LoggerStream.install_print()
+        print(123)
+        print(123)
+        # 24-08-10 19:30:07 123
+        # 123
+        LoggerStream.restore_print()
+        LoggerStream.install_print(writer=open("log.txt", "a").write)
+
+        # 4. Subclass and override writer method
+        class CustomLoggerStream(LoggerStream):
+            def __init__(self, skip_same_head=True):
+                super().__init__(skip_same_head=skip_same_head)
+                self.logger = setup_your_logger_somehow()
+
+            def writer(self, msg: str):
+                # Custom implementation to write log message
+                self.logger.info(msg)
+    """
+
+    BUILTINS_STDOUT = sys.stdout
+    BUILTINS_STDERR = sys.stderr
+    BUILTINS_PRINT = print
+
+    def __init__(self, skip_same_head=True, writer=None, flush=None, get_prefix=None):
+        self.skip_same_head = skip_same_head
+        self.writer = writer or self.default_writer
+        self.flush = flush or self.default_flush
+        self.get_prefix = get_prefix or self.default_get_prefix
+        self._is_newline = True
+        self._last_head = ""
+
+    def default_get_prefix(self):
+        return time.strftime("%y-%m-%d %H:%M:%S ")
+
+    @classmethod
+    def default_writer(cls, msg: str):
+        cls.BUILTINS_STDOUT.write(msg)
+        cls.BUILTINS_STDOUT.flush()
+
+    def write(self, buf):
+        if self._is_newline:
+            head = self.get_prefix()
+            if self.skip_same_head:
+                if head == self._last_head:
+                    head = ""
+                else:
+                    self._last_head = head
+        else:
+            head = ""
+        if buf.endswith("\n"):
+            self._is_newline = True
+        else:
+            self._is_newline = False
+        if head:
+            msg = f"{head}{buf}"
+        else:
+            msg = buf
+        self.writer(msg)
+
+    def default_flush(self):
+        pass
+
+    @classmethod
+    @contextmanager
+    def replace_print_ctx(
+        cls,
+        skip_same_head=True,
+        writer=BUILTINS_STDERR.write,
+        flush=BUILTINS_STDERR.flush,
+        get_prefix=None,
+    ):
+        """Context manager to replace the built-in print function temporarily.
+
+        Args:
+            skip_same_head (bool, optional): Whether to skip the same log head. Defaults to True.
+            writer (_type_, optional): Writer function. Defaults to BUILTINS_STDERR.write.
+            flush (_type_, optional): Flush function. Defaults to BUILTINS_STDERR.flush.
+
+        Example::
+
+            with LoggerStream.replace_print_ctx(skip_same_head=False):
+                print("This is a log message.")
+                print("This is another log message.")
+                # 24-08-10 19:30:07 This is a log message.
+                # 24-08-10 19:30:07 This is another log message.
+            # Back to original print function
+            print("This is a normal print message.")
+            # This is a normal print message.
+        """
+        try:
+            cls.install_print(
+                skip_same_head=skip_same_head,
+                writer=writer,
+                flush=flush,
+                get_prefix=get_prefix,
+            )
+            yield
+        finally:
+            cls.restore_print()
+
+    @classmethod
+    def restore_print(cls):
+        import builtins
+
+        builtins.print = cls.BUILTINS_PRINT
+
+    @classmethod
+    def install_print(
+        cls,
+        skip_same_head=True,
+        writer=BUILTINS_STDERR.write,
+        flush=BUILTINS_STDERR.flush,
+        get_prefix=None,
+    ):
+        """Install a custom print function that writes to LoggerStream.
+
+        Args:
+            skip_same_head (bool, optional): Whether to skip logging the same message head. Defaults to True.
+            writer (_type_, optional): Writer function. Defaults to BUILTINS_STDERR.write.
+            flush (_type_, optional): Flush function. Defaults to BUILTINS_STDERR.flush.
+
+        Example::
+
+            # 1. Basic usage
+            LoggerStream.install_print()
+            print("This is a log message.")
+            print("This is another log message.")
+            # 24-08-10 19:30:07 This is a log message.
+            # This is another log message.
+            LoggerStream.restore_print()
+
+            # 2. Log to a file
+            log_file = open("log.txt", "a", encoding="utf-8")
+            LoggerStream.install_print(writer=log_file.write, flush=log_file.flush)
+            print("This is a log message to file.")
+            LoggerStream.restore_print()
+
+            # 3. Log to a custom logger
+            logger = logging.getLogger("my_logger")
+            LoggerStream.install_print(writer=logger.info)
+            print("This is a log message to logger.")
+            LoggerStream.restore_print()
+
+            # 4. Using context manager
+            with LoggerStream.replace_print_ctx(skip_same_head=False):
+                print("This is a log message.")
+                print("This is another log message.")
+                # 24-08-10 19:30:07 This is a log message.
+                # 24-08-10 19:30:07 This is another log message
+            # Back to original print function
+            print("This is a normal print message.")
+            # This is a normal print message.
+        """
+        import builtins
+
+        logger_stream = cls(
+            skip_same_head=skip_same_head,
+            writer=writer,
+            flush=flush,
+            get_prefix=get_prefix,
+        )
+
+        def custom_print(*values, sep=" ", end="\n", file=None, flush=False):
+            if file is None:
+                # redirect to our logger_stream only when file is None
+                message = f"{sep.join(str(arg) for arg in values)}{end}"
+                logger_stream.write(message)
+                if flush:
+                    logger_stream.flush()
+            else:
+                cls.BUILTINS_PRINT(*values, sep=sep, end=end, file=file, flush=flush)
+
+        builtins.print = custom_print
+
+
 def test_LogHelper():
     logger = LogHelper.bind_handler(
         "app_test", filename="app_test.log", maxBytes=1, backupCount=2
@@ -863,6 +1068,32 @@ def test_AsyncQueueListener():
     assert asyncio.run(_test()) is True
 
 
+def test_LoggerStream():
+    cache = []
+
+    def get_prefix():
+        return "PREFIX "
+
+    def writer(msg: str):
+        cache.append(msg)
+
+    with LoggerStream.replace_print_ctx(
+        skip_same_head=True, writer=writer, get_prefix=get_prefix
+    ):
+        print("123")
+        print("456")
+        assert cache == ["PREFIX 123\n", "456\n"], cache
+        cache.clear()
+
+    with LoggerStream.replace_print_ctx(
+        skip_same_head=False, writer=writer, get_prefix=get_prefix
+    ):
+        print("123")
+        print("456")
+        assert cache == ["PREFIX 123\n", "PREFIX 456\n"], cache
+        cache.clear()
+
+
 def test_utils():
     test_LogHelper()
     print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), "test_LogHelper passed")
@@ -870,6 +1101,10 @@ def test_utils():
     print(
         time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
         "test_AsyncQueueListener passed",
+    )
+    test_LoggerStream()
+    print(
+        time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), "test_LoggerStream passed"
     )
 
 
