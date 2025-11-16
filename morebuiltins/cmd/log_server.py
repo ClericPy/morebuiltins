@@ -514,6 +514,27 @@ class LogServer(SocketServer):
             self._log_settings[name] = default
             return default
 
+    def make_record(
+        self,
+        name,
+        level,
+        fn,
+        lno,
+        msg,
+        args,
+        exc_info,
+        func=None,
+        extra=None,
+        sinfo=None,
+    ) -> logging.LogRecord:
+        rv = logging.LogRecord(name, level, fn, lno, msg, args, exc_info, func, sinfo)
+        if extra is not None:
+            for key in extra:
+                if key in rv.__dict__:
+                    continue
+                rv.__dict__[key] = extra[key]
+        return rv
+
     def write_queue_consumer(self):
         self.send_log("start write_queue_consumer daemon")
         stopped = False
@@ -541,19 +562,28 @@ class LogServer(SocketServer):
                                 self.send_log("stopping write_worker daemon(signal)")
                                 stopped = True
                             continue
-                        name, record = q_msg.name, q_msg.record
+                        name, record_dict = q_msg.name, q_msg.record
+                        if self.save_setting(name, record_dict):
+                            # ignore msg only for setting
+                            continue
                         try:
-                            log_record = logging.LogRecord(
-                                level=record.get("levelno", 0), **record
+                            log_record = self.make_record(
+                                name=name,
+                                level=record_dict.get("levelno", logging.INFO),
+                                fn=record_dict.get("pathname", ""),
+                                lno=record_dict.get("lineno", 0),
+                                msg=record_dict.get("msg", ""),
+                                args=record_dict.get("args", ()),
+                                exc_info=record_dict.get("exc_info", None),
+                                func=record_dict.get("funcName", None),
+                                extra=record_dict,
+                                sinfo=record_dict.get("stack_info", None),
                             )
                         except Exception as e:
                             self.send_log(
-                                f"`{name}` send invalid record.__dict__, {e!r}: {repr(record)[:100]}",
+                                f"`{name}` send invalid record.__dict__, {e!r}: {repr(record_dict)[:100]}",
                                 level=logging.WARNING,
                             )
-                            continue
-                        if self.save_setting(name, record):
-                            # ignore msg only for setting
                             continue
                         if name in new_lines:
                             new_lines[name].append(log_record)
@@ -565,7 +595,13 @@ class LogServer(SocketServer):
                     setting = self.get_setting(name)
                     _format = setting.formatter.format
                     lines = [
-                        (record.levelno, _format(record)) for record in record_list
+                        (
+                            record.levelno,
+                            record.msg
+                            if getattr(record, "nofmt", False)
+                            else _format(record),
+                        )
+                        for record in record_list
                     ]
                     targets = self.get_targets(
                         name,
@@ -902,20 +938,27 @@ async def async_test():
         for i in range(5):
             logger.info(f"log server test message {i + 1}")
         logger.error(f"log server test message {i + 1}")
-    # shutil.rmtree("logs", ignore_errors=True)
+        logger.info("test nofmt: ", extra={"nofmt": True})
+        for i in range(5):
+            logger.info(f"{i} ", extra={"nofmt": True})
+    shutil.rmtree("logs", ignore_errors=True)
 
 
 def sync_test():
-    # return asyncio.run(async_test())
+    asyncio.run(async_test())
     with LogServer(log_dir="logs"):
         logger = get_logger("test_sync", level_specs=[logging.ERROR, 13])
         for i in range(5):
             logger.info(f"log server test message {i + 1}")
-    # shutil.rmtree("logs", ignore_errors=True)
+        logger.log(13, "log server test message level 13")
+        logger.info("test nofmt: ", extra={"nofmt": True})
+        for i in range(5):
+            logger.info(f"{i} ", extra={"nofmt": True})
+    shutil.rmtree("logs", ignore_errors=True)
 
 
 def entrypoint():
-    return sync_test()
+    # return sync_test()
     return asyncio.run(main())
 
 

@@ -8,6 +8,7 @@
    1. Use `sys.stdout = LoggerStream()` to redirect all stdout to LoggerStream, which sends logs to the logging system / file / custom writer.
    2. `LoggerStream.replace_print_ctx`: A context manager to temporarily replace the print function within a block of code.
       1. add time prefix to each print line.
+5. add `nofmt` extra field support to `morebuiltins.cmd.log_server` to skip formatting for high-frequency/thinking logs.
 
 ### 1.3.4 (2025-10-15)
 1. fix `morebuiltins.utils.gen_id` wrong length issue.
