@@ -39,6 +39,8 @@ ibution.
 
 - Use `pyz`(downloaded from [releases](https://github.com/ClericPy/morebuiltins/releases))
 
+- Use `uvx morebuiltins morebuiltins.cmd.xxx`
+
 ```python
 import sys
 sys.path.insert(0, 'morebuiltins.pyz')

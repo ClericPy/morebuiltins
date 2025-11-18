@@ -9,6 +9,8 @@
    2. `LoggerStream.replace_print_ctx`: A context manager to temporarily replace the print function within a block of code.
       1. add time prefix to each print line.
 5. add `nofmt` extra field support to `morebuiltins.cmd.log_server` to skip formatting for high-frequency/thinking logs.
+6. add `scripts` entry to `pyproject.toml` for `morebuiltins` command line tool.
+   1. now you can run `uvx morebuiltins morebuiltins.cmd.log_server` to start log server with uvx.
 
 ### 1.3.4 (2025-10-15)
 1. fix `morebuiltins.utils.gen_id` wrong length issue.

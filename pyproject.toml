@@ -11,6 +11,7 @@ classifiers = ["License :: OSI Approved :: MIT License"]
 dynamic = ["version"]
 description = "Expanding Python's built-in functionalities to enable richer and more versatile work scenarios."
 requires-python = ">=3.8"
+scripts = {morebuiltins = "morebuiltins.cmd.bin._runner:runner"}
 
 [project.urls]
 Home = "https://github.com/ClericPy/morebuiltins"
