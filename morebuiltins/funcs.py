@@ -1041,7 +1041,7 @@ async def async_call(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
         return await func(*args, **kwargs)
     else:
         # It's a sync function, run it in a thread pool
-        return await asyncio.to_thread(func, *args, **kwargs)
+        return await to_thread(func, *args, **kwargs)
 
 
 def test_bg_task():
