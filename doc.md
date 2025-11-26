@@ -1841,6 +1841,52 @@ Demo::
 ---
 
 
+
+3.14 `async_call` - Automatically call a function asynchronously, whether it's sync or async.
+
+
+```python
+
+If func is a coroutine function, await it directly.
+If func is a regular function, run it in a thread pool executor.
+
+Args:
+    func: A callable (sync function or coroutine function)
+    *args: Positional arguments for func
+    **kwargs: Keyword arguments for func
+
+Returns:
+    The result of calling func with the given arguments
+
+Example::
+    import asyncio
+    import time
+
+    def sync_add(a, b):
+        time.sleep(1)
+        return a + b
+
+    async def async_mul(a, b):
+        await asyncio.sleep(1)
+        return a * b
+
+    async def main():
+        # Call sync function
+        result1 = await async_call(sync_add, 2, 3)
+        assert result1 == 5
+
+        # Call async function
+        result2 = await async_call(async_mul, 4, 5)
+        assert result2 == 20
+
+    asyncio.run(main())
+
+```
+
+
+---
+
+
 ## 4. morebuiltins.ipc
 
 

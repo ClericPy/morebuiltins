@@ -22,6 +22,7 @@ from typing import (
     Optional,
     OrderedDict,
     Set,
+    TypeVar,
     Union,
 )
 from weakref import WeakSet
@@ -40,7 +41,11 @@ __all__ = [
     "to_thread",
     "check_recursion",
     "debounce",
+    "async_call",
 ]
+
+
+T = TypeVar("T")
 
 
 def lru_cache_ttl(
@@ -965,6 +970,7 @@ def debounce(wait: float):
         Function executed
         >>> test()
     """
+
     def decorator(fn):
         last_call = 0
 
@@ -990,6 +996,52 @@ def debounce(wait: float):
             return sync_wrapper
 
     return decorator
+
+
+async def async_call(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    """
+    Automatically call a function asynchronously, whether it's sync or async.
+
+    If func is a coroutine function, await it directly.
+    If func is a regular function, run it in a thread pool executor.
+
+    Args:
+        func: A callable (sync function or coroutine function)
+        *args: Positional arguments for func
+        **kwargs: Keyword arguments for func
+
+    Returns:
+        The result of calling func with the given arguments
+
+    Example::
+        import asyncio
+        import time
+
+        def sync_add(a, b):
+            time.sleep(1)
+            return a + b
+
+        async def async_mul(a, b):
+            await asyncio.sleep(1)
+            return a * b
+
+        async def main():
+            # Call sync function
+            result1 = await async_call(sync_add, 2, 3)
+            assert result1 == 5
+
+            # Call async function
+            result2 = await async_call(async_mul, 4, 5)
+            assert result2 == 20
+
+        asyncio.run(main())
+    """
+    if asyncio.iscoroutinefunction(func):
+        # It's already a coroutine function, await it directly
+        return await func(*args, **kwargs)
+    else:
+        # It's a sync function, run it in a thread pool
+        return await asyncio.to_thread(func, *args, **kwargs)
 
 
 def test_bg_task():
@@ -1067,12 +1119,37 @@ def test_named_lock():
     test_async()
 
 
+def test_async_call():
+    async def main():
+        def sync_add(a, b):
+            time.sleep(0.1)
+            return a + b
+
+        async def async_mul(a, b):
+            await asyncio.sleep(0.1)
+            return a * b
+
+        start = time.time()
+        result = await asyncio.gather(
+            async_call(sync_add, 2, 3), async_call(async_mul, 4, 5)
+        )
+        assert result == [5, 20], result
+        end = time.time()
+        assert end - start < 0.2, end - start
+
+    asyncio.run(main())
+
+
 def test_utils():
     test_bg_task()
     print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), "test_bg_task passed")
     test_named_lock()
     print(
         time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), "test_named_lock passed"
+    )
+    test_async_call()
+    print(
+        time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), "test_async_call passed"
     )
 
 

@@ -1,5 +1,8 @@
 ## Changelog
 
+### 1.3.6 (2025-11-26)
+1. add `morebuiltins.funcs.async_call` to automatically call a function asynchronously, whether it's sync or async.
+
 ### 1.3.5 (2025-10-15)
 1. fix writer.wait_closed() ConnectionResetError in ipc.py, proxy_checker.py, log_server.py
 2. add `morebuiltins.funcs.debounce` decorator to debounce function calls.

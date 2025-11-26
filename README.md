@@ -182,6 +182,8 @@ print(morebuiltins.__file__)
 
 3.13 `debounce` - Debounce a function, delaying its execution until after a specified wait time.
 
+3.14 `async_call` - Automatically call a function asynchronously, whether it's sync or async.
+
 
 ## 4. morebuiltins.ipc
 
