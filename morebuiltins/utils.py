@@ -255,9 +255,10 @@ def retry(
                     return function(*args, **kwargs)
                 except exceptions as err:
                     error = err
-            if return_exception:
-                return error
-            raise error
+            if error is not None:
+                if return_exception:
+                    return error
+                raise error
 
         @wraps(function)
         async def retry_async(*args, **kwargs):
@@ -267,9 +268,10 @@ def retry(
                     return await function(*args, **kwargs)
                 except exceptions as err:
                     error = err
-            if return_exception:
-                return error
-            raise error
+            if error is not None:
+                if return_exception:
+                    return error
+                raise error
 
         if asyncio.iscoroutinefunction(function):
             return retry_async
@@ -652,7 +654,8 @@ class Validator:
     STRICT = True
 
     def __post_init__(self):
-        for f in self.__dataclass_fields__.values():
+        dataclass_fields = getattr(self, "__dataclass_fields__", {})
+        for f in dataclass_fields.values():
             callback = f.metadata.get("callback")
             value = getattr(self, f.name)
             if callback:
@@ -672,9 +675,9 @@ class Validator:
 
     def quick_to_dict(self):
         "not very reliable"
+        dataclass_fields = getattr(self, "__dataclass_fields__", {})
         return {
-            field.name: getattr(self, field.name)
-            for field in self.__dataclass_fields__.values()
+            field.name: getattr(self, field.name) for field in dataclass_fields.values()
         }
 
 
@@ -1288,15 +1291,16 @@ def switch_flush_print():
     """
     import builtins
 
-    if hasattr(builtins, "orignal_print"):
-        orignal_print = builtins.orignal_print
+    orignal_print = getattr(builtins, "orignal_print", None)
+    if orignal_print:
+        orignal_print = orignal_print
         if builtins.print is not orignal_print:
             # back to orignal_print
             builtins.print = orignal_print
             return
     else:
         orignal_print = builtins.print
-        builtins.orignal_print = orignal_print
+        setattr(builtins, "orignal_print", orignal_print)
 
     def flush_print(*args, **kwargs):
         if "flush" not in kwargs:

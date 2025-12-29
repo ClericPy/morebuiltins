@@ -2,6 +2,7 @@
 
 ### 1.3.6 (2025-11-26)
 1. add `morebuiltins.funcs.async_call` to automatically call a function asynchronously, whether it's sync or async.
+2. add `morebuiltins.funcs.countdown` to print a countdown timer inline in the console.
 
 ### 1.3.5 (2025-10-15)
 1. fix writer.wait_closed() ConnectionResetError in ipc.py, proxy_checker.py, log_server.py

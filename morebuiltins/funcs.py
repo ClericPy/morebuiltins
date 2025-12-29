@@ -553,6 +553,30 @@ class InlinePB(object):
         )
 
 
+def countdown(
+    secs: float, interval: Union[float, int] = 1, prefix: str = "Sleeping: "
+) -> None:
+    """A simple countdown timer that prints to the console inline.
+
+    Demo: countdown(5)
+
+    Args:
+        secs (float): Total seconds to count down.
+        interval (Union[float, int], optional): Update interval in seconds. Defaults to 1.
+        prefix (str, optional): Prefix string for the countdown message. Defaults to "Sleeping: ".
+    """
+    str_interval = str(interval)
+    rounded = len(str_interval.split(".", 1)[1]) if "." in str_interval else 0
+    max_length = len(f"{prefix}{secs:.{rounded}f}")
+    while secs > 0:
+        msg = f"{prefix}{secs:.{rounded}f}"
+        max_length = max(max_length, len(msg))
+        print(f"{prefix}{secs:.{rounded}f}", end="\r", flush=True)
+        time.sleep(interval)
+        secs -= interval
+    print(flush=True)
+
+
 def get_type_default(tp, default=None):
     """Get the default value for a type. {int: 0, float: 0.0, bytes: b"", str: "", list: [], tuple: (), set: set(), dict: {}}"""
     return {
