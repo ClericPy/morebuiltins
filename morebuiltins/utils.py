@@ -2,7 +2,6 @@ import asyncio
 import atexit
 import base64
 import collections.abc
-import gzip
 import hashlib
 import inspect
 import json
@@ -15,6 +14,7 @@ import tempfile
 import timeit
 import traceback
 import types
+import zlib
 from collections import UserDict
 from datetime import datetime
 from enum import IntEnum
@@ -430,16 +430,18 @@ def code_inline(
     encoder: Literal["b16", "b32", "b64", "b85"] = "b85",
 ) -> str:
     """Minifies Python source code into a single line.
+    WARNING: This function uses exec, which can pose security risks if the input is not trusted.
+    WARNING: exec will not update the current local scope, such as function local variables.(Use globals() instead)
 
     >>> code1 = code_inline('def test_code1(): return 12345')
     >>> code1
-    'import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY80RR910{=@%O;adIEiQ>q&QD1-)X=n2C`v6UEy`0cG%_|Z1psqiSP>oo000".encode("u8"))))'
+    'import base64,zlib;exec(zlib.decompress(base64.b85decode("c-l)zO;adIEiQ>q&QD1-)X=n2C`v6UEy`0cG%_|Z1puM238e".encode("u8"))))'
     >>> exec(code1)
     >>> test_code1()
     12345
     >>> code2 = code_inline("v=12345")
     >>> code2
-    'import base64,gzip;exec(gzip.decompress(base64.b85decode("ABzY80RR910{<(sH8e6dF$Dk}<L9Rb0000".encode("u8"))))'
+    'import base64,zlib;exec(zlib.decompress(base64.b85decode("c-kwoH8e6dF$Dkzq5-o".encode("u8"))))'
     >>> exec(code2)
     >>> v
     12345
@@ -452,11 +454,11 @@ def code_inline(
     """
     _encoder = getattr(base64, f"{encoder}encode")
     _source = source_code.encode(encoding="u8")
-    _source = gzip.compress(_source, mtime=1)
+    _source = zlib.compress(_source, level=9)
     _source = _encoder(_source)
     code = _source.decode("u8")
     result = (
-        "import base64,gzip;exec(gzip.decompress("
+        "import base64,zlib;exec(zlib.decompress("
         f'base64.{encoder}decode("{code}".encode("u8"))))'
     )
     return result
