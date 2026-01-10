@@ -2,7 +2,7 @@
 
 
 
-1.1 `ttime` - Converts a timestamp to a human-readable timestring formatted as %Y-%m-%d %H:%M:%S.
+1.1 `ttime` - Translates a timestamp to a human-readable string formatted as %Y-%m-%d %H:%M:%S.
 
 
 ```python
@@ -25,7 +25,7 @@ Returns:
 
 
 
-1.2 `ptime` - Converts a timestring formatted as %Y-%m-%d %H:%M:%S back into a timestamp.
+1.2 `ptime` - Parses a timestring formatted as %Y-%m-%d %H:%M:%S back into a timestamp.
 
 
 ```python
@@ -392,6 +392,17 @@ Person(screen={'s': 4}, name='1', age=1, other=0)
 ...     print(e)
 ...
 `name` should be `dict` but given `str`
+>>> # test true / false
+>>> @dataclass
+... class Status(Validator):
+...     ok: bool
+...
+>>> [Status(True), Status("true"), Status("1"), Status("yes"), Status("on"), Status("True")]
+[Status(ok=True), Status(ok=True), Status(ok=True), Status(ok=True), Status(ok=True), Status(ok=True)]
+>>> [Status(False), Status("false"), Status("0"), Status("no"), Status("off"), Status("False")]
+[Status(ok=False), Status(ok=False), Status(ok=False), Status(ok=False), Status(ok=False), Status(ok=False)]
+>>> [Status(""), Status("a")]
+[Status(ok=False), Status(ok=True)]
 
 ```
 

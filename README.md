@@ -68,9 +68,9 @@ print(morebuiltins.__file__)
 <!-- start -->
 ## 1. morebuiltins.utils
 
-1.1 `ttime` - Converts a timestamp to a human-readable timestring formatted as %Y-%m-%d %H:%M:%S.
+1.1 `ttime` - Translates a timestamp to a human-readable string formatted as %Y-%m-%d %H:%M:%S.
 
-1.2 `ptime` - Converts a timestring formatted as %Y-%m-%d %H:%M:%S back into a timestamp.
+1.2 `ptime` - Parses a timestring formatted as %Y-%m-%d %H:%M:%S back into a timestamp.
 
 1.3 `slice_into_pieces` - Divides a sequence into “n” segments, returning a generator that yields “n” pieces.
 
