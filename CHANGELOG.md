@@ -1,9 +1,12 @@
 ## Changelog
 
+
 ### 1.3.6 (2025-11-26)
 1. add `morebuiltins.funcs.async_call` to automatically call a function asynchronously, whether it's sync or async.
 2. add `morebuiltins.funcs.countdown` to print a countdown timer inline in the console.
 3. update `morebuiltins.utils.code_inline` using zlib instead of gzip.
+4. add `morebuiltins.utils.Validator` string alias for bool type
+   1. `Validator` now supports string values like "true", "false", "1", "0", "yes", "no", "on", "off" for boolean fields.
 
 ### 1.3.5 (2025-10-15)
 1. fix writer.wait_closed() ConnectionResetError in ipc.py, proxy_checker.py, log_server.py

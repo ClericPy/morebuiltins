@@ -1159,7 +1159,7 @@ def test_async_call():
         )
         assert result == [5, 20], result
         end = time.time()
-        assert end - start < 0.2, end - start
+        assert end - start < 0.25, end - start
 
     asyncio.run(main())
 

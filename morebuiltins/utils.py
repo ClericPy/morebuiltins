@@ -88,7 +88,7 @@ def ttime(
     tzone: int = int(-timezone / 3600),
     fmt="%Y-%m-%d %H:%M:%S",
 ) -> str:
-    """Converts a timestamp to a human-readable timestring formatted as %Y-%m-%d %H:%M:%S.
+    """Translates a timestamp to a human-readable string formatted as %Y-%m-%d %H:%M:%S.
 
     >>> ttime(1486572818.421858323, tzone=8)
     '2017-02-09 00:53:38'
@@ -111,7 +111,7 @@ def ptime(
     tzone: int = int(-timezone / 3600),
     fmt: str = "%Y-%m-%d %H:%M:%S",
 ) -> int:
-    """Converts a timestring formatted as %Y-%m-%d %H:%M:%S back into a timestamp.
+    """Parses a timestring formatted as %Y-%m-%d %H:%M:%S back into a timestamp.
 
     >>> ptime("2018-03-15 01:27:56", tzone=8)
     1521048476
@@ -125,7 +125,6 @@ def ptime(
         str: time string formatted.
     """
     fix_tz = -(tzone * 3600 + timezone)
-    #: str(timestring) for datetime.datetime object
     if timestring:
         return int(mktime(strptime(str(timestring), fmt)) + fix_tz)
     else:
@@ -651,6 +650,17 @@ class Validator:
     ...     print(e)
     ...
     `name` should be `dict` but given `str`
+    >>> # test true / false
+    >>> @dataclass
+    ... class Status(Validator):
+    ...     ok: bool
+    ...
+    >>> [Status(True), Status("true"), Status("1"), Status("yes"), Status("on"), Status("True")]
+    [Status(ok=True), Status(ok=True), Status(ok=True), Status(ok=True), Status(ok=True), Status(ok=True)]
+    >>> [Status(False), Status("false"), Status("0"), Status("no"), Status("off"), Status("False")]
+    [Status(ok=False), Status(ok=False), Status(ok=False), Status(ok=False), Status(ok=False), Status(ok=False)]
+    >>> [Status(""), Status("a")]
+    [Status(ok=False), Status(ok=True)]
     """
 
     STRICT = True
@@ -660,6 +670,17 @@ class Validator:
         for f in dataclass_fields.values():
             callback = f.metadata.get("callback")
             value = getattr(self, f.name)
+
+            # Handle bool type conversion from string
+            if f.type is bool and isinstance(value, str):
+                lower_val = value.lower()
+                if lower_val in {"true", "yes", "on", "1"}:
+                    setattr(self, f.name, True)
+                elif lower_val in {"false", "no", "off", "0"}:
+                    setattr(self, f.name, False)
+                else:
+                    setattr(self, f.name, bool(value))
+
             if callback:
                 setattr(self, f.name, callback(value))
             if self.STRICT:
