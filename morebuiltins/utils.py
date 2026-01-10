@@ -29,6 +29,7 @@ from typing import (
     AnyStr,
     Callable,
     Dict,
+    get_args,
     Generator,
     List,
     Literal,
@@ -661,6 +662,16 @@ class Validator:
     [Status(ok=False), Status(ok=False), Status(ok=False), Status(ok=False), Status(ok=False), Status(ok=False)]
     >>> [Status(""), Status("a")]
     [Status(ok=False), Status(ok=True)]
+    >>> # test Optional / Union
+    >>> @dataclass
+    ... class Status(Validator):
+    ...     ok: Optional[int] = None
+    ...     msg: Union[str, int] = ''
+    ...
+    >>> Status()
+    Status(ok=None, msg='')
+    >>> Status(msg = 400)
+    Status(ok=None, msg=400)
     """
 
     STRICT = True
@@ -689,11 +700,13 @@ class Validator:
                     tp = f.type
                 elif hasattr(f.type, "__origin__"):
                     tp = f.type.__origin__
+                    if tp is Union:
+                        tp = get_args(f.type)
                 else:
                     continue
                 if not isinstance(value, tp):
                     raise TypeError(
-                        f"`{f.name}` should be `{tp.__name__}` but given `{type(value).__name__}`"
+                        f"`{f.name}` should be `{getattr(tp, '__name__', str(tp))}` but given `{type(value).__name__}`"
                     )
 
     def quick_to_dict(self):

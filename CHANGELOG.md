@@ -1,5 +1,7 @@
 ## Changelog
 
+### 1.3.7 (2025-12-05)
+1. fix `morebuiltins.utils.Validator` while type is Union / Optional
 
 ### 1.3.6 (2025-11-26)
 1. add `morebuiltins.funcs.async_call` to automatically call a function asynchronously, whether it's sync or async.

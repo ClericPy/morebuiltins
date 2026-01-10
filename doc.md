@@ -403,6 +403,16 @@ Person(screen={'s': 4}, name='1', age=1, other=0)
 [Status(ok=False), Status(ok=False), Status(ok=False), Status(ok=False), Status(ok=False), Status(ok=False)]
 >>> [Status(""), Status("a")]
 [Status(ok=False), Status(ok=True)]
+>>> # test Optional / Union
+>>> @dataclass
+... class Status(Validator):
+...     ok: Optional[int] = None
+...     msg: Union[str, int] = ''
+...
+>>> Status()
+Status(ok=None, msg='')
+>>> Status(msg = 400)
+Status(ok=None, msg=400)
 
 ```
 
