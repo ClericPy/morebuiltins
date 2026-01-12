@@ -596,7 +596,8 @@ def read_time(
 
 
 class Validator:
-    """Validator for dataclasses.
+    """Validator for dataclasses. This is very experimental, choose pydantic or msgspec for production use.
+
     >>> from dataclasses import dataclass, field
     >>>
     >>>
@@ -672,41 +673,140 @@ class Validator:
     Status(ok=None, msg='')
     >>> Status(msg = 400)
     Status(ok=None, msg=400)
+    >>> # test AUTO_CAST
+    >>> @dataclass
+    ... class CastDemo(Validator):
+    ...     a: list
+    ...     b: int
+    ...     c: float
+    ...     d: dict
+    ...     e: list
+    
+    >>> CastDemo((1, 2), "123", "1.23", '{"a": 1}', '[1,2]')
+    CastDemo(a=[1, 2], b=123, c=1.23, d={'a': 1}, e=[1, 2])
     """
 
     STRICT = True
+    AUTO_CAST = True
 
     def __post_init__(self):
         dataclass_fields = getattr(self, "__dataclass_fields__", {})
         for f in dataclass_fields.values():
-            callback = f.metadata.get("callback")
             value = getattr(self, f.name)
 
-            # Handle bool type conversion from string
-            if f.type is bool and isinstance(value, str):
-                lower_val = value.lower()
-                if lower_val in {"true", "yes", "on", "1"}:
-                    setattr(self, f.name, True)
-                elif lower_val in {"false", "no", "off", "0"}:
-                    setattr(self, f.name, False)
+            # 1. Resolve target types (handling Union/Optional)
+            if inspect.isclass(f.type):
+                target_types = (f.type,)
+            elif hasattr(f.type, "__origin__"):
+                origin = f.type.__origin__
+                if origin is Union:
+                    target_types = get_args(f.type)
                 else:
-                    setattr(self, f.name, bool(value))
+                    target_types = (origin,)
+            else:
+                target_types = (f.type,)
 
+            # 2. AUTO_CAST
+            if self.AUTO_CAST:
+                # Check if already matched
+                matched = False
+                for t in target_types:
+                    if (inspect.isclass(t) and isinstance(value, t)) or (
+                        t is type(None) and value is None
+                    ):
+                        matched = True
+                        break
+                if not matched:
+                    # Try casting
+                    for t in target_types:
+                        new_value = value
+                        is_cast = False
+                        if t is bool and isinstance(value, str):
+                            lower_val = value.lower()
+                            if lower_val in {"true", "yes", "on", "1"}:
+                                new_value, is_cast = True, True
+                            elif lower_val in {"false", "no", "off", "0"}:
+                                new_value, is_cast = False, True
+                            else:
+                                new_value, is_cast = bool(value), True
+                        elif t is int and isinstance(value, (str, float)):
+                            try:
+                                if isinstance(value, str):
+                                    if re.match(r"^[+-]?\d+$", value.strip()):
+                                        new_value, is_cast = int(value), True
+                                else:
+                                    new_value, is_cast = int(value), True
+                            except (ValueError, TypeError):
+                                pass
+                        elif t is float and isinstance(value, (str, int)):
+                            try:
+                                if isinstance(value, str):
+                                    if re.match(
+                                        r"^[+-]?\d*(\.\d+)?([eE][+-]?\d+)?$",
+                                        value.strip(),
+                                    ):
+                                        new_value, is_cast = float(value), True
+                                else:
+                                    new_value, is_cast = float(value), True
+                            except (ValueError, TypeError):
+                                pass
+                        elif t is list and isinstance(value, (tuple, set, str)):
+                            if isinstance(value, str):
+                                vs = value.strip()
+                                if vs.startswith("["):
+                                    try:
+                                        loaded = json.loads(vs)
+                                        if isinstance(loaded, list):
+                                            new_value, is_cast = loaded, True
+                                    except (ValueError, json.JSONDecodeError):
+                                        pass
+                            else:
+                                new_value, is_cast = list(value), True
+                        elif t is dict and isinstance(value, str):
+                            vs = value.strip()
+                            if vs.startswith("{"):
+                                try:
+                                    loaded = json.loads(vs)
+                                    if isinstance(loaded, dict):
+                                        new_value, is_cast = loaded, True
+                                except (ValueError, json.JSONDecodeError):
+                                    pass
+                        elif t is set and isinstance(value, (list, tuple)):
+                            new_value, is_cast = set(value), True
+                        elif t is tuple and isinstance(value, (list, set)):
+                            new_value, is_cast = tuple(value), True
+
+                        if is_cast:
+                            value = new_value
+                            setattr(self, f.name, value)
+                            break
+
+
+            # 3. Callback
+            callback = f.metadata.get("callback")
             if callback:
-                setattr(self, f.name, callback(value))
+                value = callback(value)
+                setattr(self, f.name, value)
+
+            # 4. Strict check
             if self.STRICT:
-                value = getattr(self, f.name)
-                if inspect.isclass(f.type):
-                    tp = f.type
-                elif hasattr(f.type, "__origin__"):
-                    tp = f.type.__origin__
-                    if tp is Union:
-                        tp = get_args(f.type)
-                else:
-                    continue
-                if not isinstance(value, tp):
+                matched = False
+                for t in target_types:
+                    if (inspect.isclass(t) and isinstance(value, t)) or (
+                        t is type(None) and value is None
+                    ):
+                        matched = True
+                        break
+                if not matched:
+                    tp_names = []
+                    for t in target_types:
+                        if inspect.isclass(t):
+                            tp_names.append(t.__name__)
+                        else:
+                            tp_names.append(str(t).replace("typing.", ""))
+                    tp_str = "|".join(tp_names)
                     raise TypeError(
-                        f"`{f.name}` should be `{getattr(tp, '__name__', str(tp))}` but given `{type(value).__name__}`"
+                        f"`{f.name}` should be `{tp_str}` but given `{type(value).__name__}`"
                     )
 
     def quick_to_dict(self):

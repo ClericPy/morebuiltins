@@ -92,7 +92,7 @@ print(morebuiltins.__file__)
 
 1.12 `read_time` - Converts seconds into a more readable time duration string.
 
-1.13 `Validator` - Validator for dataclasses.
+1.13 `Validator` - Validator for dataclasses. This is very experimental, choose pydantic or msgspec for production use.
 
 1.14 `stagger_sort` - Ensures that identical groups are ordered and evenly distributed, mitigating data skew. The function does not alter the original list and returns a generator.
 

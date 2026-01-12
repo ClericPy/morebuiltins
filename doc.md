@@ -334,10 +334,11 @@ Returns:
 
 
 
-1.13 `Validator` - Validator for dataclasses.
+1.13 `Validator` - Validator for dataclasses. This is very experimental, choose pydantic or msgspec for production use.
 
 
 ```python
+
 >>> from dataclasses import dataclass, field
 >>>
 >>>
@@ -413,6 +414,17 @@ Person(screen={'s': 4}, name='1', age=1, other=0)
 Status(ok=None, msg='')
 >>> Status(msg = 400)
 Status(ok=None, msg=400)
+>>> # test AUTO_CAST
+>>> @dataclass
+... class CastDemo(Validator):
+...     a: list
+...     b: int
+...     c: float
+...     d: dict
+...     e: list
+
+>>> CastDemo((1, 2), "123", "1.23", '{"a": 1}', '[1,2]')
+CastDemo(a=[1, 2], b=123, c=1.23, d={'a': 1}, e=[1, 2])
 
 ```
 
