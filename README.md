@@ -6,15 +6,17 @@
 
 ## Project Overview:
 
-This project enhances Python’s built-ins with extra functionality, prioritizing no third-party dependencies, performance, reusability, and MIT Licensing for flexibl- Minima- MIT Licensed: The open-source code is freely usable, modifiable, and distributable.
-- Performance-Driven: It prioritizes efficiency, ensuring enhanced built-ins maintain Python's performance standards.
-- Self-Contained Modules: Functions and modules are standalone for simple reuse without dependencies.
-- Well tested: All modules are thoroughly tested for stability and compatibility.
-- Enhanced Built-ins: The project adds tools to Python's core functionality, simplifying and accelerating development.
-- Beginner friendly: Plenty of code snippets and examples for common scenarios, so new Python users can quickly find practical solutions and learn best practices.
-- Command-line ready: Includes CLI tools for downloading Python, building zipapps, running log servers, analyzing dependencies, and more.
-- Minimal Dependencies: Designed to avoid third-party libraries for seamless integration, conflict prevention, and easy packaging via zipapp for pyz distribution.
-ibution.
+This library extends Python's standard library by packaging practical utilities inspired by the official documentation and the CPython source code. It provides convenient, production-minded wrappers for common business scenarios while preserving compatibility.
+
+This project enhances Python’s built-ins with additional utilities and follows these principles:
+- No third-party dependencies: Keep the code self-contained for easier distribution.
+- Performance-focused: Designed to be efficient and lightweight.
+- Reusable modules: Standalone functions and modules for simple reuse.
+- MIT licensed: Free to use, modify, and redistribute under the MIT License.
+- Well tested: Modules include tests to ensure stability and compatibility.
+- Beginner friendly: Examples and snippets to help new users solve common tasks.
+- Command-line ready: Includes CLI tools for tasks like downloading Python, building zipapps, running log servers, and analyzing dependencies.
+- Minimal external dependencies: Avoids third-party libraries to simplify packaging (e.g., zipapp/pyz).
 
 ## Compatibility Break Warnings
 
@@ -24,6 +26,8 @@ ibution.
    1. move `async_logger`, `AsyncQueueListener`, `LogHelper`, `RotatingFileWriter`, and `SizedTimedRotatingFileHandler` from `morebuiltins.funcs` to `morebuiltins.logs`.
 3. **1.3.0 (2025-03-08)**
    1. rename `morebuiltins.functools` to `morebuiltins.funcs` to avoid conflict with `functools` in python standard library.
+
+[Changelog](https://github.com/ClericPy/morebuiltins/blob/master/CHANGELOG.md)
 
 ## Install
 
@@ -57,7 +61,6 @@ print(morebuiltins.__file__)
 
 [Module Docs](https://github.com/ClericPy/morebuiltins/blob/master/doc.md)
 
-[Changelog](https://github.com/ClericPy/morebuiltins/blob/master/CHANGELOG.md)
 
 **Compatibility Warning**. rename `morebuiltins.functools` to `morebuiltins.funcs` to avoid conflict with `functools` in python standard library after 1.3.0 (2025-04-03).
 
