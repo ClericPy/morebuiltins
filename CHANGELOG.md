@@ -2,6 +2,7 @@
 
 ### 1.3.8 (2026-01-12)
 1. add AUTO_CAST to `morebuiltins.utils.Validator` for automatic type conversion
+2. add --dry-run/--test to cmd.systemd
 
 ### 1.3.7 (2025-12-05)
 1. fix `morebuiltins.utils.Validator` while type is Union / Optional

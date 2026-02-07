@@ -1,4 +1,5 @@
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -7,9 +8,15 @@ from typing import Any, Dict
 __all__ = ["service_handler"]
 
 
-def run_systemctl(command: str, service_name: str) -> int:
+def run_systemctl(command: str, service_name: str, dry_run: bool = False) -> int:
     """Execute systemctl command"""
     cmd = ["systemctl", command, service_name]
+    
+    if dry_run:
+        print(f"[Dry Run] Would execute: {' '.join(cmd)}")
+        return 0
+
+    print(f"Executing: {' '.join(cmd)}")
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         print(f"Successfully executed: systemctl {command} {service_name}")
@@ -20,24 +27,41 @@ def run_systemctl(command: str, service_name: str) -> int:
 
 
 def manage_service_file(
-    service_name: str, content: str = "", action: str = "create"
+    service_name: str, content: str = "", action: str = "create", dry_run: bool = False
 ) -> int:
     """Manage systemd service file"""
     service_path = Path("/etc/systemd/system") / f"{service_name}.service"
 
     if action == "create":
+        if dry_run:
+            print(f"[Dry Run] Would write to {service_path}:")
+            print(content)
+            print("[Dry Run] Would execute: systemctl daemon-reload")
+            return 0
+
+        print(f"Writing service file to {service_path}")
         try:
             service_path.write_text(content)
+            print("Reloading systemd daemon...")
             subprocess.run(["systemctl", "daemon-reload"])
             return 0
         except Exception as e:
             print(f"Error creating service file: {e}")
             return 1
     elif action == "delete":
+        if dry_run:
+            print(f"[Dry Run] Would remove {service_path}")
+            print("[Dry Run] Would execute: systemctl daemon-reload")
+            return 0
+
+        print(f"Removing service file {service_path}")
         try:
             if service_path.exists():
                 service_path.unlink()
+                print("Reloading systemd daemon...")
                 subprocess.run(["systemctl", "daemon-reload"])
+            else:
+                print(f"Service file {service_path} does not exist.")
             return 0
         except Exception as e:
             print(f"Error removing service file: {e}")
@@ -115,6 +139,8 @@ def service_handler():
         python -m morebuiltins.cmd.systemd.service -name myservice -disable
     3. Print service file content:
         python -m morebuiltins.cmd.systemd.service -name myservice -Description "My service" -ExecStart "/bin/bash myscript.sh" -Type simple
+    4. Dry run (print actions without executing):
+        python -m morebuiltins.cmd.systemd.service -name myservice -enable --dry-run -Description "My service" -ExecStart "/bin/bash myscript.sh"
     """
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawTextHelpFormatter, usage=service_handler.__doc__
@@ -139,6 +165,12 @@ def service_handler():
         "--stop",
         action="store_true",
         help="Stop, disable and remove service",
+    )
+    parser.add_argument(
+        "--dry-run",
+        "--test",
+        action="store_true",
+        help="Print actions without executing them",
     )
 
     # Unit section - common arguments
@@ -199,11 +231,17 @@ def service_handler():
             key = arg.lstrip("-").split("=")[0]
             value = arg.split("=")[1]
             setattr(args, key, value)
+# Force dry-run on Windows by default
+    if os.name == "nt":
+        if not args.dry_run:
+            print("[Info] Windows detected: Forcing --dry-run mode.")
+            args.dry_run = True
 
+    
     if args.disable:
-        run_systemctl("stop", f"{args.name}.service")
-        run_systemctl("disable", f"{args.name}.service")
-        return manage_service_file(args.name, action="delete")
+        run_systemctl("stop", f"{args.name}.service", dry_run=args.dry_run)
+        run_systemctl("disable", f"{args.name}.service", dry_run=args.dry_run)
+        return manage_service_file(args.name, action="delete", dry_run=args.dry_run)
 
     elif args.enable:
         if not args.ExecStart:
@@ -212,11 +250,11 @@ def service_handler():
             return 1
 
         service_content = create_service_file(vars(args))
-        if manage_service_file(args.name, service_content, "create") != 0:
+        if manage_service_file(args.name, service_content, "create", dry_run=args.dry_run) != 0:
             return 1
 
-        run_systemctl("enable", f"{args.name}.service")
-        run_systemctl("start", f"{args.name}.service")
+        run_systemctl("enable", f"{args.name}.service", dry_run=args.dry_run)
+        run_systemctl("start", f"{args.name}.service", dry_run=args.dry_run)
         return 0
     else:
         service_content = create_service_file(vars(args))

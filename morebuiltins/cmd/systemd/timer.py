@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from typing import Any, Dict, Tuple
 import subprocess
@@ -7,9 +8,15 @@ from pathlib import Path
 __all__ = ["timer_handler"]
 
 
-def run_systemctl(command: str, timer_name: str) -> int:
+def run_systemctl(command: str, timer_name: str, dry_run: bool = False) -> int:
     """Execute systemctl command for timer"""
     cmd = ["systemctl", command, timer_name]
+
+    if dry_run:
+        print(f"[Dry Run] Would execute: {' '.join(cmd)}")
+        return 0
+
+    print(f"Executing: {' '.join(cmd)}")
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         print(f"Successfully executed: systemctl {command} {timer_name}")
@@ -24,26 +31,47 @@ def manage_timer_files(
     timer_content: str = "",
     service_content: str = "",
     action: str = "create",
+    dry_run: bool = False,
 ) -> int:
     """Manage systemd timer and its associated service file"""
     timer_path = Path("/etc/systemd/system") / f"{timer_name}.timer"
     service_path = Path("/etc/systemd/system") / f"{timer_name}.service"
 
     if action == "create":
+        if dry_run:
+            print(f"[Dry Run] Would write to {timer_path}:")
+            print(timer_content)
+            print(f"[Dry Run] Would write to {service_path}:")
+            print(service_content)
+            print("[Dry Run] Would execute: systemctl daemon-reload")
+            return 0
+
+        print(f"Writing timer file to {timer_path}")
+        print(f"Writing service file to {service_path}")
         try:
             timer_path.write_text(timer_content)
             service_path.write_text(service_content)
+            print("Reloading systemd daemon...")
             subprocess.run(["systemctl", "daemon-reload"])
             return 0
         except Exception as e:
             print(f"Error creating timer files: {e}")
             return 1
     elif action == "delete":
+        if dry_run:
+            print(f"[Dry Run] Would remove {timer_path}")
+            print(f"[Dry Run] Would remove {service_path}")
+            print("[Dry Run] Would execute: systemctl daemon-reload")
+            return 0
+
+        print(f"Removing timer file {timer_path}")
+        print(f"Removing service file {service_path}")
         try:
             if timer_path.exists():
                 timer_path.unlink()
             if service_path.exists():
                 service_path.unlink()
+            print("Reloading systemd daemon...")
             subprocess.run(["systemctl", "daemon-reload"])
             return 0
         except Exception as e:
@@ -142,6 +170,12 @@ def timer_handler():
         action="store_true",
         help="Stop, disable and remove timer, print content if not set",
     )
+    parser.add_argument(
+        "--dry-run",
+        "--test",
+        action="store_true",
+        help="Print actions without executing them",
+    )
 
     # Timer specific arguments
     parser.add_argument(
@@ -232,10 +266,16 @@ hourly            - Every hour at minute 0""",
 
     args = parser.parse_args()
 
+    # Force dry-run on Windows by default
+    if os.name == "nt":
+        if not args.dry_run:
+            print("[Info] Windows detected: Forcing --dry-run mode.")
+            args.dry_run = True
+
     if args.disable:
-        run_systemctl("stop", f"{args.name}.timer")
-        run_systemctl("disable", f"{args.name}.timer")
-        return manage_timer_files(args.name, action="delete")
+        run_systemctl("stop", f"{args.name}.timer", dry_run=args.dry_run)
+        run_systemctl("disable", f"{args.name}.timer", dry_run=args.dry_run)
+        return manage_timer_files(args.name, action="delete", dry_run=args.dry_run)
 
     elif args.enable:
         if not args.ExecStart:
@@ -255,11 +295,11 @@ hourly            - Every hour at minute 0""",
             return 1
 
         timer_content, service_content = create_timer_file(vars(args))
-        if manage_timer_files(args.name, timer_content, service_content, "create") != 0:
+        if manage_timer_files(args.name, timer_content, service_content, "create", dry_run=args.dry_run) != 0:
             return 1
 
-        run_systemctl("enable", f"{args.name}.timer")
-        run_systemctl("start", f"{args.name}.timer")
+        run_systemctl("enable", f"{args.name}.timer", dry_run=args.dry_run)
+        run_systemctl("start", f"{args.name}.timer", dry_run=args.dry_run)
         return 0
     else:
         timer_content, service_content = create_timer_file(vars(args))
