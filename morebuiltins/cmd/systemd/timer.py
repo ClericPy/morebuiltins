@@ -10,10 +10,14 @@ __all__ = ["timer_handler"]
 
 def run_systemctl(command: str, timer_name: str, dry_run: bool = False) -> int:
     """Execute systemctl command for timer"""
-    cmd = ["systemctl", command, timer_name]
+    cmd = ["sudo", "systemctl", command, timer_name]
+    template = f"""
+# {"=" * 40}
+# Execute sudo systemctl {command}
+>>> {' '.join(cmd)}"""
 
     if dry_run:
-        print(f"[Dry Run] Would execute: {' '.join(cmd)}")
+        print(template)
         return 0
 
     print(f"Executing: {' '.join(cmd)}")
@@ -38,12 +42,25 @@ def manage_timer_files(
     service_path = Path("/etc/systemd/system") / f"{timer_name}.service"
 
     if action == "create":
+        timer_posix = timer_path.as_posix()
+        service_posix = service_path.as_posix()
+        template = f"""
+# {"=" * 40}
+# Create timer file: {timer_posix}
+>>> sudo vim {timer_posix}
+{timer_content}
+
+# {"=" * 40}
+# Create service file: {service_posix}
+>>> sudo vim {service_posix}
+{service_content}
+
+# {"=" * 40}
+# Reload systemd daemon
+>>> sudo systemctl daemon-reload"""
+        print(template)
+
         if dry_run:
-            print(f"[Dry Run] Would write to {timer_path}:")
-            print(timer_content)
-            print(f"[Dry Run] Would write to {service_path}:")
-            print(service_content)
-            print("[Dry Run] Would execute: systemctl daemon-reload")
             return 0
 
         print(f"Writing timer file to {timer_path}")
@@ -52,16 +69,29 @@ def manage_timer_files(
             timer_path.write_text(timer_content)
             service_path.write_text(service_content)
             print("Reloading systemd daemon...")
-            subprocess.run(["systemctl", "daemon-reload"])
+            subprocess.run(["sudo", "systemctl", "daemon-reload"])
             return 0
         except Exception as e:
             print(f"Error creating timer files: {e}")
             return 1
     elif action == "delete":
+        timer_posix = timer_path.as_posix()
+        service_posix = service_path.as_posix()
+        template = f"""
+# {"=" * 40}
+# Remove timer file
+>>> sudo rm {timer_posix}
+
+# {"=" * 40}
+# Remove service file
+>>> sudo rm {service_posix}
+
+# {"=" * 40}
+# Reload systemd daemon
+>>> sudo systemctl daemon-reload"""
+        print(template)
+
         if dry_run:
-            print(f"[Dry Run] Would remove {timer_path}")
-            print(f"[Dry Run] Would remove {service_path}")
-            print("[Dry Run] Would execute: systemctl daemon-reload")
             return 0
 
         print(f"Removing timer file {timer_path}")
@@ -72,7 +102,7 @@ def manage_timer_files(
             if service_path.exists():
                 service_path.unlink()
             print("Reloading systemd daemon...")
-            subprocess.run(["systemctl", "daemon-reload"])
+            subprocess.run(["sudo", "systemctl", "daemon-reload"])
             return 0
         except Exception as e:
             print(f"Error removing timer files: {e}")
@@ -82,10 +112,14 @@ def manage_timer_files(
 
 def create_timer_file(args: Dict[str, Any]) -> Tuple[str, str]:
     """Generate systemd timer and service file content"""
+    name_value = args.get("name")
+    timer_name = name_value if name_value is not None else "timer"
+    description_value = args.get("Description")
+    description = description_value if description_value is not None else f"{timer_name} timer task"
+
     # Generate timer content
     timer_content = ["[Unit]"]
-    if args.get("Description"):
-        timer_content.append(f"Description={args['Description']} (Timer)")
+    timer_content.append(f"Description={description} (Timer)")
 
     timer_content.append("\n[Timer]")
     # Timer section configuration
@@ -110,8 +144,7 @@ def create_timer_file(args: Dict[str, Any]) -> Tuple[str, str]:
 
     # Generate service content
     service_content = ["[Unit]"]
-    if args.get("Description"):
-        service_content.append(f"Description={args['Description']}")
+    service_content.append(f"Description={description} (Service)")
 
     service_content.append("\n[Service]")
     if not args.get("Type"):
@@ -133,27 +166,28 @@ def create_timer_file(args: Dict[str, Any]) -> Tuple[str, str]:
 
 
 def timer_handler():
-    """Parse arguments and manage systemd timer files.
-    If -enable or -disable is not set, print timer and service file content.
+    """Generate and manage systemd timer files
 
-    Examples usage:
+Example usage:
 
-        1. enable & start timer
-            - python -m morebuiltins.cmd.systemd.timer -name mytimer -enable -OnCalendar '*:0/15' -ExecStart '/bin/echo hello'
-        2. disable & stop timer
-            - python -m morebuiltins.cmd.systemd.timer -name mytimer -disable
-        3. print timer and service file content
-            - python -m morebuiltins.cmd.systemd.timer -name mytimer -OnCalendar '*:0/15' -ExecStart '/bin/echo hello'
+1. Create, enable and start timer:
+    python -m morebuiltins.cmd.systemd.timer -name mytimer -enable -OnCalendar "*:0/15" -ExecStart "/bin/echo hello"
+2. Stop, disable and remove timer:
+    python -m morebuiltins.cmd.systemd.timer -name mytimer -disable
+3. Print timer and service file content:
+    python -m morebuiltins.cmd.systemd.timer -name mytimer -OnCalendar "*:0/15" -ExecStart "/bin/echo hello"
+4. Dry run (print actions without executing):
+    python -m morebuiltins.cmd.systemd.timer -name mytimer -enable --dry-run -OnCalendar "*:0/15" -ExecStart "/bin/echo hello"
     """
 
     parser = argparse.ArgumentParser(
         description="Generate and manage systemd timer files",
         formatter_class=argparse.RawTextHelpFormatter,
-        usage=__doc__,
+        usage=timer_handler.__doc__,
     )
 
     # Basic arguments
-    parser.add_argument("-name", "--name", help="Timer name (required)", required=True)
+    parser.add_argument("-name", "--name", help="Timer name")
     parser.add_argument(
         "-enable",
         "--enable",
@@ -213,6 +247,14 @@ hourly            - Every hour at minute 0""",
     )
 
     parser.add_argument(
+        "-OnUnitInactiveSec",
+        "--OnUnitInactiveSec",
+        help="""Time after unit becomes inactive. Examples:
+'15min' - Run 15 minutes after last completion
+'1h'    - Run hourly after completion""",
+    )
+
+    parser.add_argument(
         "-OnStartupSec",
         "--OnStartupSec",
         help="""Time to wait after startup. Examples:
@@ -263,6 +305,12 @@ hourly            - Every hour at minute 0""",
     parser.add_argument(
         "-WorkingDirectory", "--WorkingDirectory", help="Working directory"
     )
+    parser.add_argument(
+        "-Type",
+        "--Type",
+        choices=["simple", "forking", "oneshot", "notify"],
+        help="Service type (default: oneshot)",
+    )
 
     args = parser.parse_args()
 
@@ -271,6 +319,11 @@ hourly            - Every hour at minute 0""",
         if not args.dry_run:
             print("[Info] Windows detected: Forcing --dry-run mode.")
             args.dry_run = True
+
+    # Show help if name is not provided
+    if not args.name:
+        parser.print_help()
+        return 0
 
     if args.disable:
         run_systemctl("stop", f"{args.name}.timer", dry_run=args.dry_run)
@@ -295,7 +348,16 @@ hourly            - Every hour at minute 0""",
             return 1
 
         timer_content, service_content = create_timer_file(vars(args))
-        if manage_timer_files(args.name, timer_content, service_content, "create", dry_run=args.dry_run) != 0:
+        if (
+            manage_timer_files(
+                args.name,
+                timer_content,
+                service_content,
+                "create",
+                dry_run=args.dry_run,
+            )
+            != 0
+        ):
             return 1
 
         run_systemctl("enable", f"{args.name}.timer", dry_run=args.dry_run)

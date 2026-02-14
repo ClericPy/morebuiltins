@@ -11,9 +11,13 @@ __all__ = ["service_handler"]
 def run_systemctl(command: str, service_name: str, dry_run: bool = False) -> int:
     """Execute systemctl command"""
     cmd = ["systemctl", command, service_name]
-    
+    template = f"""
+# {"=" * 40}
+# Execute systemctl {command}
+>>> sudo {' '.join(cmd)}"""
+    print(template)
+
     if dry_run:
-        print(f"[Dry Run] Would execute: {' '.join(cmd)}")
         return 0
 
     print(f"Executing: {' '.join(cmd)}")
@@ -33,10 +37,19 @@ def manage_service_file(
     service_path = Path("/etc/systemd/system") / f"{service_name}.service"
 
     if action == "create":
+        posix_path = service_path.as_posix()
+        template = f"""
+# {"=" * 40}
+# Create service file: {posix_path}
+>>> sudo vim {posix_path}
+{content}
+
+# {"=" * 40}
+# Reload systemd daemon
+>>> sudo systemctl daemon-reload"""
+        print(template)
+
         if dry_run:
-            print(f"[Dry Run] Would write to {service_path}:")
-            print(content)
-            print("[Dry Run] Would execute: systemctl daemon-reload")
             return 0
 
         print(f"Writing service file to {service_path}")
@@ -49,9 +62,18 @@ def manage_service_file(
             print(f"Error creating service file: {e}")
             return 1
     elif action == "delete":
+        posix_path = service_path.as_posix()
+        template = f"""
+# {"=" * 40}
+# Remove service file
+>>> sudo rm {posix_path}
+
+# {"=" * 40}
+# Reload systemd daemon
+>>> sudo systemctl daemon-reload"""
+
         if dry_run:
-            print(f"[Dry Run] Would remove {service_path}")
-            print("[Dry Run] Would execute: systemctl daemon-reload")
+            print(template)
             return 0
 
         print(f"Removing service file {service_path}")
@@ -147,9 +169,7 @@ def service_handler():
     )
 
     # Basic arguments
-    parser.add_argument(
-        "-name", "--name", help="Service name (required)", required=True
-    )
+    parser.add_argument("-name", "--name", help="Service name")
     parser.add_argument(
         "-enable",
         "--enable",
@@ -231,13 +251,17 @@ def service_handler():
             key = arg.lstrip("-").split("=")[0]
             value = arg.split("=")[1]
             setattr(args, key, value)
-# Force dry-run on Windows by default
+    # Force dry-run on Windows by default
     if os.name == "nt":
         if not args.dry_run:
             print("[Info] Windows detected: Forcing --dry-run mode.")
             args.dry_run = True
 
-    
+    # Show help if name is not provided
+    if not args.name:
+        parser.print_help()
+        return 0
+
     if args.disable:
         run_systemctl("stop", f"{args.name}.service", dry_run=args.dry_run)
         run_systemctl("disable", f"{args.name}.service", dry_run=args.dry_run)
@@ -250,7 +274,12 @@ def service_handler():
             return 1
 
         service_content = create_service_file(vars(args))
-        if manage_service_file(args.name, service_content, "create", dry_run=args.dry_run) != 0:
+        if (
+            manage_service_file(
+                args.name, service_content, "create", dry_run=args.dry_run
+            )
+            != 0
+        ):
             return 1
 
         run_systemctl("enable", f"{args.name}.service", dry_run=args.dry_run)

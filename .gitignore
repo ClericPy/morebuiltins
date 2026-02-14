@@ -134,3 +134,6 @@ temp*.py
 *.pyz
 logs/
 uv.lock
+
+# claude
+.claude/
