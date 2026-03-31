@@ -1648,7 +1648,7 @@ class FileDict(dict):
 
 
 def i2b(
-    n: int, length=0, byteorder: Literal["litter", "big"] = "big", signed=False
+    n: int, length=0, byteorder: Literal["little", "big"] = "big", signed=False
 ) -> bytes:
     r"""Convert an int to bytes of a specified length, commonly used in TCP communication.
 
@@ -1957,11 +1957,30 @@ def base_encode(
     '0'
     >>> base_encode(1)
     '1'
+    >>> base_encode(10)
+    'A'
+    >>> base_encode(35)
+    'Z'
+    >>> base_encode(36)
+    'a'
+    >>> base_encode(61)
+    'z'
+    >>> base_encode(62)
+    '10'
     >>> base_encode(10000000000000)
     '2q3Rktoe'
     >>> base_encode(10000000000000, "0123456789")
     '10000000000000'
+    >>> # 顺序性：补零后字典序等于数值序（含大小写边界）
+    >>> [base_encode(i).zfill(3) for i in range(8)]
+    ['000', '001', '002', '003', '004', '005', '006', '007']
+    >>> [base_encode(i).zfill(3) for i in (9, 10, 35, 36, 61, 62)]
+    ['009', '00A', '00Z', '00a', '00z', '010']
     >>> a = [base_encode(i).zfill(10) for i in range(10000)]
+    >>> sorted(a) == a
+    True
+    >>> # 大数字同样保持有序
+    >>> a = [base_encode(i).zfill(10) for i in range(0, 10_000_000, 500_000)]
     >>> sorted(a) == a
     True
     """
