@@ -1386,11 +1386,28 @@ Demo:
 >>> list(Crontab.iter_datetimes("* * * * *", count=1, start_date=start_date))
 [datetime.datetime(2023, 2, 1, 0, 0)]
 >>> list(Crontab.iter_datetimes("5 4-5,6-9/2 5,6 * 3,5", count=3, start_date=start_date, callback=str))
-['2023-04-05 04:05:00', '2023-04-05 05:05:00', '2023-04-05 06:05:00']
+['2023-02-01 04:05:00', '2023-02-01 05:05:00', '2023-02-01 06:05:00']
 >>> list(Crontab.iter_datetimes("0 0 1 8,9,10 *", count=3, start_date=start_date, callback=str, yield_tries=True))
 [(7, '2023-08-01 00:00:00'), (120, '2023-09-01 00:00:00'), (232, '2023-10-01 00:00:00')]
 >>> list(Crontab.iter_datetimes("0 0 1 11 *", count=3, start_date=start_date, callback=str, yield_tries=True))
 [(10, '2023-11-01 00:00:00'), (133, '2024-11-01 00:00:00'), (256, '2025-11-01 00:00:00')]
+>>> list(Crontab.iter_datetimes("*/15   *  * * *", count=2, start_date=start_date, callback=str))
+['2023-02-01 00:00:00', '2023-02-01 00:15:00']
+>>> list(Crontab.iter_datetimes("0 9 1 * 5", count=5, start_date=start_date, callback=str))
+['2023-02-01 09:00:00', '2023-02-03 09:00:00', '2023-02-10 09:00:00', '2023-02-17 09:00:00', '2023-02-24 09:00:00']
+>>> list(Crontab.iter_datetimes("abc * * * *", count=1, start_date=start_date))
+Traceback (most recent call last):
+    ...
+ValueError: invalid crontab field for minute: 'abc'
+
+Notes:
+    - Fields may be separated by any whitespace, not only a single space.
+    - Malformed or out-of-range fields raise ValueError instead of silently
+      returning a pattern that never matches.
+    - Day-of-month and day-of-week follow Vixie cron: they are ANDed when
+      either field is unrestricted ("*"), and ORed when both are restricted.
+    - ValueError is raised when no match is found within max_tries, instead
+      of silently yielding nothing.
 
 ```
 
