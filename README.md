@@ -274,7 +274,7 @@ print(morebuiltins.__file__)
 
 ## 16. morebuiltins.cmd.systemd.timer
 
-16.1 `timer_handler` - Parse arguments and manage systemd timer files.
+16.1 `timer_handler` - Generate and manage systemd timer files
 
 
 ## 17. morebuiltins.sqlite

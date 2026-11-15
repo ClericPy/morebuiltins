@@ -1154,11 +1154,30 @@ Examples:
 '0'
 >>> base_encode(1)
 '1'
+>>> base_encode(10)
+'A'
+>>> base_encode(35)
+'Z'
+>>> base_encode(36)
+'a'
+>>> base_encode(61)
+'z'
+>>> base_encode(62)
+'10'
 >>> base_encode(10000000000000)
 '2q3Rktoe'
 >>> base_encode(10000000000000, "0123456789")
 '10000000000000'
+>>> # 顺序性：补零后字典序等于数值序（含大小写边界）
+>>> [base_encode(i).zfill(3) for i in range(8)]
+['000', '001', '002', '003', '004', '005', '006', '007']
+>>> [base_encode(i).zfill(3) for i in (9, 10, 35, 36, 61, 62)]
+['009', '00A', '00Z', '00a', '00z', '010']
 >>> a = [base_encode(i).zfill(10) for i in range(10000)]
+>>> sorted(a) == a
+True
+>>> # 大数字同样保持有序
+>>> a = [base_encode(i).zfill(10) for i in range(0, 10_000_000, 500_000)]
 >>> sorted(a) == a
 True
 
@@ -2756,6 +2775,8 @@ Example usage:
     python -m morebuiltins.cmd.systemd.service -name myservice -disable
 3. Print service file content:
     python -m morebuiltins.cmd.systemd.service -name myservice -Description "My service" -ExecStart "/bin/bash myscript.sh" -Type simple
+4. Dry run (print actions without executing):
+    python -m morebuiltins.cmd.systemd.service -name myservice -enable --dry-run -Description "My service" -ExecStart "/bin/bash myscript.sh"
 
 ```
 
@@ -2767,21 +2788,22 @@ Example usage:
 
 
 
-16.1 `timer_handler` - Parse arguments and manage systemd timer files.
+16.1 `timer_handler` - Generate and manage systemd timer files
 
 
 ```python
-If -enable or -disable is not set, print timer and service file content.
 
-Examples usage:
+Example usage:
 
-    1. enable & start timer
-        - python -m morebuiltins.cmd.systemd.timer -name mytimer -enable -OnCalendar '*:0/15' -ExecStart '/bin/echo hello'
-    2. disable & stop timer
-        - python -m morebuiltins.cmd.systemd.timer -name mytimer -disable
-    3. print timer and service file content
-        - python -m morebuiltins.cmd.systemd.timer -name mytimer -OnCalendar '*:0/15' -ExecStart '/bin/echo hello'
-
+1. Create, enable and start timer:
+    python -m morebuiltins.cmd.systemd.timer -name mytimer -enable -OnCalendar "*:0/15" -ExecStart "/bin/echo hello"
+2. Stop, disable and remove timer:
+    python -m morebuiltins.cmd.systemd.timer -name mytimer -disable
+3. Print timer and service file content:
+    python -m morebuiltins.cmd.systemd.timer -name mytimer -OnCalendar "*:0/15" -ExecStart "/bin/echo hello"
+4. Dry run (print actions without executing):
+    python -m morebuiltins.cmd.systemd.timer -name mytimer -enable --dry-run -OnCalendar "*:0/15" -ExecStart "/bin/echo hello"
+    
 ```
 
 
