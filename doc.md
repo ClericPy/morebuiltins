@@ -1317,7 +1317,8 @@ b''
 
 ```python
 
-It includes mechanisms to parse patterns involving logical operations (AND, OR) and comparison checks (equality, inequality, arithmetic, and custom range checks).
+It includes mechanisms to parse patterns involving logical operations (AND, OR) and
+comparison checks (equality, inequality, arithmetic, and custom range checks).
 
 Comparison Operators:
 
@@ -1343,7 +1344,8 @@ Logical Operators:
         Example: "hour=12&minute=30" for exactly 12:30 PM.
     OR (; or |): At least one of the conditions must be true.
         Example: "hour=12;hour=18" for noon or 6 PM.
-    Negation (!): Inverts the truth of the following condition. At the start of the pattern, the condition is negated.
+    Negation (!): Inverts the truth of the following condition. At the start of
+        the pattern, the condition is negated.
         Example: "!hour=12" excludes noon.
 
 Demo:
@@ -1361,6 +1363,9 @@ Demo:
 ['2023-02-15 00:15:00', '2023-02-15 00:16:00', '2023-02-15 01:15:00']
 >>> list(ScheduleTimer.iter_datetimes("%M/15", count=5, start_date=start_date, callback=str))
 ['2023-02-01 00:00:00', '2023-02-01 00:15:00', '2023-02-01 00:30:00', '2023-02-01 00:45:00', '2023-02-01 01:00:00']
+>>> noon = datetime.strptime("2023-02-01 12:00:00", "%Y-%m-%d %H:%M:%S")
+>>> list(ScheduleTimer.iter_datetimes("!%H=12", count=2, start_date=noon, callback=str))
+['2023-02-01 13:00:00', '2023-02-01 13:01:00']
 
 ```
 
@@ -1377,11 +1382,14 @@ Demo:
 Demo:
 
 >>> start_date = datetime.strptime("2023-02-01 00:00:00", "%Y-%m-%d %H:%M:%S")
->>> list(Crontab.iter_datetimes("*/15 * * * *", count=10, start_date=start_date, callback=lambda i: i.strftime("%M")))
+>>> list(Crontab.iter_datetimes("*/15 * * * *", count=10, start_date=start_date,
+...     callback=lambda i: i.strftime("%M")))
 ['00', '15', '30', '45', '00', '15', '30', '45', '00', '15']
->>> list(Crontab.iter_datetimes("* * * * 2,4,6", count=10, start_date=start_date, callback=lambda i: i.strftime("%a")))
+>>> list(Crontab.iter_datetimes("* * * * 2,4,6", count=10, start_date=start_date,
+...     callback=lambda i: i.strftime("%a")))
 ['Thu', 'Sat', 'Tue', 'Thu', 'Sat', 'Tue', 'Thu', 'Sat', 'Tue', 'Thu']
->>> list(Crontab.iter_datetimes("0 0 11-19/4,8,30 * *", count=10, start_date=start_date, callback=lambda i: i.strftime("%m-%d")))
+>>> list(Crontab.iter_datetimes("0 0 11-19/4,8,30 * *", count=10, start_date=start_date,
+...     callback=lambda i: i.strftime("%m-%d")))
 ['02-08', '02-11', '02-15', '02-19', '03-08', '03-11', '03-15', '03-19', '03-30', '04-08']
 >>> list(Crontab.iter_datetimes("* * * * *", count=1, start_date=start_date))
 [datetime.datetime(2023, 2, 1, 0, 0)]

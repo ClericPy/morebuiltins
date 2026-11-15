@@ -1,7 +1,6 @@
 import re
 from datetime import datetime, timedelta
-from typing import Callable, Dict, List, Optional, Tuple, Union, Set, Generator
-
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple
 
 __all__ = ["ScheduleTimer", "Crontab"]
 
@@ -9,7 +8,8 @@ __all__ = ["ScheduleTimer", "Crontab"]
 class ScheduleTimer:
     """The ScheduleTimer class facilitates the creation and evaluation of datetime patterns for scheduling purposes.
 
-    It includes mechanisms to parse patterns involving logical operations (AND, OR) and comparison checks (equality, inequality, arithmetic, and custom range checks).
+    It includes mechanisms to parse patterns involving logical operations (AND, OR) and
+    comparison checks (equality, inequality, arithmetic, and custom range checks).
 
     Comparison Operators:
 
@@ -35,7 +35,8 @@ class ScheduleTimer:
             Example: "hour=12&minute=30" for exactly 12:30 PM.
         OR (; or |): At least one of the conditions must be true.
             Example: "hour=12;hour=18" for noon or 6 PM.
-        Negation (!): Inverts the truth of the following condition. At the start of the pattern, the condition is negated.
+        Negation (!): Inverts the truth of the following condition. At the start of
+            the pattern, the condition is negated.
             Example: "!hour=12" excludes noon.
 
     Demo:
@@ -53,6 +54,9 @@ class ScheduleTimer:
     ['2023-02-15 00:15:00', '2023-02-15 00:16:00', '2023-02-15 01:15:00']
     >>> list(ScheduleTimer.iter_datetimes("%M/15", count=5, start_date=start_date, callback=str))
     ['2023-02-01 00:00:00', '2023-02-01 00:15:00', '2023-02-01 00:30:00', '2023-02-01 00:45:00', '2023-02-01 01:00:00']
+    >>> noon = datetime.strptime("2023-02-01 12:00:00", "%Y-%m-%d %H:%M:%S")
+    >>> list(ScheduleTimer.iter_datetimes("!%H=12", count=2, start_date=noon, callback=str))
+    ['2023-02-01 13:00:00', '2023-02-01 13:01:00']
     """
 
     prefix_not = "!"
@@ -107,7 +111,9 @@ class ScheduleTimer:
             if step in pattern:
                 if delta < cls.min_delta:
                     raise ValueError(
-                        f"Step delta must be greater than {cls.min_delta.total_seconds()}, but given is {step}, or increase cls.min_delta but the performance will be worse"
+                        f"Step delta must be greater than "
+                        f"{cls.min_delta.total_seconds()}, but given is {step}, or "
+                        f"increase cls.min_delta but the performance will be worse"
                     )
                 return timedelta(minutes=1)
         return timedelta(days=1)
@@ -134,18 +140,19 @@ class ScheduleTimer:
         yield_tries: bool = False,
     ) -> Generator:
         if start_date is None:
-            _start_date = datetime.now().replace(microsecond=0)
+            # naive local time is the scheduling contract, so no tzinfo here
+            _start_date = datetime.now().replace(microsecond=0)  # noqa: DTZ005
         else:
             _start_date = start_date
         pattern_list, steps = cls.sort_pattern(pattern)
         min_step = min(steps.values())
-        last_item = None
+        last_item: Any = None
         matched = 0
         for tries in range(1, max_tries + 1):
             ok, miss_pattern = cls.is_at(pattern_list, _start_date)
             if ok:
                 item = callback(_start_date)
-                if not last_item or item != last_item:
+                if last_item is None or item != last_item:
                     matched += 1
                     if yield_tries:
                         yield tries, item
@@ -159,51 +166,38 @@ class ScheduleTimer:
             _start_date += step
 
     @classmethod
-    def is_at(cls, pattern: Union[list, str], date: datetime) -> Tuple[bool, str]:
-        if isinstance(pattern, str):
-            pattern_list, _ = cls.sort_pattern(pattern)
-        else:
-            pattern_list = pattern
+    def is_at(cls, pattern: str, date: datetime) -> Tuple[bool, str]:
+        pattern_list, _ = cls.sort_pattern(pattern)
         miss_pattern: str = ""
-        ok = False
         for or_pattern in cls.split_or.split(pattern_list):
             for and_pattern in cls.split_and.split(or_pattern):
-                if and_pattern[0] == cls.prefix_not:
-                    and_pattern = and_pattern[1:]
-                    be_not = True
-                else:
-                    be_not = False
-                _a, cmp, _b = cls.split_calc.split(and_pattern)
-                if _a and _b:
-                    a = date.strftime(_a)
-                    b = date.strftime(_b)
-                    magic_method = getattr(a, cls.magic_methods.get(cmp, ""), None)
-                    if magic_method:
-                        result = magic_method(b)
-                    else:
-                        result = getattr(cls, cls.custom_methods[cmp])(a, b)
-                    if be_not:
-                        if not result:
-                            continue
-                        else:
-                            # no match break
-                            miss_pattern = miss_pattern or and_pattern
-                            break
-                    elif result:
-                        continue
-                    else:
-                        # no match break
-                        miss_pattern = miss_pattern or and_pattern
-                        break
-                else:
-                    # no match break
-                    miss_pattern = miss_pattern or and_pattern
-                    break
+                if cls._eval_and_pattern(and_pattern, date):
+                    continue
+                # no match break
+                miss_pattern = miss_pattern or and_pattern
+                break
             else:
                 # each and_pattern is hit
-                ok = True
-                break
-        return ok, miss_pattern
+                return True, miss_pattern
+        return False, miss_pattern
+
+    @classmethod
+    def _eval_and_pattern(cls, and_pattern: str, date: datetime) -> bool:
+        """Evaluate a single AND part, negated or not."""
+        be_not = and_pattern.startswith(cls.prefix_not)
+        if be_not:
+            and_pattern = and_pattern[len(cls.prefix_not) :]
+        _a, cmp, _b = cls.split_calc.split(and_pattern)
+        if not (_a and _b):
+            return False
+        a = date.strftime(_a)
+        b = date.strftime(_b)
+        magic_method = getattr(a, cls.magic_methods.get(cmp, ""), None)
+        if magic_method:
+            result = magic_method(b)
+        else:
+            result = getattr(cls, cls.custom_methods[cmp])(a, b)
+        return not result if be_not else result
 
 
 class Crontab:
@@ -212,11 +206,14 @@ class Crontab:
     Demo:
 
     >>> start_date = datetime.strptime("2023-02-01 00:00:00", "%Y-%m-%d %H:%M:%S")
-    >>> list(Crontab.iter_datetimes("*/15 * * * *", count=10, start_date=start_date, callback=lambda i: i.strftime("%M")))
+    >>> list(Crontab.iter_datetimes("*/15 * * * *", count=10, start_date=start_date,
+    ...     callback=lambda i: i.strftime("%M")))
     ['00', '15', '30', '45', '00', '15', '30', '45', '00', '15']
-    >>> list(Crontab.iter_datetimes("* * * * 2,4,6", count=10, start_date=start_date, callback=lambda i: i.strftime("%a")))
+    >>> list(Crontab.iter_datetimes("* * * * 2,4,6", count=10, start_date=start_date,
+    ...     callback=lambda i: i.strftime("%a")))
     ['Thu', 'Sat', 'Tue', 'Thu', 'Sat', 'Tue', 'Thu', 'Sat', 'Tue', 'Thu']
-    >>> list(Crontab.iter_datetimes("0 0 11-19/4,8,30 * *", count=10, start_date=start_date, callback=lambda i: i.strftime("%m-%d")))
+    >>> list(Crontab.iter_datetimes("0 0 11-19/4,8,30 * *", count=10, start_date=start_date,
+    ...     callback=lambda i: i.strftime("%m-%d")))
     ['02-08', '02-11', '02-15', '02-19', '03-08', '03-11', '03-15', '03-19', '03-30', '04-08']
     >>> list(Crontab.iter_datetimes("* * * * *", count=1, start_date=start_date))
     [datetime.datetime(2023, 2, 1, 0, 0)]
@@ -368,7 +365,8 @@ class Crontab:
         yield_tries=False,
     ) -> Generator:
         if start_date is None:
-            _start_date = datetime.now().replace(microsecond=0)
+            # naive local time is the scheduling contract, so no tzinfo here
+            _start_date = datetime.now().replace(microsecond=0)  # noqa: DTZ005
         else:
             _start_date = start_date
         _start_date = _start_date.replace(second=0)
