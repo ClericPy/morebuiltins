@@ -1,8 +1,10 @@
 import atexit
 import os
+import sys
 import time
 import typing
-from contextlib import closing
+import warnings
+from contextlib import closing, suppress
 from multiprocessing.shared_memory import SharedMemory
 
 __all__ = ["PLock", "SharedBytes"]
@@ -10,11 +12,26 @@ __all__ = ["PLock", "SharedBytes"]
 
 class PLock:
     """A simple process lock using shared memory, for singleton control.
-    Use `with` context or `close_atexit` to ensure the shared memory is closed in case the process crashes.
+    Use `with` context or `close_atexit` to clean up the shared memory when the process exits normally.
+
+    If the process crashes (or is killed), that cleanup does not run. On POSIX, `SharedMemory` registers the
+    segment with the `resource_tracker` by default, and that tracker is a separate process which may outlive
+    the holder and still unlink the segment at its own exit, so "leaks until manually removed" only holds when
+    tracking is disabled (`track=False`) or the tracker itself is gone (e.g. the whole process group was
+    killed). On Windows the segment is freed by the kernel once every handle is closed, and `unlink()` is a
+    no-op, so a crash does not leave the name behind either. Use `force=True` or `kill_with_name` to take over
+    or clear leftovers.
 
     Args:
         name (str): name of the shared memory
-        force (bool, optional): whether to force rewrite the existing shared memory. Defaults to False.
+        force (bool, optional): when True and the segment already exists, the stored pid is unconditionally
+            rewritten to self.pid without signaling the holder — racy by design: the previous holder may still
+            be alive and believe it owns the lock, so only force-rewrite when that process is known dead.
+            Defaults to False.
+        force_signum (int, optional): signal number sent to the current holder before the pid is rewritten,
+            e.g. 15 (SIGTERM); the rewrite is skipped when the signal cannot be delivered, and this only takes
+            effect together with `force=True`. `force` alone never signals the holder; `force_signum` alone
+            (without force) is ignored. Defaults to None (no signal).
         close_atexit (bool, optional): whether to close the shared memory at process exit. Defaults to False, to use __del__ or __exit__ instead.
 
     Demo:
@@ -60,6 +77,9 @@ class PLock:
         self.shm = None
         # whether the shared memory is closed
         self._closed = False
+        # whether this instance ever acquired the lock; a failed init never
+        # did, so its close() must not re-check ownership or unlink
+        self._locked = False
         if close_atexit:
             atexit.register(self.close)
         self.init()
@@ -77,18 +97,40 @@ class PLock:
 
     @classmethod
     def kill_with_name(cls, name: str, sig_num=15):
-        """Kill the process that holds the shared memory."""
+        """Kill the process that holds the shared memory.
+
+        The stored pid is validated and probed before signaling, so garbage
+        content (e.g. pid 0, which on POSIX means the whole process group of
+        the caller) never reaches os.kill.
+        """
         if cls.is_free(name):
             return False
         else:
             with closing(SharedMemory(name=name)) as shm:
-                mem_pid = int.from_bytes(
-                    shm.buf[: cls.DEFAULT_SIZE], byteorder=cls.DEFAULT_BYTEORDER
-                )
+                buf = shm.buf
+                # an attached segment always exposes its buffer; guard so a
+                # platform that reports None fails loudly instead of as a TypeError
+                if buf is None:
+                    raise RuntimeError(f"Shared memory {name} has no buffer")
+                mem_pid = int.from_bytes(buf[: cls.DEFAULT_SIZE], byteorder=cls.DEFAULT_BYTEORDER)
+            # POSIX pid_max defaults to 2**22; Windows pids are DWORDs, so
+            # applying 2**22 there would reject every valid high pid
+            max_pid = 2**32 - 1 if sys.platform == "win32" else 2**22
+            if not (0 < mem_pid <= max_pid):
+                # anything beyond the platform pid range is garbage data
+                return False
             try:
+                if sys.platform != "win32":
+                    # probe existence: on POSIX os.kill(pid, 0) sends no signal
+                    os.kill(mem_pid, 0)
+                # no probe on win32: os.kill(pid, 0) TerminateProcess'es the
+                # target there, a stale pid surfaces as OSError below instead
                 os.kill(mem_pid, sig_num)
                 return True
-            except ProcessLookupError:
+            except OSError:
+                # ProcessLookupError on POSIX; on Windows error 87
+                # (ERROR_INVALID_PARAMETER) for a nonexistent pid, or
+                # PermissionError for a pid we are not allowed to signal
                 return False
 
     @classmethod
@@ -121,32 +163,30 @@ class PLock:
         if not ok:
             mem_pid = self.mem_pid
             self.close()
-            raise RuntimeError(
-                f"Locked by another process: {mem_pid} != {self.pid}(self)"
-            )
+            raise RuntimeError(f"Locked by another process: {mem_pid} != {self.pid}(self)")
         self.set_mem_pid()
         if not self.locked:
-            raise ValueError(
-                f"Failed to write PID to shared memory. {self.mem_pid} != {self.pid}(self)"
-            )
+            raise ValueError(f"Failed to write PID to shared memory. {self.mem_pid} != {self.pid}(self)")
+        self._locked = True
 
     def set_mem_pid(self, pid=None):
         if pid is None:
             pid = self.pid
-        self.buf[: self.DEFAULT_SIZE] = pid.to_bytes(
-            self.DEFAULT_SIZE, byteorder=self.DEFAULT_BYTEORDER
-        )
+        self.buf[: self.DEFAULT_SIZE] = pid.to_bytes(self.DEFAULT_SIZE, byteorder=self.DEFAULT_BYTEORDER)
 
     @property
-    def buf(self):
+    def buf(self) -> memoryview:
         if self.shm is None:
             raise RuntimeError("Shared memory is not initialized")
-        return self.shm.buf
+        buf = self.shm.buf
+        # an attached segment always exposes its buffer; guard so a platform
+        # that reports None fails loudly instead of as a TypeError
+        if buf is None:
+            raise RuntimeError("Shared memory has no buffer")
+        return buf
 
     def get_mem_pid(self):
-        return int.from_bytes(
-            self.buf[: self.DEFAULT_SIZE], byteorder=self.DEFAULT_BYTEORDER
-        )
+        return int.from_bytes(self.buf[: self.DEFAULT_SIZE], byteorder=self.DEFAULT_BYTEORDER)
 
     @property
     def mem_pid(self):
@@ -161,14 +201,27 @@ class PLock:
             return
         self._closed = True
         if self.shm:
-            try:
-                locked = self.locked
+            # close() is best-effort teardown: a failed close/unlink must not
+            # break __del__ or the caller's cleanup path
+            with suppress(Exception):
+                # only a lock holder may unlink; an instance whose init failed
+                # (e.g. it lost the lock race and never owned the segment) must
+                # just detach, otherwise this branch would warn on every
+                # normal failure path
+                locked = self._locked and self.get_mem_pid() == self.pid
                 self.shm.close()
                 if locked:
                     # only unlink if self.pid is the owner of the shared memory
                     self.shm.unlink()
-            except Exception:
-                pass
+                elif self._locked:
+                    # another process force-rewrote the pid after `locked` was
+                    # computed; unlinking now would leave that owner with a
+                    # vanished segment
+                    warnings.warn(
+                        f"PLock {self.name}: holder pid changed before unlink, "
+                        "skip unlink to avoid removing another owner's segment",
+                        stacklevel=2,
+                    )
 
     def __enter__(self):
         return self
@@ -197,7 +250,7 @@ class SharedBytes:
     >>> sb.get(name="test")
     b'New Data'
     >>> sb.close()
-    >>> sb.get(name="test", default=b"")  # This will raise ValueError since the shared memory is closed
+    >>> sb.get(name="test", default=b"")  # close() unlinked the segment, so the default is returned
     b''
     """
 
@@ -224,14 +277,16 @@ class SharedBytes:
             raise ValueError("Shared memory is already created, please use re_create")
         size = len(data)
         head_length = self.head_length
-        if size > 2 ** (head_length * 8):
+        # >= : size == 2 ** (head_length * 8) does not fit into the header either
+        if size >= 2 ** (head_length * 8):
             right_head_length = 0
             for i in range(head_length, 15):
                 if size < 2 ** (i * 8):
                     right_head_length = i
                     break
             raise ValueError(
-                f"data size {size} is too large, max size is {2 ** (head_length * 8)}, raise head_length at least {right_head_length}"
+                f"data size {size} is too large, max size is {2 ** (head_length * 8) - 1}, "
+                f"raise head_length at least {right_head_length}"
             )
         total_size = head_length + len(data)
         self.shm = SharedMemory(name=self.name, create=True, size=total_size)
@@ -240,10 +295,15 @@ class SharedBytes:
         self.closed = False
 
     @property
-    def buf(self):
+    def buf(self) -> memoryview:
         if self.shm is None:
             raise RuntimeError("Shared memory is not initialized")
-        return self.shm.buf
+        buf = self.shm.buf
+        # an attached segment always exposes its buffer; guard so a platform
+        # that reports None fails loudly instead of as a TypeError
+        if buf is None:
+            raise RuntimeError("Shared memory has no buffer")
+        return buf
 
     def re_create(self, data: bytes):
         if self.closed:
@@ -252,10 +312,17 @@ class SharedBytes:
         self.create(data)
 
     def close(self):
-        if not self.closed:
-            self.shm.close()
-            self.shm.unlink()
-            self.closed = True
+        if self.closed:
+            return
+        shm = self.shm
+        # mark closed first, so a failure mid-way cannot leave close() half-done
+        self.closed = True
+        try:
+            shm.close()
+            shm.unlink()
+        except FileNotFoundError:
+            # the segment was already removed (e.g. unlinked by another process)
+            pass
 
     def __enter__(self):
         return self
@@ -265,16 +332,28 @@ class SharedBytes:
 
     @classmethod
     def get(cls, name: str, head_length=None, default=...) -> bytes:
+        """Read back the data stored in the shared memory segment name.
+
+        Args:
+            name (str): name of the shared memory segment.
+            head_length (int, optional): header length in bytes. Defaults to cls.head_length.
+            default (optional): returned when the segment does not exist; if omitted (the ... sentinel), raise KeyError.
+        """
         try:
             head_length = head_length or cls.head_length
             with closing(SharedMemory(name=name)) as shm:
-                head = bytes(shm.buf[:head_length])
+                buf = shm.buf
+                # an attached segment always exposes its buffer; guard so a
+                # platform that reports None fails loudly instead of as a TypeError
+                if buf is None:
+                    raise RuntimeError(f"Shared memory {name} has no buffer")
+                head = bytes(buf[:head_length])
                 body_length = int.from_bytes(head, byteorder=cls.byteorder)
-                data = bytes(shm.buf[head_length : head_length + body_length])
+                data = bytes(buf[head_length : head_length + body_length])
                 return data
-        except FileNotFoundError:
+        except FileNotFoundError as err:
             if default is ...:
-                raise KeyError(f"Shared memory {name} not found")
+                raise KeyError(f"Shared memory {name} not found") from err
             return default
 
 
