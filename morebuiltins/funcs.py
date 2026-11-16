@@ -7,12 +7,12 @@ import json
 import os
 import sys
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextvars import copy_context
 from functools import partial, wraps
 from itertools import chain
-from threading import Lock, Semaphore
+from threading import Lock, Semaphore, Timer
 from typing import (
     Any,
     Callable,
@@ -20,8 +20,8 @@ from typing import (
     Dict,
     List,
     Optional,
-    OrderedDict,
     Set,
+    Tuple,
     TypeVar,
     Union,
 )
@@ -42,10 +42,43 @@ __all__ = [
     "check_recursion",
     "debounce",
     "async_call",
+    "countdown",
+    "LineTime",
+    "LineProfiler",
+    "line_profiler",
 ]
 
 
 T = TypeVar("T")
+
+
+def _ttl_clean(cache, expire):
+    for k, v in tuple(cache.items()):
+        if v[1] <= expire:
+            cache.pop(k, None)
+
+
+def _cache_key(args, kwargs):
+    # exact key is kwargs-order insensitive, so kwargs order does not matter.
+    # Unhashable args can not be a dict key and a repr based pseudo key could
+    # return a wrong cached value, so signal a cache miss with None.
+    raw_key = tuple(chain(args, sorted(kwargs.items())))
+    try:
+        hash(raw_key)
+    except TypeError:
+        return None
+    return raw_key
+
+
+def _cache_store(cache, key, result, maxsize, ttl, timer):
+    while len(cache) >= maxsize:
+        cache.popitem(last=False)
+    if ttl is None:
+        # no need save expired ts
+        cache[key] = (result,)
+    else:
+        # setitem(key, (result, timer() + ttl))
+        cache[key] = (result, timer() + ttl)
 
 
 def lru_cache_ttl(
@@ -66,6 +99,14 @@ def lru_cache_ttl(
 
     Returns:
         callable: decorator function
+
+    Notes:
+        - `maxsize <= 0` disables caching and returns the function unchanged, so
+          `.cache`/`.ttl_clean` are not set even with `controls=True`.
+        - With `controls=True`, `.cache` maps an argument tuple (kwargs sorted by
+          name) to `(result,)` or `(result, expire_ts)`; it is not the old
+          hash-int-keyed dict, so keys read as tuples.
+        - Unhashable arguments are not cached and fall through to the function.
 
     >>> import time
     >>> # test ttl
@@ -104,18 +145,56 @@ def lru_cache_ttl(
     4
     >>> len(func1.cache)
     3
+    >>> # test kwargs order insensitive
+    >>> kw_calls = []
+    >>> @lru_cache_ttl(5, controls=True)
+    ... def kwfunc(a=0, b=0):
+    ...     kw_calls.append((a, b))
+    ...     return a + b
+    >>> kwfunc(a=1, b=2)
+    3
+    >>> kwfunc(b=2, a=1)
+    3
+    >>> len(kwfunc.cache)
+    1
+    >>> # test unhashable args: not cached, the original function is called
+    >>> list_calls = []
+    >>> @lru_cache_ttl(5, controls=True)
+    ... def listfunc(items):
+    ...     list_calls.append(items)
+    ...     return sum(items)
+    >>> listfunc([1, 2])
+    3
+    >>> listfunc([1, 2])
+    3
+    >>> len(list_calls)
+    2
+    >>> len(listfunc.cache)
+    0
+    >>> # test maxsize=0: short-circuit to a no-cache decorator
+    >>> nocache_calls = []
+    >>> @lru_cache_ttl(0)
+    ... def nocache(i):
+    ...     nocache_calls.append(i)
+    ...     return i
+    >>> [nocache(1), nocache(1)]
+    [1, 1]
+    >>> nocache_calls
+    [1, 1]
     """
     cache: OrderedDict = OrderedDict()
     move_to_end = cache.move_to_end
-    popitem = cache.popitem
     next_clear_ts = timer()
 
     def ttl_clean(expire):
-        for k, v in tuple(cache.items()):
-            if v[1] <= expire:
-                cache.pop(k, None)
+        _ttl_clean(cache, expire)
 
     def decorator(func):
+        if not maxsize or maxsize < 0:
+            # maxsize <= 0 disables caching entirely, also avoiding the
+            # KeyError of popping from an empty cache
+            return func
+
         @wraps(func)
         def wrapped(*args, **kwargs):
             nonlocal next_clear_ts
@@ -127,31 +206,24 @@ def lru_cache_ttl(
                 if expire_cleared:
                     ttl_clean(now)
                     next_clear_ts = now + ttl
-            # key = _make_key(args, kwargs, False)
-            key = hash(tuple(chain(args, kwargs.items())))
-            if key in cache:
-                if expire_cleared is True or now < cache[key][1]:
-                    # 1. key in cache; 2. cache is valid
-                    # set newest, return result
-                    move_to_end(key)
-                    return cache[key][0]
+            key = _cache_key(args, kwargs)
+            if key is None:
+                return func(*args, **kwargs)
+            if key in cache and (expire_cleared is True or now < cache[key][1]):
+                # 1. key in cache; 2. cache is valid
+                # set newest, return result
+                move_to_end(key)
+                return cache[key][0]
             # call function
             result = func(*args, **kwargs)
-            # ensure size
-            while len(cache) >= maxsize:
-                popitem(last=False)
-            if ttl is None:
-                # no need save expired ts
-                cache[key] = (result,)
-            else:
-                # setitem(key, (result, now + ttl))
-                cache[key] = (result, timer() + ttl)
-            # {key: (result, expired_ts)}
+            _cache_store(cache, key, result, maxsize, ttl, timer)
             return result
 
         if controls:
-            setattr(wrapped, "cache", cache)
-            setattr(wrapped, "ttl_clean", ttl_clean)
+            # dynamic attributes on the wrapped function, exposed for callers
+            # to introspect/clean the decorator state (documented in the doctest)
+            wrapped.cache = cache  # pyright: ignore[reportAttributeAccessIssue]  # ty: ignore[unresolved-attribute]  # pyrefly: ignore[missing-attribute]
+            wrapped.ttl_clean = ttl_clean  # pyright: ignore[reportAttributeAccessIssue]  # ty: ignore[unresolved-attribute]  # pyrefly: ignore[missing-attribute]
         return wrapped
 
     return decorator
@@ -196,8 +268,10 @@ def threads(n: Optional[int] = None, executor_class=None, **kws):
             tasks.add(future)
             return future
 
-        setattr(wrapped, "pool", pool)
-        setattr(wrapped, "tasks", tasks)
+        # dynamic attributes on the wrapped function, exposed for callers
+        # to inspect the shared executor and in-flight task set (see doctest)
+        wrapped.pool = pool  # pyright: ignore[reportAttributeAccessIssue]  # ty: ignore[unresolved-attribute]  # pyrefly: ignore[missing-attribute]
+        wrapped.tasks = tasks  # pyright: ignore[reportAttributeAccessIssue]  # ty: ignore[unresolved-attribute]  # pyrefly: ignore[missing-attribute]
         return wrapped
 
     return decorator
@@ -222,8 +296,18 @@ def bg_task(coro: Coroutine) -> asyncio.Task:
     return task
 
 
+# module level lock guarding NamedLock._SYNC_CACHE check-create-write,
+# avoiding two threads each creating a lock for the same name
+_SYNC_CACHE_LOCK = Lock()
+
+
 class NamedLock:
     """Reusable named locks, support for timeouts, support for multiple concurrent locks.
+
+    Warning: if the lock can not be acquired within `timeout`, `__enter__`
+    returns None, so `lock` in `as lock` will be None, but the with-body
+    still runs - always check `if lock:` inside the body before assuming
+    the lock is held.
 
     Demo::
 
@@ -289,66 +373,111 @@ class NamedLock:
             test_async()
     """
 
-    _SYNC_CACHE: Dict[str, Union[Lock, Semaphore]] = {}
-    _ASYNC_CACHE: Dict[str, Union[asyncio.Lock, asyncio.Semaphore]] = {}
+    _SYNC_CACHE: Dict[str, Tuple[Union[Lock, Semaphore], Optional[int]]] = {}
+    _ASYNC_CACHE: Dict[str, Tuple[Union[asyncio.Lock, asyncio.Semaphore], Optional[int]]] = {}
 
-    def __init__(
-        self, name: str, default_factory: Callable, timeout: Optional[float] = None
-    ):
+    def __init__(self, name: str, default_factory: Callable, timeout: Optional[float] = None):
         self.name = name
         self.default_factory = default_factory
         self.timeout = timeout
         self.lock = None
+        # the lock actually acquired by the last successful __enter__/__aenter__,
+        # only this one is released on exit
+        self._held = None
 
     @classmethod
     def clear_unlocked(cls):
-        for cache in [cls._SYNC_CACHE, cls._ASYNC_CACHE]:
-            for name, lock in list(cache.items()):
-                locked_method = getattr(lock, "locked", None)
-                if locked_method and not locked_method():
-                    cache.pop(name, None)
-                elif isinstance(lock, Semaphore) and (
-                    lock._value == 0
-                    or (hasattr(lock, "_cond") and not lock._cond._lock.locked())
-                ):
-                    cache.pop(name, None)
+        """Clear cache entries whose lock is fully released and not waited on.
+
+        Only known types are inspected explicitly: a custom lock is left in the
+        cache, because its release state can not be inferred from attributes.
+        """
+        with _SYNC_CACHE_LOCK:
+            for cache in [cls._SYNC_CACHE, cls._ASYNC_CACHE]:
+                for name, (lock, initial_value) in list(cache.items()):
+                    if isinstance(lock, (Semaphore, asyncio.Semaphore)):
+                        # a semaphore is idle when all permits are back and
+                        # nobody waits. Compare against the recorded initial
+                        # permit count instead of the raw _value.
+                        idle = getattr(lock, "_value", None) == initial_value
+                        if idle and not cls._semaphore_has_waiters(lock):
+                            cache.pop(name, None)
+                    elif isinstance(lock, (Lock, asyncio.Lock)):
+                        # unlocked means no holder
+                        if not lock.locked():
+                            cache.pop(name, None)
+
+    @staticmethod
+    def _semaphore_has_waiters(lock) -> bool:
+        """Check if anyone is waiting on a threading/asyncio Semaphore."""
+        # asyncio.Semaphore keeps pending futures in _waiters
+        waiters = getattr(lock, "_waiters", None)
+        if waiters:
+            return True
+        # threading.Semaphore waits on its internal Condition's _waiters
+        cond = getattr(lock, "_cond", None)
+        return bool(cond is not None and getattr(cond, "_waiters", None))
 
     def __enter__(self):
-        if self.name in self._SYNC_CACHE:
-            lock = self._SYNC_CACHE[self.name]
+        # the cache check-create-write must be atomic, or two threads missing
+        # the cache at the same time would each create a lock and one would
+        # overwrite the other, breaking mutual exclusion
+        with _SYNC_CACHE_LOCK:
+            if self.name in self._SYNC_CACHE:
+                lock, initial_value = self._SYNC_CACHE[self.name]
+            else:
+                lock = self.default_factory()
+                initial_value = getattr(lock, "_value", None)
+                self._SYNC_CACHE[self.name] = (lock, initial_value)
+        if self.timeout is None:
+            # threading.Lock.acquire(timeout=None) raises TypeError, so only
+            # pass the kwarg when a timeout was actually given
+            acquired = lock.acquire()
         else:
-            lock = self.default_factory()
-            self._SYNC_CACHE[self.name] = lock
-        if lock.acquire(timeout=self.timeout):
+            acquired = lock.acquire(timeout=self.timeout)
+        if acquired:
             self.lock = lock
+            # remember what we really hold: after a timeout self.lock may still
+            # point at a lock held by another context, and __exit__ must not
+            # release that one
+            self._held = lock
             return self
-        else:
-            return None
+        return None
 
     def __exit__(self, *_):
-        if self.lock:
-            self.lock.release()
+        held, self._held = self._held, None
+        if held is not None:
+            held.release()
 
     async def __aenter__(self):
+        # no await between the cache check and write, so the check-create-write
+        # is atomic inside a single event loop, no extra lock needed there
         if self.name in self._ASYNC_CACHE:
-            lock = self._ASYNC_CACHE[self.name]
+            lock, initial_value = self._ASYNC_CACHE[self.name]
         else:
             lock = self.default_factory()
-            self._ASYNC_CACHE[self.name] = lock
+            initial_value = getattr(lock, "_value", None)
+            self._ASYNC_CACHE[self.name] = (lock, initial_value)
         try:
             await asyncio.wait_for(lock.acquire(), timeout=self.timeout)
             self.lock = lock
+            self._held = lock
             return self
         except asyncio.TimeoutError:
             return None
 
     async def __aexit__(self, *_):
-        if self.lock:
-            self.lock.release()
+        held, self._held = self._held, None
+        if held is not None:
+            held.release()
 
 
 class FuncSchema:
     """Parse the parameters and types required by a function into a dictionary, and convert an incoming parameter into the appropriate type.
+
+    Note: only parameters whose type (annotation, or inferred from the
+    default value) is in ALLOW_TYPES are kept; annotations outside
+    ALLOW_TYPES are silently dropped.
 
     >>> def test(a, b: str, /, c=1, *, d=["d"], e=0.1, f={"f"}, g=(1, 2), h=True, i={1}, **kws):
     ...     return
@@ -428,9 +557,7 @@ class FuncSchema:
             if param.annotation is param.empty:
                 if param.default is param.empty:
                     if strict:
-                        raise TypeError(
-                            f"Parameter `{param.name}` has no type and no default value."
-                        )
+                        raise TypeError(f"Parameter `{param.name}` has no type and no default value.")
                     else:
                         tp: Any = str
                 else:
@@ -467,7 +594,7 @@ class FuncSchema:
             raise TypeError(f"Unsupported type: {tp}")
 
 
-class InlinePB(object):
+class InlinePB:
     """Inline progress bar.
 
     Demo::
@@ -553,9 +680,7 @@ class InlinePB(object):
         )
 
 
-def countdown(
-    secs: float, interval: Union[float, int] = 1, prefix: str = "Sleeping: "
-) -> None:
+def countdown(secs: float, interval: Union[float, int] = 1, prefix: str = "Sleeping: ") -> None:
     """A simple countdown timer that prints to the console inline.
 
     Demo: countdown(5)
@@ -567,10 +692,7 @@ def countdown(
     """
     str_interval = str(interval)
     rounded = len(str_interval.split(".", 1)[1]) if "." in str_interval else 0
-    max_length = len(f"{prefix}{secs:.{rounded}f}")
     while secs > 0:
-        msg = f"{prefix}{secs:.{rounded}f}"
-        max_length = max(max_length, len(msg))
         print(f"{prefix}{secs:.{rounded}f}", end="\r", flush=True)
         time.sleep(interval)
         secs -= interval
@@ -594,6 +716,12 @@ def get_type_default(tp, default=None):
 def func_cmd(function: Callable, run=True, auto_default=False):
     """Handle function with argparse, typing-hint is nessessary.
 
+    Required parameters (no default value) are only reported as missing when
+    the user did not pass them on the command line: argparse uses
+    `default=SUPPRESS` for them, so "not passed" can be told from "passed".
+    With auto_default=True, missing required parameters are silently filled
+    with a zero value of the parameter type ("" for str, 0 for int, ...).
+
     Demo::
 
         def test(str: str, /, int=1, *, list=["d"], float=0.1, set={"f"}, tuple=(1, 2), bool=True, dict={"k": 1}):
@@ -611,7 +739,8 @@ def func_cmd(function: Callable, run=True, auto_default=False):
             \"\"\"
             print(locals())
 
-        # raise ValueError if auto_default is False and user do not input nessessary args.
+        # raise ValueError only if auto_default is False and a required arg
+        # is missing from the command line.
         func_cmd(test, auto_default=False)
 
         CMD args:
@@ -651,8 +780,26 @@ def func_cmd(function: Callable, run=True, auto_default=False):
                                 {'type': <class 'tuple'>, 'default': (1, 2)}
         -b BOOL, --bool BOOL  {'type': <class 'bool'>, 'default': True}
         -d DICT, --dict DICT  {'type': <class 'dict'>, 'default': {'k': 1}}
+
+    Doctest::
+
+        >>> import sys
+        >>> def cmd_demo(str: str, /, int=1, *, bool=True):
+        ...     return str, int, bool
+        >>> _argv = sys.argv
+        >>> sys.argv = ["app.py", "--str", "hello", "--int", "2"]
+        >>> func_cmd(cmd_demo, run=False, auto_default=False)
+        (['hello'], {'int': 2, 'bool': True})
+        >>> sys.argv = ["app.py"]
+        >>> try:func_cmd(cmd_demo, run=False, auto_default=False)
+        ... except ValueError as e: e
+        ValueError('`str` has no default value.')
+        >>> sys.argv = ["app.py"]
+        >>> func_cmd(cmd_demo, run=False, auto_default=True)  # missing required arg is silently filled
+        ([''], {'int': 1, 'bool': True})
+        >>> sys.argv = _argv
     """
-    from argparse import ArgumentParser
+    from argparse import SUPPRESS, ArgumentParser
 
     parser = ArgumentParser(usage=function.__doc__)
     schema = FuncSchema.parse(function, strict=True, fill_default=False)
@@ -673,7 +820,9 @@ def func_cmd(function: Callable, run=True, auto_default=False):
         else:
             kwargs["type"] = str
         if value["default"] is inspect._empty:
-            kwargs["default"] = get_type_default(value["type"])
+            # SUPPRESS keeps the attribute absent when the user did not pass
+            # the argument, so "not passed" can be told from "passed"
+            kwargs["default"] = SUPPRESS
         else:
             kwargs["default"] = value["default"]
         parser.add_argument(*args, **kwargs)
@@ -682,8 +831,11 @@ def func_cmd(function: Callable, run=True, auto_default=False):
     args = []
     for key, value in schema.items():
         if value["default"] is inspect._empty:
-            if auto_default:
+            if hasattr(parsed, key):
                 args.append(FuncSchema.convert(getattr(parsed, key), value["type"]))
+            elif auto_default:
+                # silently fill a zero value of the parameter type
+                args.append(FuncSchema.convert(get_type_default(value["type"]), value["type"]))
             else:
                 raise ValueError(f"`{key}` has no default value.")
         else:
@@ -752,13 +904,11 @@ def check_recursion(function: Callable, return_error=False):
     try:
         source = inspect.getsource(function)
         tree = ast.parse(source)
-        func_name = function.__name__
+        # functions expose __name__; a non-function callable without it fails
+        # in inspect.getsource above and is handled by the except below
+        func_name = function.__name__  # ty: ignore[unresolved-attribute]
         for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id == func_name
-            ):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == func_name:
                 return True
         return False
     except Exception as e:
@@ -768,12 +918,10 @@ def check_recursion(function: Callable, return_error=False):
             return None
 
 
-class LineTime(object):
+class LineTime:
     __slots__ = ("line_no", "start_time", "end_time", "code")
 
-    def __init__(
-        self, line_no: int, start_time: float, end_time: Optional[float], code: str
-    ):
+    def __init__(self, line_no: int, start_time: float, end_time: Optional[float], code: str):
         self.line_no = line_no
         self.start_time = start_time
         self.end_time = end_time
@@ -792,7 +940,7 @@ class LineProfiler:
         self.line_cache: Dict[str, list] = {}
         self.filled = 0
 
-    def trace_calls(self, frame, event, arg):
+    def trace_calls(self, frame: Any, event: str, arg: Any) -> Callable[..., Any]:
         """Trace each line of function calls"""
         current_time = time.perf_counter()
         if self.filled < len(self.line_times):
@@ -813,13 +961,11 @@ class LineProfiler:
                 if filename in self.line_cache:
                     lines = self.line_cache[filename]
                 else:
-                    with open(filename, "r", encoding="utf-8", errors="replace") as f:
+                    with open(filename, encoding="utf-8", errors="replace") as f:
                         lines = f.readlines()
                     self.line_cache[filename] = lines
                 if lines and line_no <= len(lines):
-                    line_content = lines[
-                        line_no - 1
-                    ].rstrip()  # Only remove right spaces, keep left indentation
+                    line_content = lines[line_no - 1].rstrip()  # Only remove right spaces, keep left indentation
                     # Store original code and filename for later base indentation calculation
                     if not hasattr(self, "source_lines"):
                         self.source_lines = lines
@@ -893,9 +1039,7 @@ class LineProfiler:
             count = stats["count"]
             avg_time_ms = total_time_ms / count if count > 0 else 0
             percentage = int(
-                (stats["total_time"] / self.total_time * 100)
-                if self.total_time > 0
-                else 0
+                (stats["total_time"] / self.total_time * 100) if self.total_time > 0 else 0
             )  # convert to integer
             # Handle code indentation display
             code = stats["code"]
@@ -969,55 +1113,149 @@ def line_profiler(func: Callable) -> Callable:
             end_time = time.perf_counter()
             profiler.total_time = end_time - start_time
             # Calculate and print statistics
-            profiler.calculate_and_print_stats(func.__name__)
+            # decorator contract is a function, which always carries __name__
+            profiler.calculate_and_print_stats(func.__name__)  # ty: ignore[unresolved-attribute]
         return result
 
     return wrapper
 
 
-def debounce(wait: float):
-    """Debounce a function, delaying its execution until after a specified wait time.
+def debounce(wait: float, mode: str = "leading"):
+    """Debounce a function, rate-limiting (leading) or delaying (trailing) its execution.
+
+    Two modes are supported, selected by ``mode``:
+
+    - ``"leading"`` (**default**, the original semantics): the first call runs
+      immediately and returns its real result; calls arriving within ``wait``
+      seconds of that run are dropped and return None.
+    - ``"trailing"``: every call resets the timer and only the last call runs,
+      ``wait`` seconds after the final one. The wrapper always returns None
+      immediately; the debounced call's return value is discarded.
+
+    Trailing-mode semantics:
+    - exceptions raised by the debounced function never reach the caller: the
+      sync version raises inside the timer thread, the async version inside
+      the task created at trigger time.
+    - pending calls are dropped silently when the event loop closes or the
+      process exits; nothing is flushed to the caller.
+    - arguments are read from the last call when the debounced call actually
+      runs, earlier calls' arguments are discarded together with their timer.
 
     Args:
-        wait (float): The amount of time to wait before executing the function.
+        wait (float): The window length in seconds.
+        mode (str): ``"leading"`` or ``"trailing"``; any other value raises
+            ValueError. Defaults to ``"leading"`` to keep the pre-existing
+            behaviour available without a migration.
 
     Demo::
 
-        >>> @debounce(0.1)
-        ... def test():
-        ...     print("Function executed")
-        >>> test()
-        Function executed
-        >>> test()
-        >>> time.sleep(0.1)
-        >>> test()
-        Function executed
-        >>> test()
+        >>> import time
+        >>> calls = []
+        >>> # wide margins (0.2s window, 0.4-0.5s sleeps) keep this stable on a
+        >>> # loaded machine; a tight 0.05s window makes the doctest flaky
+        >>> @debounce(0.2)
+        ... def lead(value):
+        ...     calls.append(value)
+        ...     return value
+        >>> lead(0)  # window open: runs immediately and returns the real value
+        0
+        >>> lead(1) is None  # inside the window: dropped
+        True
+        >>> time.sleep(0.4)
+        >>> lead(2)  # window elapsed: runs again
+        2
+        >>> calls
+        [0, 2]
+        >>> @debounce(0.2, mode="trailing")
+        ... def trail(value):
+        ...     calls.append(value)
+        ...     return value
+        >>> [trail(i) for i in range(5)]  # every call just resets the timer
+        [None, None, None, None, None]
+        >>> time.sleep(0.5)  # window closed: only the last call runs
+        >>> calls[-1]
+        4
+        >>> async def main():
+        ...     seen = []
+        ...     @debounce(0.2)
+        ...     async def alead(value):
+        ...         seen.append(value)
+        ...         return value
+        ...     first = await alead(0)
+        ...     second = await alead(1)
+        ...     await asyncio.sleep(0.4)
+        ...     third = await alead(2)
+        ...     return first, second, third, seen
+        >>> asyncio.run(main())
+        (0, None, 2, [0, 2])
     """
 
+    if mode not in ("leading", "trailing"):
+        raise ValueError(f"mode must be 'leading' or 'trailing', got {mode!r}")
+
     def decorator(fn):
-        last_call = 0
+        # asyncio's version also recognizes legacy @asyncio.coroutine-marked
+        # functions, so it is kept deliberately despite the 3.14 deprecation
+        is_coro = asyncio.iscoroutinefunction(fn)  # pyrefly: ignore[deprecated]
 
-        async def async_wrapper(*args, **kwargs):
-            nonlocal last_call
-            current_time = time.time()
-            if current_time - last_call < wait:
-                return
-            last_call = current_time
-            return await fn(*args, **kwargs)
+        if mode == "leading":
+            last_call = 0.0
 
-        def sync_wrapper(*args, **kwargs):
-            nonlocal last_call
-            current_time = time.time()
-            if current_time - last_call < wait:
-                return
-            last_call = current_time
-            return fn(*args, **kwargs)
+            @wraps(fn)
+            async def async_leading(*args, **kwargs):
+                nonlocal last_call
+                current_time = time.time()
+                if current_time - last_call < wait:
+                    return None
+                last_call = current_time
+                return await fn(*args, **kwargs)
 
-        if asyncio.iscoroutinefunction(fn):
+            @wraps(fn)
+            def sync_leading(*args, **kwargs):
+                nonlocal last_call
+                current_time = time.time()
+                if current_time - last_call < wait:
+                    return None
+                last_call = current_time
+                return fn(*args, **kwargs)
+
+            return async_leading if is_coro else sync_leading
+
+        if is_coro:
+            timer_handle = None
+
+            @wraps(fn)
+            async def async_wrapper(*args, **kwargs):
+                nonlocal timer_handle
+                loop = asyncio.get_running_loop()
+                if timer_handle is not None:
+                    timer_handle.cancel()
+                # schedule the last call, previous pending calls are cancelled
+                timer_handle = loop.call_later(
+                    wait,
+                    lambda: asyncio.ensure_future(fn(*args, **kwargs)),
+                )
+                # returns None immediately, the result is produced by the task
+                return None
+
             return async_wrapper
-        else:
-            return sync_wrapper
+
+        pending_timer = None
+        timer_lock = Lock()
+
+        @wraps(fn)
+        def sync_wrapper(*args, **kwargs):
+            nonlocal pending_timer
+            with timer_lock:
+                if pending_timer is not None:
+                    pending_timer.cancel()
+                pending_timer = Timer(wait, fn, args=args, kwargs=kwargs)
+                pending_timer.daemon = True
+                pending_timer.start()
+            # returns None immediately, the result is produced by the timer
+            return None
+
+        return sync_wrapper
 
     return decorator
 
@@ -1060,7 +1298,9 @@ async def async_call(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
 
         asyncio.run(main())
     """
-    if asyncio.iscoroutinefunction(func):
+    # asyncio's version also recognizes legacy @asyncio.coroutine-marked
+    # functions, so it is kept deliberately despite the 3.14 deprecation
+    if asyncio.iscoroutinefunction(func):  # pyrefly: ignore[deprecated]
         # It's already a coroutine function, await it directly
         return await func(*args, **kwargs)
     else:
@@ -1074,73 +1314,85 @@ def test_bg_task():
             return True
 
         task = bg_task(coro())
-        assert await task is True
+        if (await task) is not True:
+            raise AssertionError(task)
         result = (task.done(), len(_bg_tasks))
-        assert result == (True, 0), result
+        if result != (True, 0):
+            raise AssertionError(result)
 
     asyncio.run(_test_bg_task())
 
 
-def test_named_lock():
-    def test_sync():
-        import time
-        from concurrent.futures import ThreadPoolExecutor
-        from threading import Lock, Semaphore
+def _test_named_lock_sync():
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Lock, Semaphore
 
-        def _test1():
-            with NamedLock("_test1", Lock, timeout=0.05) as lock:
-                time.sleep(0.2)
+    def _test1():
+        # 0.4s hold against a 0.05s timeout: the margin survives a loaded
+        # machine where the waiter threads start late
+        with NamedLock("_test1", Lock, timeout=0.05) as lock:
+            time.sleep(0.4)
+            return bool(lock)
+
+    with ThreadPoolExecutor(10) as pool:
+        tasks = [pool.submit(_test1) for _ in range(3)]
+        result = [i.result() for i in tasks]
+        if result != [True, False, False]:
+            raise AssertionError(result)
+    if len(NamedLock._SYNC_CACHE) != 1:
+        raise AssertionError(NamedLock._SYNC_CACHE)
+    NamedLock.clear_unlocked()
+    if len(NamedLock._SYNC_CACHE) != 0:
+        raise AssertionError(NamedLock._SYNC_CACHE)
+
+    def _test2():
+        with NamedLock("_test2", lambda: Semaphore(2), timeout=0.05) as lock:
+            time.sleep(0.4)
+            return bool(lock)
+
+    with ThreadPoolExecutor(10) as pool:
+        tasks = [pool.submit(_test2) for _ in range(3)]
+        result = [i.result() for i in tasks]
+        if result != [True, True, False]:
+            raise AssertionError(result)
+
+
+def _test_named_lock_async():
+    import asyncio
+
+    async def main():
+        async def _test1():
+            async with NamedLock("_test1", asyncio.Lock, timeout=0.05) as lock:
+                await asyncio.sleep(0.4)
                 return bool(lock)
 
-        with ThreadPoolExecutor(10) as pool:
-            tasks = [pool.submit(_test1) for _ in range(3)]
-            result = [i.result() for i in tasks]
-            assert result == [True, False, False], result
-        assert len(NamedLock._SYNC_CACHE) == 1, NamedLock._SYNC_CACHE
+        tasks = [asyncio.create_task(_test1()) for _ in range(3)]
+        result = [await i for i in tasks]
+        if result != [True, False, False]:
+            raise AssertionError(result)
+        if len(NamedLock._ASYNC_CACHE) != 1:
+            raise AssertionError(NamedLock._ASYNC_CACHE)
         NamedLock.clear_unlocked()
-        assert len(NamedLock._SYNC_CACHE) == 0
+        if len(NamedLock._ASYNC_CACHE) != 0:
+            raise AssertionError(NamedLock._ASYNC_CACHE)
 
-        def _test2():
-            with NamedLock("_test2", lambda: Semaphore(2), timeout=0.05) as lock:
-                time.sleep(0.2)
+        async def _test2():
+            async with NamedLock("_test2", lambda: asyncio.Semaphore(2), timeout=0.05) as lock:
+                await asyncio.sleep(0.4)
                 return bool(lock)
 
-        with ThreadPoolExecutor(10) as pool:
-            tasks = [pool.submit(_test2) for _ in range(3)]
-            result = [i.result() for i in tasks]
-            assert result == [True, True, False], result
+        tasks = [asyncio.create_task(_test2()) for _ in range(3)]
+        result = [await i for i in tasks]
+        if result != [True, True, False]:
+            raise AssertionError(result)
 
-    def test_async():
-        import asyncio
+    asyncio.run(main())
 
-        async def main():
-            async def _test1():
-                async with NamedLock("_test1", asyncio.Lock, timeout=0.05) as lock:
-                    await asyncio.sleep(0.2)
-                    return bool(lock)
 
-            tasks = [asyncio.create_task(_test1()) for _ in range(3)]
-            result = [await i for i in tasks]
-            assert result == [True, False, False], result
-            assert len(NamedLock._ASYNC_CACHE) == 1
-            NamedLock.clear_unlocked()
-            assert len(NamedLock._ASYNC_CACHE) == 0
-
-            async def _test2():
-                async with NamedLock(
-                    "_test2", lambda: asyncio.Semaphore(2), timeout=0.05
-                ) as lock:
-                    await asyncio.sleep(0.2)
-                    return bool(lock)
-
-            tasks = [asyncio.create_task(_test2()) for _ in range(3)]
-            result = [await i for i in tasks]
-            assert result == [True, True, False], result
-
-        asyncio.run(main())
-
-    test_sync()
-    test_async()
+def test_named_lock():
+    _test_named_lock_sync()
+    _test_named_lock_async()
 
 
 def test_async_call():
@@ -1154,12 +1406,12 @@ def test_async_call():
             return a * b
 
         start = time.time()
-        result = await asyncio.gather(
-            async_call(sync_add, 2, 3), async_call(async_mul, 4, 5)
-        )
-        assert result == [5, 20], result
+        result = await asyncio.gather(async_call(sync_add, 2, 3), async_call(async_mul, 4, 5))
+        if result != [5, 20]:
+            raise AssertionError(result)
         end = time.time()
-        assert end - start < 0.25, end - start
+        if end - start >= 0.25:
+            raise AssertionError(end - start)
 
     asyncio.run(main())
 
@@ -1168,13 +1420,9 @@ def test_utils():
     test_bg_task()
     print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), "test_bg_task passed")
     test_named_lock()
-    print(
-        time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), "test_named_lock passed"
-    )
+    print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), "test_named_lock passed")
     test_async_call()
-    print(
-        time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), "test_async_call passed"
-    )
+    print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), "test_async_call passed")
 
 
 def test():
