@@ -1,3 +1,4 @@
+import contextlib
 import io
 import smtplib
 import typing
@@ -8,7 +9,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
-
 __all__ = ["SimpleEmail"]
 
 
@@ -18,17 +18,25 @@ class SimpleEmail:
     Demo::
 
         with SimpleEmail("smtp.gmail.com", 465, "someone@gmail.com", "PASSWORD") as s:
-        print(
-            s.send_message(
-                "This is Title",
-                "This is body text or file path(.md/.txt)",
-                "Author<someone@gmail.com>",
-                "anybody@gmail.com",
-                files="a.py,b.py,c.txt",
-                filename="files.zip",
-                encoding="u8",
+            print(
+                s.send_message(
+                    "This is Title",
+                    "This is body text or file path(.md/.txt)",
+                    "Author<someone@gmail.com>",
+                    "anybody@gmail.com",
+                    files="a.py,b.py,c.txt",
+                    filename="files.zip",
+                    encoding="u8",
+                )
             )
-        )
+
+    Notes:
+        - encoding defaults to utf-8 and is used to read a .txt/.md body file;
+          GBK or other non-utf-8 files must pass encoding explicitly.
+        - When the body path exists, a read failure raises instead of silently
+          sending the path string as the body.
+        - Attachment files are zipped and 0-byte files are still attached;
+          prepare_attach("") returns None (no attachment part).
     """
 
     def __init__(self, host, port, user, pwd, smtp_cls=smtplib.SMTP_SSL):
@@ -43,7 +51,13 @@ class SimpleEmail:
     def __enter__(self):
         self.server = self.smtp_cls(self.host, self.port)
         self.server.__enter__()
-        self.server.login(self.user, self.pwd)
+        try:
+            self.server.login(self.user, self.pwd)
+        except Exception:
+            # login failed: close the connection instead of leaking it
+            with contextlib.suppress(Exception):
+                self.server.quit()
+            raise
         return self
 
     def __exit__(self, *_):
@@ -55,19 +69,19 @@ class SimpleEmail:
             raise RuntimeError("with context not entered")
         return self.server.send_message(msg)
 
-    def prepare_attach(self, files: str, filename="files.zip"):
+    def prepare_attach(self, files: str, filename: typing.Union[str, tuple] = "files.zip"):
+        # only an empty files string means no attachment; 0-byte files are
+        # attached normally instead of being silently dropped
+        if not files:
+            return None
         with io.BytesIO() as zip_buffer:
             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-                total_size = 0
-                for _path in files.split(","):
+                for _path in [p.strip() for p in files.split(",")]:
                     file_path = Path(_path)
                     if file_path.is_file():
                         zipf.write(file_path.as_posix(), arcname=file_path.name)
-                        total_size += file_path.stat().st_size
                     else:
                         raise FileNotFoundError(file_path.as_posix())
-                if not total_size:
-                    return None
             zip_buffer.seek(0)
             part = MIMEBase("application", "octet-stream")
             content = zip_buffer.read()
@@ -84,22 +98,26 @@ class SimpleEmail:
         to_emails: str,
         files="",
         filename: typing.Union[str, tuple] = "files.zip",
-        encoding=None,
+        encoding="utf-8",
     ):
         to_mail_list = [i.strip() for i in to_emails.split(",")]
         if not to_mail_list or not to_mail_list[0]:
-            raise ValueError("email is %s" % to_emails)
+            raise ValueError(f"email is {to_emails}")
         msg = MIMEMultipart()
         msg["From"] = from_email
         msg["To"] = ", ".join(to_mail_list)
         msg["Subject"] = title
+        # get text from the file path if body is an existing .txt/.md file
+        b_path = Path(body)
         try:
-            # get text from path
-            b_path = Path(body)
-            if b_path.is_file() and b_path.suffix in (".txt", ".md"):
-                body = b_path.read_text(encoding=encoding)
-        except (UnicodeDecodeError, OSError):
-            pass
+            is_file = b_path.is_file()
+        except (OSError, ValueError):
+            # body is not a usable path (e.g. plain text), keep it as the body
+            is_file = False
+        if is_file and b_path.suffix in (".txt", ".md"):
+            # the file is confirmed to exist: read errors must propagate
+            # instead of silently sending the path string as the body
+            body = b_path.read_text(encoding=encoding)
         if files:
             attach_part = self.prepare_attach(files, filename=filename)
         else:

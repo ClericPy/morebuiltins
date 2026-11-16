@@ -3,7 +3,7 @@ import tkinter as tk
 import tkinter.messagebox
 from threading import Thread
 from tkinter import scrolledtext
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 __all__ = ["TKit"]
 
@@ -164,6 +164,7 @@ class TKit(tk.Tk):
             tkinter.messagebox.showwarning,
             tkinter.messagebox.showerror,
         )
+        root = None
         try:
             root = tk.Tk()
             root.withdraw()
@@ -173,21 +174,27 @@ class TKit(tk.Tk):
         except IndexError:
             return methods[-1](title=title, message=message)
         finally:
-            root.destroy()
+            if root is not None:
+                root.destroy()
 
     @classmethod
-    def ask_yesno(cls, arg: bool, message="Confirm(YES/NO)", title="", **kwargs):
+    def ask_yesno(cls, arg: Any, message="Confirm(YES/NO)", title="", **kwargs: Any):
+        # arg only drives dispatch in ask(); both True and the bool type are
+        # accepted there, and this dialog does not render it
         # ask YES/NO
+        root = None
         try:
             root = tk.Tk()
             root.withdraw()
             root.attributes("-topmost", True)
             root.focus_force()
-            return tkinter.messagebox.askyesno(
-                title=title, message=message, default=kwargs.get("default")
-            )
+            # default is forwarded verbatim from the caller's kwargs; tkinter
+            # itself decides how to handle an absent/None value
+            default: Any = kwargs.get("default")
+            return tkinter.messagebox.askyesno(title=title, message=message, default=default)
         finally:
-            root.destroy()
+            if root is not None:
+                root.destroy()
 
     @classmethod
     def ask_choice(cls, arg: tuple, message="Make your choice", title="", **kwargs):
@@ -196,10 +203,10 @@ class TKit(tk.Tk):
         root.title(title)
         root.resize(topmost=True, toolwindow=True, **kwargs)
         results = [None]
-        max_col = max([len(i) for i in arg if isinstance(i, (tuple, list))])
-        tk.Label(root, text=message, background="#ffffff").grid(
-            row=0, column=0, sticky="ewns", columnspan=max_col
-        )
+        # default=1: rows may all be plain strings, so no sequence row exists;
+        # max(1, ...) keeps an empty tuple/list row from yielding columnspan=0
+        max_col = max(1, max((len(i) for i in arg if isinstance(i, (tuple, list))), default=1))
+        tk.Label(root, text=message, background="#ffffff").grid(row=0, column=0, sticky="ewns", columnspan=max_col)
         root.grid_rowconfigure(0, weight=1)
         root.grid_columnconfigure(0, weight=1)
 
@@ -235,10 +242,10 @@ class TKit(tk.Tk):
         root = cls()
         root.title(title)
         root.resize(topmost=True, toolwindow=True, **kwargs)
-        max_col = max([len(i) for i in arg if isinstance(i, (tuple, list))])
-        tk.Label(root, text=message, background="#ffffff").grid(
-            row=0, column=0, sticky="ewns", columnspan=max_col
-        )
+        # default=1: rows may all be plain strings, so no sequence row exists;
+        # max(1, ...) keeps an empty tuple/list row from yielding columnspan=0
+        max_col = max(1, max((len(i) for i in arg if isinstance(i, (tuple, list))), default=1))
+        tk.Label(root, text=message, background="#ffffff").grid(row=0, column=0, sticky="ewns", columnspan=max_col)
         root.grid_columnconfigure(0, weight=1)
         results: Dict[str, tk.IntVar] = {}
         for row, texts in enumerate(arg, 1):
@@ -277,20 +284,23 @@ class TKit(tk.Tk):
         root.title(title)
         root.resize(topmost=True, toolwindow=True, **kwargs)
 
-        tk.Label(root, text=message, background="#ffffff").pack(
-            expand=True, fill="both"
-        )
+        tk.Label(root, text=message, background="#ffffff").pack(expand=True, fill="both")
 
         text_var = tk.StringVar()
 
+        # textbox is either tk.Text or tk.Entry; Any keeps the shared
+        # call/bind surface usable without lying about either concrete widget
+        text_box: Any
         if textarea:
-            text_box: Any = tk.Text(root, height=2)
+            text_box = tk.Text(root, height=2)
             if default:
                 text_box.insert("1.0", default)
 
             def submit(event=None):
                 # remove \n
-                text = text_box.get("1.0", tk.END)
+                # text_box is Text or Entry; only this branch builds a Text,
+                # so the shared variable is narrowed back to its real widget
+                text = cast(Any, text_box).get("1.0", tk.END)
                 if text[-1] == "\n":
                     text = text[:-1]
                 text_var.set(text)
@@ -308,9 +318,7 @@ class TKit(tk.Tk):
         text_box.bind("<Control-Return>", submit)
         text_box.pack(expand=True, fill="both")
         text_box.focus_force()
-        tk.Button(root, text=button_text, background="#ffffff", command=submit).pack(
-            expand=True, fill="both"
-        )
+        tk.Button(root, text=button_text, background="#ffffff", command=submit).pack(expand=True, fill="both")
         root.mainloop()
         return text_var.get()
 
@@ -331,17 +339,28 @@ class TextWindow:
         self._shutdown = False
 
     def print_text(self, *args, end="\n", sep=" ", file=None, flush=False):
+        """Replacement for builtins.print while the context is active.
+
+        NOTE: this is an intentional redefinition: `flush=True` does not flush
+        a stream, it clears the text box and redraws the line; `file` is not
+        rendered here, it is forwarded to the original print unchanged.
+        """
+        if file is not None:
+            return self.print(*args, end=end, sep=sep, file=file, flush=flush)
         if flush:
             self.text_box.delete("1.0", tk.END)
         self.text_box.insert(tk.END, f"{sep.join(map(str, args))}{end}")
         self.text_box.see(tk.END)
 
     def patch_print(self):
-        builtins.print = self.print_text
+        # deliberate monkeypatch: print_text mirrors print's public signature
+        builtins.print = self.print_text  # ty: ignore[invalid-assignment]
 
     def restore_print(self):
         if builtins.print is not self.print:
-            builtins.print = self.print
+            # restores the print captured in __init__; the narrowed value is a
+            # checker artifact of the intentional monkeypatch above
+            builtins.print = self.print  # ty: ignore[invalid-assignment]
 
     def run(self):
         try:
@@ -360,6 +379,9 @@ class TextWindow:
             self.text_box = scrolledtext.ScrolledText(self.root, **__text_kwargs)
             self.text_box.pack(expand=True, fill="both")
             self.text_box.focus_force()
+            # title bar close (X) should run shutdown (quit) instead of the
+            # default destroy, which would break the __exit__ withdraw path
+            self.root.protocol("WM_DELETE_WINDOW", self.shutdown)
             self.patch_print()
             t = Thread(target=self.run, daemon=True)
             t.start()
@@ -381,8 +403,16 @@ class TextWindow:
             pass
 
     def __exit__(self, *_):
-        self.root.withdraw()
+        try:
+            self.root.withdraw()
+        except tk.TclError:
+            # the root may already be destroyed, e.g. closed by the title bar X
+            pass
         self.shutdown()
+        try:
+            self.root.destroy()
+        except tk.TclError:
+            pass
 
 
 def examples():
@@ -393,10 +423,7 @@ def examples():
         if TKit.ask(True, "Choose NO", default="no") is True:
             TKit.ask(0, "Wrong choice")
             continue
-        if (
-            TKit.ask((["1"], ["2", "3"], "4", ["5", "6", "7"]), message="Choose 3:")
-            != "3"
-        ):
+        if TKit.ask((["1"], ["2", "3"], "4", ["5", "6", "7"]), message="Choose 3:") != "3":
             TKit.ask(1, "Wrong choice")
             continue
         if TKit.ask(
@@ -408,11 +435,11 @@ def examples():
             continue
         result = TKit.ask("Input text 1 (press Enter to submit):")
         if result != "1":
-            TKit.ask(2, "Wrong text %s" % repr(result))
+            TKit.ask(2, f"Wrong text {result!r}")
             continue
         result = TKit.ask("Input text 1\\n (press Ctrl-Enter to submit):", textarea=1)
         if result != "1\n":
-            TKit.ask(2, "Wrong text %s" % repr(result))
+            TKit.ask(2, f"Wrong text {result!r}")
             continue
 
         def test_text(flush=False):
@@ -429,7 +456,7 @@ def examples():
             __resize_kwargs={"title": "The Title", "toolwindow": True},
             __text_kwargs={"font": "_ 15"},
         ) as result:
-            TKit.info("result=%s" % result)
+            TKit.info(f"result={result}")
 
         with TKit.text_context(
             test_text,
@@ -437,7 +464,7 @@ def examples():
             __resize_kwargs={"title": "The Title", "toolwindow": True},
             __text_kwargs={"font": "_ 15"},
         ) as result:
-            TKit.warn("result=%s" % result)
+            TKit.warn(f"result={result}")
         break
 
 
