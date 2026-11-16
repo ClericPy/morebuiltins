@@ -12,43 +12,43 @@ USAGE = r"""
 ===========================================================================
 0. package your code without any requirements
 
-> python3 -m zipapps -c -a ./simple_package -p /usr/bin/python3 -o simple_package.pyz
+> python3 -m morebuiltins.zipapps -c -a ./simple_package -p /usr/bin/python3 -o simple_package.pyz
 > ./simple_package.pyz
 OR
-> python3 -m zipapps -c -a ./simple_package -o simple_package.pyz
+> python3 -m morebuiltins.zipapps -c -a ./simple_package -o simple_package.pyz
 > python3 simple_package.pyz
 
 ------------------------------------
 
 1. use zipapps to make a standalone app which need bottle installed
-> python3 -m zipapps -c -a bottle_server.py -m bottle_server:main bottle
+> python3 -m morebuiltins.zipapps -c -a bottle_server.py -m bottle_server:main bottle
 > python3 app.pyz
 OR
-> python3 -m zipapps -c -a bottle_server.py -m bottle_server:main bottle
+> python3 -m morebuiltins.zipapps -c -a bottle_server.py -m bottle_server:main bottle
 > python3 app.pyz
 
 ------------------------------------
 
 2. use zipapps for venv
-> python3 -m zipapps -c bottle
+> python3 -m morebuiltins.zipapps -c bottle
 > python3 app.pyz bottle_server.py
 OR
-> python3 -m zipapps -c -p /usr/bin/python3 bottle
+> python3 -m morebuiltins.zipapps -c -p /usr/bin/python3 bottle
 > ./app.pyz bottle_server.py
 
 ------------------------------------
 
 3. advanced usages
 3.1 more args
-> python3 -m zipapps -c -a package1,package2 -o server.pyz -m package1.server:main -p /usr/bin/python3 -r requirements.txt
+> python3 -m morebuiltins.zipapps -c -a package1,package2 -o server.pyz -m package1.server:main -p /usr/bin/python3 -r requirements.txt
 > ./server.pyz
 
 3.2 unzip C-libs to cache folder for zipimport do not support .so .pyd files.
     bad
-        > python3 -m zipapps -c lxml
+        > python3 -m morebuiltins.zipapps -c lxml
         > python3 app.pyz -c "import lxml.html;print(lxml.html.__file__)"
     good
-        > python3 -m zipapps -c -u lxml lxml
+        > python3 -m morebuiltins.zipapps -c -u lxml lxml
         > python3 app.pyz -c "import lxml.html;print(lxml.html.__file__)"
 
 PS: all the unknown args will be used by "pip install".
@@ -82,9 +82,9 @@ def _append_pth():
         _path_bytes = _pth_path.read_bytes()
     else:
         _path_bytes = b""
-    if not re.search(b"^import site$", _path_bytes):
+    if not re.search(rb"^\s*import site\s*$", _path_bytes, re.M):
         _path_bytes += b"\nimport site\n"
-    if not re.search(b"^pip\.pyz$", _path_bytes):
+    if not re.search(rb"^\s*pip\.pyz\s*$", _path_bytes, re.M):
         _path_bytes += b"\npip.pyz\n"
     _pth_path.write_bytes(_path_bytes)
 
@@ -98,22 +98,25 @@ def download_pip_pyz(target: typing.Optional[Path] = None, log=True):
         print(_get_now(), msg, flush=True, file=sys.stderr)
     if pip_pyz_path.is_file():
         pip_pyz_path.unlink()
-    urlretrieve(
+    urlretrieve(  # noqa: S310  # nosec B310  # fixed https bootstrap.pypa.io URL constant
         url=PIP_PYZ_URL,
         filename=pip_pyz_path.absolute().as_posix(),
-        reporthook=lambda a, b, c: print(
-            _get_now(),
-            f"Downloading {int(100*(1+a)*b/c)}%, {(1 + a) * b} / {c}",
-            end="\r",
-            flush=True,
-            file=sys.stderr,
-        )
-        if log
-        else None,
+        reporthook=lambda a, b, c: (
+            print(
+                _get_now(),
+                f"Downloading {int(100 * (1 + a) * b / c)}%, {(1 + a) * b} / {c}",
+                end="\r",
+                flush=True,
+                file=sys.stderr,
+            )
+            if log
+            else None
+        ),
     )
     try:
         sys.path.append(pip_pyz_path.absolute().as_posix())
-        import pip
+        # pip comes from the pip.pyz appended to sys.path above, not a project dependency
+        import pip  # pyright: ignore[reportMissingImports]  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-import]
 
         assert pip
 
@@ -131,27 +134,31 @@ def handle_win32_embeded():
     if not _pth_path.is_file():
         return
     try:
-        import pip
+        # pip may be provided by the embedded interpreter or a pip.pyz on sys.path
+        import pip  # pyright: ignore[reportMissingImports]  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-import]
 
         assert pip
 
         return
     except ImportError:
-        need_install = (
-            input(f'\n{"=" * 50}\npip module not found, try installing?(Y/n)')
-            .lower()
-            .strip()
-            or "y"
-        )
+        need_install = input(f"\n{'=' * 50}\npip module not found, try installing?(Y/n)").lower().strip() or "y"
         if need_install != "y":
             return
     print("find _pth file:", _pth_path.as_posix(), flush=True, file=sys.stderr)
     if download_pip_pyz():
         _append_pth()
     import os
+    import subprocess
 
-    os.system("%s -m pip -V" % Path(sys.executable).as_posix())
-    os.system("pause")
+    # list-form args to survive interpreter paths with spaces
+    proc = subprocess.run([str(sys.executable), "-m", "pip", "-V"], check=False)  # noqa: S603  # fixed pip -V probe run by the current interpreter, list form
+    if proc.returncode != 0:
+        print(
+            f"pip check failed with return code {proc.returncode}",
+            file=sys.stderr,
+            flush=True,
+        )
+    os.system("pause")  # noqa: S605, S607  # `pause` is a Windows cmd builtin needing a shell to wait for a keypress; literal, no interpolation  # ty: ignore[deprecated]
 
 
 def main():
@@ -161,8 +168,7 @@ def main():
         "--output",
         "-o",
         default=ZipApp.DEFAULT_OUTPUT_PATH,
-        help="The path of the output file, defaults to"
-        f' "{ZipApp.DEFAULT_OUTPUT_PATH}".',
+        help=f'The path of the output file, defaults to "{ZipApp.DEFAULT_OUTPUT_PATH}".',
     )
     parser.add_argument(
         "--python",
@@ -223,8 +229,7 @@ def main():
         "--compiled",
         action="store_true",
         dest="compiled",
-        help="Compile .py to .pyc for fast import, but zipapp does not work "
-        "unless you unzip it.",
+        help="Compile .py to .pyc for fast import, but zipapp does not work unless you unzip it.",
     )
     parser.add_argument(
         "--cache-path",
@@ -241,8 +246,7 @@ def main():
         "--shell",
         "-s",
         action="store_true",
-        help="Only while `main` is not set, used for shell=True"
-        " in subprocess.Popen.",
+        help="Only while `main` is not set, used for shell=True in subprocess.Popen.",
     )
     parser.add_argument(
         "--main-shell",
@@ -265,7 +269,7 @@ def main():
         default="",
         dest="build_id",
         help="a string to skip duplicate builds,"
-        ' it can be the paths of files/folders which splited by ",", then the modify time will be used as build_id. If build_id contains `*`, will use `glob` function to get paths. For example, you can set requirements.txt as your build_id by `python3 -m zipapps -b requirements.txt -r requirements.txt` when you use pyz as venv.',
+        ' it can be the paths of files/folders which splited by ",", then the modify time will be used as build_id. If build_id contains `*`, will use `glob` function to get paths. For example, you can set requirements.txt as your build_id by `python3 -m morebuiltins.zipapps -b requirements.txt -r requirements.txt` when you use pyz as venv.',
     )
     parser.add_argument(
         "--zipapps",
@@ -311,8 +315,7 @@ def main():
         "--activate",
         default="",
         dest="activate",
-        help="Activate the given paths of zipapps app, "
-        "only activate them but not run them, separated by commas.",
+        help="Activate the given paths of zipapps app, only activate them but not run them, separated by commas.",
     )
     parser.add_argument(
         "--ensure-pip",
@@ -333,16 +336,14 @@ def main():
         "--layer-mode-prefix",
         default="python",
         dest="layer_mode_prefix",
-        help="Only work while --layer-mode is set, "
-        "will move the files in the given prefix folder.",
+        help="Only work while --layer-mode is set, will move the files in the given prefix folder.",
     )
     parser.add_argument(
         "-czc",
         "--clear-zipapps-cache",
         action="store_true",
         dest="clear_zipapps_cache",
-        help="Clear the zipapps cache folder after running, "
-        "but maybe failed for .pyd/.so files.",
+        help="Clear the zipapps cache folder after running, but maybe failed for .pyd/.so files.",
     )
     parser.add_argument(
         "-czs",
@@ -355,15 +356,13 @@ def main():
         "--chmod",
         default="",
         dest="chmod",
-        help="os.chmod(int(chmod, 8)) for unzip files with `--chmod=777`,"
-        " unix-like system only",
+        help="os.chmod(int(chmod, 8)) for unzip files with `--chmod=777`, unix-like system only",
     )
     parser.add_argument(
         "--dump-config",
         default="",
         dest="dump_config",
-        help="Dump zipapps build args into JSON string."
-        " A file path needed and `-` means stdout.",
+        help="Dump zipapps build args into JSON string. A file path needed and `-` means stdout.",
     )
     parser.add_argument(
         "--load-config",
@@ -375,8 +374,7 @@ def main():
         "--freeze-reqs",
         default="",
         dest="freeze",
-        help="Freeze package versions of pip args with venv,"
-        " output to the given file path.",
+        help="Freeze package versions of pip args with venv, output to the given file path.",
     )
     parser.add_argument(
         "-q",
@@ -395,7 +393,7 @@ def main():
         "--download-python",
         action="store_true",
         dest="download_python",
-        help=f'(please use `python -m zipapps.download_python` instead). Download standalone python from "{DOWNLOAD_PYTHON_URL}"',
+        help=f'(please use `python -m morebuiltins.download_python` instead). Download standalone python from "{DOWNLOAD_PYTHON_URL}"',
     )
     parser.add_argument(
         "--rm-patterns",
@@ -409,13 +407,13 @@ def main():
         return
     args, pip_args = parser.parse_known_args()
     if args.download_python:
-        raise ValueError("please use `python -m zipapps.download_python` instead")
+        raise ValueError("please use `python -m morebuiltins.download_python` instead")
     elif args.download_pip_pyz:
         return download_pip_pyz(args.download_pip_pyz)
     if args.quite_mode:
         ZipApp.LOGGING = False
         if "-q" not in pip_args and "--quiet" not in pip_args:
-            pip_args.append(f'-{"q" * args.quite_mode}')
+            pip_args.append(f"-{'q' * args.quite_mode}")
     ZipApp._log(f"zipapps args: {args}, pip install args: {pip_args}")
     if args.activate:
         from .activate_zipapps import activate
@@ -430,7 +428,7 @@ def main():
             ft.run()
         return
     if args.load_config:
-        with open(args.load_config, "r", encoding="utf-8") as f:
+        with open(args.load_config, encoding="utf-8") as f:
             kwargs = json.load(f)
             app = ZipApp(**kwargs)
     else:
@@ -441,7 +439,7 @@ def main():
             output=args.output,
             interpreter=args.interpreter,
             compressed=args.compressed,
-            shell=args.shell,
+            shell=args.shell,  # nosec B604  # ZipApp constructor option named shell, not subprocess(shell=True)
             unzip=args.unzip,
             unzip_path=args.unzip_path,
             ignore_system_python_path=args.ignore_system_python_path,

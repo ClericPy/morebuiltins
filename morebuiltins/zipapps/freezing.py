@@ -9,9 +9,14 @@ import venv
 from pathlib import Path
 
 
-def ttime(
-    timestamp=None, tzone=int(-time.timezone / 3600), fail="", fmt="%Y-%m-%d %H:%M:%S"
-):
+def ttime(timestamp=None, tzone=None, fail="", fmt="%Y-%m-%d %H:%M:%S"):
+    if tzone is None:
+        # compute the local UTC offset at call time (not import time),
+        # considering the daylight saving time
+        if time.daylight and time.localtime().tm_isdst > 0:
+            tzone = int(-time.altzone / 3600)
+        else:
+            tzone = int(-time.timezone / 3600)
     fix_tz = tzone * 3600
     if timestamp is None:
         timestamp = time.time()
@@ -27,7 +32,7 @@ def ttime(
         return fail
 
 
-class FreezeTool(object):
+class FreezeTool:
     VENV_NAME = "zipapps_venv"
     # not stable
     FASTER_PREPARE_PIP = False
@@ -44,14 +49,10 @@ class FreezeTool(object):
         print(_msg, file=sys.stderr, flush=flush)
 
     def run(self):
-        self.log(
-            "All the logs will be redirected to stderr to ensure the output is stdout."
-        )
+        self.log("All the logs will be redirected to stderr to ensure the output is stdout.")
         self.temp_dir = tempfile.TemporaryDirectory(prefix="zipapps_")
         self.temp_path = Path(self.temp_dir.name)
-        self.log(
-            f"Start mkdir temp folder: {self.temp_path.absolute()}, exist={self.temp_path.is_dir()}"
-        )
+        self.log(f"Start mkdir temp folder: {self.temp_path.absolute()}, exist={self.temp_path.is_dir()}")
         self.install_env()
         output = self.install_packages()
         self.freeze_requirements(output)
@@ -64,13 +65,15 @@ class FreezeTool(object):
             venv.create(env_dir=venv_path, system_site_packages=False, with_pip=False)
             import shutil
 
-            import pip
+            # pip is copied from the running environment, not a project dependency
+            import pip  # pyright: ignore[reportMissingImports]  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-import]
 
-            pip_dir = Path(pip.__file__).parent
+            # an imported module always has __file__; the Optional comes from the stdlib annotation
+            pip_dir = Path(typing.cast(str, pip.__file__)).parent
             if os.name == "nt":
                 target = venv_path / "Lib" / "site-packages" / "pip"
             else:
-                pyv = "python%d.%d" % sys.version_info[:2]
+                pyv = f"python{sys.version_info[0]}.{sys.version_info[1]}"
                 target = venv_path / "lib" / pyv / "site-packages" / "pip"
             shutil.copytree(pip_dir, target)
         else:
@@ -89,9 +92,11 @@ class FreezeTool(object):
             "pip",
             "install",
         ] + self.pip_args
-        self.log(f'Install packages in venv: {args}\n{"-" * 30}')
-        with subprocess.Popen(args, stdout=subprocess.PIPE) as proc:
-            for line in proc.stdout:
+        self.log(f"Install packages in venv: {args}\n{'-' * 30}")
+        with subprocess.Popen(args, stdout=subprocess.PIPE) as proc:  # noqa: S603  # venv python -m pip with caller-supplied pip args, list form, no shell
+            # stdout=PIPE above guarantees a pipe here; the Optional only reflects Popen's general contract
+            stdout = typing.cast(typing.IO[bytes], proc.stdout)
+            for line in stdout:
                 try:
                     line = line.decode()
                 except ValueError:
@@ -100,11 +105,11 @@ class FreezeTool(object):
         args = [str(python_path.absolute()), "-m", "pip", "freeze"]
         print("-" * 30, file=sys.stderr)
         self.log(f"Freeze packages in venv: {args}")
-        output = subprocess.check_output(args)
+        output = subprocess.check_output(args)  # noqa: S603  # venv python -m pip freeze in the temp venv, list form, no shell
         try:
             result = output.decode("utf-8")
         except ValueError:
-            result = output.decode()
+            result = output.decode("utf-8", "ignore")
         result = re.sub("(\n|\r)+", "\n", result).strip()
         return result
 
@@ -119,9 +124,7 @@ class FreezeTool(object):
     def remove_env(self):
         if self.temp_dir and self.temp_path.is_dir():
             self.temp_dir.cleanup()
-            self.log(
-                f"Delete temp folder: {self.temp_path.absolute()}, exist={self.temp_path.is_dir()}"
-            )
+            self.log(f"Delete temp folder: {self.temp_path.absolute()}, exist={self.temp_path.is_dir()}")
 
     def __del__(self):
         self.remove_env()
@@ -137,7 +140,8 @@ def test():
     with FreezeTool("-", ["six==1.15.0"]) as ft:
         result = ft.run()
         # print(result)
-        assert result == "six==1.15.0"
+        if result != "six==1.15.0":
+            raise RuntimeError(f"unexpected freeze output: {result!r}")
 
 
 if __name__ == "__main__":

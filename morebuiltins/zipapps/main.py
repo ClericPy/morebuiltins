@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import compileall
 import json
 import re
@@ -20,31 +18,44 @@ __version__ = "2024.08.07"
 
 def get_pip_main(ensurepip_root=None):
     try:
-        import pip
+        # pip is optional at runtime: the target environment provides it
+        import pip  # pyright: ignore[reportMissingImports]  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-import]
     except ImportError:
         import ensurepip
 
-        assert ensurepip._bootstrap(root=ensurepip_root) == 0
+        # private API, but the only way to bootstrap pip into a root
+        if ensurepip._bootstrap(root=ensurepip_root) != 0:  # pyright: ignore[reportAttributeAccessIssue]  # ty: ignore[unresolved-attribute]  # pyrefly: ignore[missing-attribute]
+            raise RuntimeError("ensurepip bootstrap failed") from None
         if ensurepip_root:
             for _path in Path(ensurepip_root).glob("**/pip/"):
                 if _path.is_dir():
                     sys.path.append(str(_path.parent.absolute()))
                     break
-        import pip
+        # pip is provided by the runtime environment or the ensurepip bootstrap above
+        import pip  # pyright: ignore[reportMissingImports]  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-import]
     try:
-        from pip._internal.cli.main import main
+        # pip internals moved between releases, hence the fallback chain below
+        from pip._internal.cli.main import (  # pyright: ignore[reportMissingImports]  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-import]
+            main,
+        )
 
         return main
     except ImportError:
         pass
     try:
-        from pip import main
+        # pip is optional at runtime: the target environment provides it
+        from pip import (  # pyright: ignore[reportMissingImports]  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-import]
+            main,
+        )
 
         return main
     except ImportError:
         pass
     try:
-        from pip._internal import main
+        # pip is optional at runtime: the target environment provides it
+        from pip._internal import (  # pyright: ignore[reportMissingImports]  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-import]
+            main,
+        )
 
         return main
     except ImportError:
@@ -52,7 +63,16 @@ def get_pip_main(ensurepip_root=None):
     return pip.main
 
 
-class ZipApp(object):
+def _get_package_data(name: str) -> bytes:
+    # package data ships with the wheel; get_data returns None only for a
+    # broken install, so surface that as a clear error instead of AttributeError
+    data = get_data(__name__, name)
+    if data is None:
+        raise RuntimeError(f"package data missing: {name}")
+    return data
+
+
+class ZipApp:
     DEFAULT_OUTPUT_PATH = "app.pyz"
     DEFAULT_UNZIP_CACHE_PATH = "zipapps_cache"
     AUTO_FIX_UNZIP_KEYS = {"AUTO_UNZIP", "AUTO"}
@@ -72,7 +92,7 @@ class ZipApp(object):
         "chmod": "UNZIP_CHMOD",
     }
 
-    LOGGING = True
+    LOGGING: bool = True
 
     def __init__(
         self,
@@ -188,9 +208,7 @@ class ZipApp(object):
 
         self._tmp_dir: typing.Optional[tempfile.TemporaryDirectory] = None
         self._build_success = False
-        self._is_greater_than_python_37 = (
-            sys.version_info.minor >= 7 and sys.version_info.major >= 3
-        )
+        self._is_greater_than_python_37 = sys.version_info.minor >= 7 and sys.version_info.major >= 3
 
     @property
     def kwargs(self):
@@ -201,7 +219,7 @@ class ZipApp(object):
             output=self.output,
             interpreter=self.interpreter,
             compressed=self.compressed,
-            shell=self.shell,
+            shell=self.shell,  # nosec B604  # ZipApp kwargs option named shell, not subprocess(shell=True)
             unzip=self.unzip,
             unzip_path=self.unzip_path,
             ignore_system_python_path=self.ignore_system_python_path,
@@ -220,22 +238,19 @@ class ZipApp(object):
             unzip_exclude=self.unzip_exclude,
             chmod=self.chmod,
             clear_zipapps_self=self.clear_zipapps_self,
+            rm_patterns=self.rm_patterns,
         )
 
     def ensure_args(self):
         if not self.unzip:
             if self.unzip_exclude:
-                self._log(
-                    "[WARN]: The arg `unzip_exclude` should not be with `unzip` but `unzip` is null."
-                )
+                self._log("[WARN]: The arg `unzip_exclude` should not be with `unzip` but `unzip` is null.")
             if self.compiled:
                 self._log(
                     "[WARN]: The arg `compiled` should not be True while `unzip` is null, because .pyc files of __pycache__ folder may not work in zip file."
                 )
             if self.lazy_install:
-                self._log(
-                    '[WARN]: the `unzip` arg has been changed to "*" while `lazy_install` is True.'
-                )
+                self._log('[WARN]: the `unzip` arg has been changed to "*" while `lazy_install` is True.')
                 self.unzip = "*"
         if self.cache_path:
             self._cache_path = Path(self.cache_path)
@@ -254,9 +269,7 @@ class ZipApp(object):
                 )
                 self.unzip_path = self.DEFAULT_UNZIP_CACHE_PATH
         self.build_id_name = self.get_build_id_name()
-        self._log(
-            f"[INFO]: output path is `{self._output_path}`, you can reset it with the arg `output`."
-        )
+        self._log(f"[INFO]: output path is `{self._output_path}`, you can reset it with the arg `output`.")
 
     def prepare_ensure_pip(self):
         if self.ensure_pip:
@@ -270,7 +283,7 @@ class ZipApp(object):
 
     def build(self):
         self._log(
-            f'[INFO]: {"=" * 10} Start building `{self._output_path}` with zipapps version <{__version__}> {"=" * 10}'
+            f"[INFO]: {'=' * 10} Start building `{self._output_path}` with zipapps version <{__version__}> {'=' * 10}"
         )
         self.ensure_args()
         if self.build_exists():
@@ -295,15 +308,16 @@ class ZipApp(object):
 
     def create_archive_layer(self):
         if self.compressed:
-            compression = ZIP_STORED
+            compression = ZIP_DEFLATED
             compresslevel = 9
         else:
-            compression = ZIP_DEFLATED
-            compresslevel = 0
-        _kwargs = dict(mode="w", compression=compression)
+            compression = ZIP_STORED
+            compresslevel = None
         if self._is_greater_than_python_37:
-            _kwargs["compresslevel"] = compresslevel
-        with ZipFile(str(self._output_path), **_kwargs) as zf:
+            zf = ZipFile(str(self._output_path), mode="w", compression=compression, compresslevel=compresslevel)
+        else:
+            zf = ZipFile(str(self._output_path), mode="w", compression=compression)
+        with zf:
             for f in self._cache_path.glob("**/*"):
                 zf.write(f, str(f.relative_to(self._cache_path)))
 
@@ -358,9 +372,7 @@ class ZipApp(object):
         new_unzip = ",".join(unzip_names)
         self.unzip = new_unzip
         if self.unzip:
-            self._log(
-                f"[INFO]: these names will be unzipped while running: {self.unzip}"
-            )
+            self._log(f"[INFO]: these names will be unzipped while running: {self.unzip}")
         self.prepare_active_zipapps()
 
     def prepare_active_zipapps(self):
@@ -382,9 +394,7 @@ class ZipApp(object):
                         runner = f"import {module}"
                         if function:
                             runner += f"; {module}.{function}()"
-                        self._log(
-                            f"[INFO]: -m: matches re.match(r'{pattern}', self.main), add as `{runner}`."
-                        )
+                        self._log(f"[INFO]: -m: matches re.match(r'{pattern}', self.main), add as `{runner}`.")
                         return runner
                 else:
                     self._log(
@@ -418,13 +428,13 @@ class ZipApp(object):
         }
         for k, v in self.ENV_ALIAS.items():
             kwargs[f"{k}_env"] = repr(v)
-        code = get_data(__name__, "entry_point.py.template").decode("u8")
+        code = _get_package_data("entry_point.py.template").decode("u8")
         (self._cache_path / "__main__.py").write_text(code.format(**kwargs))
 
-        code = get_data(__name__, "ensure_zipapps.py.template").decode("u8")
+        code = _get_package_data("ensure_zipapps.py.template").decode("u8")
         (self._cache_path / "ensure_zipapps.py").write_text(code.format(**kwargs))
 
-        code = get_data(__name__, "activate_zipapps.py").decode("u8")
+        code = _get_package_data("activate_zipapps.py").decode("u8")
         (self._cache_path / "activate_zipapps.py").write_text(code)
         code += "\n\nactivate()"
 
@@ -437,14 +447,17 @@ class ZipApp(object):
         self,
     ):
         ts = str(int(time.time() * 10000000))
-        (self._cache_path / ("_zip_time_%s" % ts)).touch()
+        (self._cache_path / f"_zip_time_{ts}").touch()
         return ts
 
     @staticmethod
     def get_md5(value: typing.Any):
         if not isinstance(value, bytes):
             value = str(value).encode("utf-8")
-        return md5(value).hexdigest()
+        if sys.version_info < (3, 9):
+            # hashlib's usedforsecurity keyword was added in Python 3.9
+            return md5(value).hexdigest()  # noqa: S324  # nosec B324  # cache fingerprint only, not a security primitive
+        return md5(value, usedforsecurity=False).hexdigest()
 
     def prepare_pip(self):
         self.pip_args_md5 = ""
@@ -468,9 +481,7 @@ class ZipApp(object):
                         _r_path = Path(self.LAZY_PIP_DIR_NAME) / path.name
                         self.pip_args[index] = _r_path.as_posix()
                 self.pip_args_md5 = self.get_md5(_md5_str.encode("utf-8"))
-                self._log(
-                    f"[INFO]: pip_args_md5 has been generated: {self.pip_args_md5}"
-                )
+                self._log(f"[INFO]: pip_args_md5 has been generated: {self.pip_args_md5}")
             else:
                 self.pip_install()
 
@@ -493,17 +504,17 @@ class ZipApp(object):
                             pass
 
     @classmethod
-    def _pip_install(cls, target_dir: Path, pip_args: list):
+    def _pip_install(cls, target_dir: Path, pip_args: typing.Optional[list] = None):
         target_dir = Path(target_dir)
         _pip_args = [
             "install",
             "--target",
             target_dir.absolute().as_posix(),
-        ] + pip_args
+        ] + (pip_args or [])
         pip_main = get_pip_main()
         result = pip_main(_pip_args)
         if result != 0:
-            raise RuntimeError("pip install failed: return code=%s" % result)
+            raise RuntimeError(f"pip install failed: return code={result}")
 
     def clean_pip_pycache(self):
         if self.layer_mode:
@@ -534,7 +545,7 @@ class ZipApp(object):
             elif include_path.is_file():
                 shutil.copyfile(include_path, _target_dir / include_path.name)
             else:
-                raise RuntimeError("%s is not exist" % include_path.absolute())
+                raise RuntimeError(f"{include_path.absolute()} is not exist")
 
     def build_exists(self):
         if self.build_id_name and self._output_path.is_file():
@@ -559,7 +570,7 @@ class ZipApp(object):
             try:
                 path = Path(p)
                 build_id_str += str(path.stat().st_mtime)
-            except FileNotFoundError:
+            except FileNotFoundError:  # noqa: PERF203  # build-id paths may disappear between glob/stat and are legitimately skipped
                 pass
         build_id_str = build_id_str or str(self.build_id)
         md5_id = self.get_md5(build_id_str.encode("utf-8"))
@@ -602,7 +613,7 @@ class ZipApp(object):
             output=output,
             interpreter=interpreter,
             compressed=compressed,
-            shell=shell,
+            shell=shell,  # nosec B604  # ZipApp constructor option named shell, not subprocess(shell=True)
             unzip=unzip,
             unzip_path=unzip_path,
             ignore_system_python_path=ignore_system_python_path,
@@ -628,18 +639,16 @@ class ZipApp(object):
     @classmethod
     def _log(cls, text):
         if cls.LOGGING:
-            sys.stderr.write(f'{time.strftime("%Y-%m-%d %H:%M:%S")} | {text}\n')
+            sys.stderr.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} | {text}\n")
 
     def __del__(self):
         if self._tmp_dir:
             self._tmp_dir.cleanup()
             self._log(f"[INFO]: Temp cache has been cleaned. ({self._tmp_dir!r})")
         if self._build_success:
-            self._log(
-                f'[INFO]: {"=" * 10} Successfully built `{self._output_path}` {"=" * 10}'
-            )
+            self._log(f"[INFO]: {'=' * 10} Successfully built `{self._output_path}` {'=' * 10}")
         else:
-            self._log(f'[ERROR]: {"=" * 10} Build failed {"=" * 10}')
+            self._log(f"[ERROR]: {'=' * 10} Build failed {'=' * 10}")
 
 
 def pip_install_target(
