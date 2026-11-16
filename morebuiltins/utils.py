@@ -29,7 +29,6 @@ from typing import (
     AnyStr,
     Callable,
     Dict,
-    get_args,
     Generator,
     List,
     Literal,
@@ -38,6 +37,8 @@ from typing import (
     Tuple,
     Type,
     Union,
+    cast,
+    get_args,
 )
 
 __all__ = [
@@ -123,7 +124,7 @@ def ptime(
         fmt (_type_, optional): strptime fmt. Defaults to "%Y-%m-%d %H:%M:%S".
 
     Returns:
-        str: time string formatted.
+        int: the parsed timestamp.
     """
     fix_tz = -(tzone * 3600 + timezone)
     if timestring:
@@ -133,7 +134,7 @@ def ptime(
 
 
 def slice_into_pieces(items: Sequence, n: int) -> Generator[tuple, None, None]:
-    """Divides a sequence into “n” segments, returning a generator that yields “n” pieces.
+    """Divides a sequence into “n” segments, returning a generator that yields at most “n” pieces.
 
     >>> for chunk in slice_into_pieces(range(10), 3):
     ...     print(chunk)
@@ -142,27 +143,24 @@ def slice_into_pieces(items: Sequence, n: int) -> Generator[tuple, None, None]:
     (8, 9)
 
     Args:
-        seq (_type_): input a sequence.
-        n (_type_): split the given sequence into "n" pieces.
+        items (Sequence): the input sequence.
+        n (int): split the given sequence into at most "n" pieces.
 
     Returns:
         Generator[tuple, None, None]: a generator with tuples.
 
     Yields:
-        Iterator[Generator[tuple, None, None]]: a tuple with n of items.
+        tuple: the next piece of the sequence, at most "n" pieces in total.
     """
     length = len(items)
     if length % n == 0:
         size = length // n
     else:
         size = length // n + 1
-    for it in slice_by_size(items, size):
-        yield it
+    yield from slice_by_size(items, size)
 
 
-def slice_by_size(
-    items: Sequence, size: int, callback=tuple
-) -> Generator[tuple, None, None]:
+def slice_by_size(items: Sequence, size: int, callback=tuple) -> Generator[tuple, None, None]:
     """Slices a sequence into chunks of a specified “size”, returning a generator that produces tuples of chunks.
 
     >>> for chunk in slice_by_size(range(10), 3):
@@ -173,14 +171,16 @@ def slice_by_size(
     (9,)
 
     Args:
-        items (Sequence): _description_
-        size (int): _description_
+        items (Sequence): the input sequence.
+        size (int): the max number of items per chunk.
+        callback (Callable, optional): applied to each islice of the iterator
+            to build a chunk. Defaults to tuple.
 
     Returns:
         Generator[tuple, None, None]: a generator with tuples.
 
     Yields:
-        Iterator[Generator[tuple, None, None]]: a tuple with n of items.
+        tuple: the next chunk with at most `size` items.
     """
     iter_seq = iter(items)
     while True:
@@ -191,9 +191,7 @@ def slice_by_size(
             break
 
 
-def unique(
-    items: Sequence, key: Optional[Callable] = None
-) -> Generator[Any, None, None]:
+def unique(items: Sequence, key: Optional[Callable] = None) -> Generator[Any, None, None]:
     """Removes duplicate elements from a sequence while preserving the original order efficiently.
 
     >>> a = ['01', '1', '2']
@@ -207,10 +205,10 @@ def unique(
         key (Callable): the function to normalize each item.
 
     Returns:
-        Generator[tuple, None, None]: a generator with unique items.
+        Generator[Any, None, None]: a generator with unique items.
 
     Yields:
-        Iterator[Generator[tuple, None, None]]: the unique item.
+        Any: the next unique item, normalized by `key` when given.
     """
     seen: set[Any] = set()
     _add = seen.add
@@ -227,6 +225,36 @@ def unique(
                 _add(item)
 
 
+def _run_with_retry(call, tries, exceptions, return_exception):
+    error = None
+    for _ in range(tries):
+        try:
+            return call()
+        except exceptions as err:  # noqa: PERF203  # retry must catch and accumulate per attempt, so the try stays inside the loop
+            error = err
+    if return_exception:
+        return error
+    # tries >= 1: the loop either returned or captured an exception here
+    if not isinstance(error, BaseException):
+        raise RuntimeError("retry loop finished without an exception")
+    raise error
+
+
+async def _run_with_retry_async(call, tries, exceptions, return_exception):
+    error = None
+    for _ in range(tries):
+        try:
+            return await call()
+        except exceptions as err:  # noqa: PERF203  # retry must catch and accumulate per attempt, so the try stays inside the loop
+            error = err
+    if return_exception:
+        return error
+    # tries >= 1: the loop either returned or captured an exception here
+    if not isinstance(error, BaseException):
+        raise RuntimeError("retry loop finished without an exception")
+    raise error
+
+
 def retry(
     tries=2,
     exceptions: Tuple[Type[BaseException]] = (Exception,),
@@ -239,41 +267,43 @@ def retry(
     >>> new_func = retry(tries=2, exceptions=(ZeroDivisionError,))(func)
     >>> new_func(items)
     1.0
+    >>> try:
+    ...     retry(tries=0)
+    ... except ValueError as e:
+    ...     e
+    ValueError('tries must be >= 1, got 0')
 
     Args:
-        tries (int, optional): try n times, if n==1 means no retry. Defaults to 1.
+        tries (int, optional): try n times, if n==1 means no retry. Defaults to 2.
+            Raises ValueError if tries < 1.
         exceptions (Tuple[Type[BaseException]], optional): only retry the given errors. Defaults to (Exception,).
         return_exception (bool, optional): raise the last exception or return it. Defaults to False.
     """
+    if tries < 1:
+        raise ValueError(f"tries must be >= 1, got {tries}")
 
     def wrapper(function):
         @wraps(function)
         def retry_sync(*args, **kwargs):
-            error = None
-            for _ in range(tries):
-                try:
-                    return function(*args, **kwargs)
-                except exceptions as err:
-                    error = err
-            if error is not None:
-                if return_exception:
-                    return error
-                raise error
+            return _run_with_retry(
+                lambda: function(*args, **kwargs),
+                tries,
+                exceptions,
+                return_exception,
+            )
 
         @wraps(function)
         async def retry_async(*args, **kwargs):
-            error = None
-            for _ in range(tries):
-                try:
-                    return await function(*args, **kwargs)
-                except exceptions as err:
-                    error = err
-            if error is not None:
-                if return_exception:
-                    return error
-                raise error
+            return await _run_with_retry_async(
+                lambda: function(*args, **kwargs),
+                tries,
+                exceptions,
+                return_exception,
+            )
 
-        if asyncio.iscoroutinefunction(function):
+        # asyncio's version also recognizes legacy @asyncio.coroutine-marked
+        # functions, so it is kept deliberately despite the 3.14 deprecation
+        if asyncio.iscoroutinefunction(function):  # pyrefly: ignore[deprecated]
             return retry_async
         else:
             return retry_sync
@@ -311,6 +341,11 @@ def get_hash(
 ) -> str:
     """Generates a hash string from the given input string.
 
+    When `n` is an int, it must be in range 1..len(digest) (32 for md5, 64 for sha256),
+    otherwise ValueError is raised; when `n` is a tuple/list, it is used as a (start, end) slice.
+    Other types (including float) are rejected with ValueError instead of being
+    used in slicing, which would raise TypeError later.
+
     >>> get_hash(123456, 10)
     'a59abbe56e'
     >>> get_hash('test')
@@ -321,6 +356,21 @@ def get_hash(
     'a6072e063d36a09052a9e5eb389a425a3dc158d3a5955808159a118aa192c718'
     >>> get_hash(['list_demo'], 16, func=hashlib.sha256)
     '389a425a3dc158d3'
+    >>> try:
+    ...     get_hash('test', 40)
+    ... except ValueError as e:
+    ...     e
+    ValueError('n must be in range 1..32, got 40')
+    >>> try:
+    ...     get_hash('test', -5)
+    ... except ValueError as e:
+    ...     e
+    ValueError('n must be in range 1..32, got -5')
+    >>> try:
+    ...     get_hash('test', 10.0)
+    ... except ValueError as e:
+    ...     e
+    ValueError('n must be an int or a (start, end) tuple/list, got float')
     """
     if isinstance(string, bytes):
         _bytes = string
@@ -329,12 +379,19 @@ def get_hash(
     _temp = func(_bytes).hexdigest()
     if n is None:
         return _temp
-    elif isinstance(n, (int, float)):
-        start, end = (len(_temp) - n) // 2, (n - len(_temp)) // 2
-        return _temp[start:end]
+    elif isinstance(n, int):
+        if n <= 0 or n > len(_temp):
+            raise ValueError(f"n must be in range 1..{len(_temp)}, got {n}")
+        # end = start + n equals the old centered slice for 1 <= n < len(_temp),
+        # and returns the full digest when n == len(_temp) instead of ""
+        start = (len(_temp) - n) // 2
+        return _temp[start : start + n]
     elif isinstance(n, (tuple, list)):
         start, end = n[0], n[1]
         return _temp[start:end]
+    else:
+        # a float would pass the range check and then blow up in the slice
+        raise ValueError(f"n must be an int or a (start, end) tuple/list, got {type(n).__name__}")
 
 
 def get_hash_int(
@@ -378,6 +435,8 @@ def find_jsons(
     [(6, 8), (9, 11), (17, 25)]
     >>> list(find_jsons('xxxx[{"a": 1, "b": [1,2,3]}]xxxx', return_as='object'))
     [[{'a': 1, 'b': [1, 2, 3]}]]
+    >>> list(find_jsons('xx[unclosed {"a": 1}'))
+    ['{"a": 1}']
     """
 
     def find_matched(string, left, right):
@@ -408,8 +467,9 @@ def find_jsons(
         sub_string = string[_start:]
         _end = find_matched(sub_string, left, right)
         if _end is None:
-            # not found matched, check next left
-            string = sub_string
+            # not found matched, skip this unmatched left bracket
+            string = sub_string[1:]
+            current_start += _start + 1
             continue
         string = sub_string[_end + 1 :]
         try:
@@ -457,10 +517,7 @@ def code_inline(
     _source = zlib.compress(_source, level=9)
     _source = _encoder(_source)
     code = _source.decode("u8")
-    result = (
-        "import base64,zlib;exec(zlib.decompress("
-        f'base64.{encoder}decode("{code}".encode("u8"))))'
-    )
+    result = f'import base64,zlib;exec(zlib.decompress(base64.{encoder}decode("{code}".encode("u8"))))'
     return result
 
 
@@ -556,9 +613,7 @@ def read_size(b, rounded: Optional[int] = None, shorten=False, precision=1.0, se
     )
 
 
-def read_time(
-    secs, rounded: Optional[int] = None, shorten=False, precision=1.0, sep=" "
-):
+def read_time(secs, rounded: Optional[int] = None, shorten=False, precision=1.0, sep=" "):
     """Converts seconds into a more readable time duration string.
 
     >>> read_time(0)
@@ -597,6 +652,8 @@ def read_time(
 
 class Validator:
     """Validator for dataclasses. This is very experimental, choose pydantic or msgspec for production use.
+
+    Note: PEP 563 (`from __future__ import annotations`) is not supported, string annotations cannot be resolved.
 
     >>> from dataclasses import dataclass, field
     >>>
@@ -681,7 +738,7 @@ class Validator:
     ...     c: float
     ...     d: dict
     ...     e: list
-    
+
     >>> CastDemo((1, 2), "123", "1.23", '{"a": 1}', '[1,2]')
     CastDemo(a=[1, 2], b=123, c=1.23, d={'a': 1}, e=[1, 2])
     """
@@ -689,7 +746,7 @@ class Validator:
     STRICT = True
     AUTO_CAST = True
 
-    def __post_init__(self):
+    def __post_init__(self):  # noqa: C901  # per-field state machine: resolve types -> auto cast -> callback -> strict check; splitting per branch obscures the single validation flow
         dataclass_fields = getattr(self, "__dataclass_fields__", {})
         for f in dataclass_fields.values():
             value = getattr(self, f.name)
@@ -711,9 +768,7 @@ class Validator:
                 # Check if already matched
                 matched = False
                 for t in target_types:
-                    if (inspect.isclass(t) and isinstance(value, t)) or (
-                        t is type(None) and value is None
-                    ):
+                    if (inspect.isclass(t) and isinstance(value, t)) or (t is type(None) and value is None):
                         matched = True
                         break
                 if not matched:
@@ -781,7 +836,6 @@ class Validator:
                             setattr(self, f.name, value)
                             break
 
-
             # 3. Callback
             callback = f.metadata.get("callback")
             if callback:
@@ -792,9 +846,7 @@ class Validator:
             if self.STRICT:
                 matched = False
                 for t in target_types:
-                    if (inspect.isclass(t) and isinstance(value, t)) or (
-                        t is type(None) and value is None
-                    ):
+                    if (inspect.isclass(t) and isinstance(value, t)) or (t is type(None) and value is None):
                         matched = True
                         break
                 if not matched:
@@ -805,16 +857,12 @@ class Validator:
                         else:
                             tp_names.append(str(t).replace("typing.", ""))
                     tp_str = "|".join(tp_names)
-                    raise TypeError(
-                        f"`{f.name}` should be `{tp_str}` but given `{type(value).__name__}`"
-                    )
+                    raise TypeError(f"`{f.name}` should be `{tp_str}` but given `{type(value).__name__}`")
 
     def quick_to_dict(self):
         "not very reliable"
         dataclass_fields = getattr(self, "__dataclass_fields__", {})
-        return {
-            field.name: getattr(self, field.name) for field in dataclass_fields.values()
-        }
+        return {field.name: getattr(self, field.name) for field in dataclass_fields.values()}
 
 
 def stagger_sort(items: Sequence, group_key, sort_key=None, sort_reverse=False):
@@ -838,7 +886,7 @@ def stagger_sort(items: Sequence, group_key, sort_key=None, sort_reverse=False):
             try:
                 yield items.pop(0)
                 next_buckets.append(items)
-            except IndexError:
+            except IndexError:  # noqa: PERF203  # each bucket must be skipped individually within the round, so the try stays inside the loop
                 pass
         if next_buckets:
             buckets = next_buckets
@@ -846,9 +894,7 @@ def stagger_sort(items: Sequence, group_key, sort_key=None, sort_reverse=False):
             break
 
 
-def iter_weights(
-    weight_dict: Dict[Any, Union[int, float]], loop_length=100, round_int=round
-):
+def iter_weights(weight_dict: Dict[Any, Union[int, float]], loop_length=100, round_int=round):
     """Generates an element sequence based on weights.
 
     This function produces a sequence of elements where each element's frequency of occurrence
@@ -885,13 +931,12 @@ def iter_weights(
     for key, value in weight_dict.items():
         length = round_int(loop_length * value / total) if value > 0 else 0
         items.extend([key] * length)
-    for item in stagger_sort(
+    yield from stagger_sort(
         items,
         group_key=lambda x: keys.index(x),
         sort_key=lambda x: weight_dict[x],
         sort_reverse=True,
-    ):
-        yield item
+    )
 
 
 def default_dict(typeddict_class: Type[dict], **kwargs):
@@ -1120,7 +1165,7 @@ class Trie(UserDict):
         return default
 
 
-class GuessExt(object):
+class GuessExt:
     r"""Determines whether the input bytes of a file prefix indicate a compressed file format.
 
     >>> cg = GuessExt()
@@ -1201,16 +1246,22 @@ def xor_encode_decode(data, key):
 
 
 def is_running_win32(pid: int):
-    with os.popen('tasklist /fo csv /fi "pid eq %s"' % int(pid)) as f:
-        f.readline()
-        # the second line is the result
-        text = f.readline()
-        return bool(text)
+    proc = subprocess.run(  # noqa: S603  # tasklist ships with Windows; its install path is not a fixed, portable absolute path
+        f'tasklist /fo csv /fi "pid eq {int(pid)}"',
+        capture_output=True,
+    )
+    # the second stdout line is the result row; bytes only, tasklist output
+    # is locale-encoded (e.g. GBK on CJK Windows) and must not be decoded
+    lines = proc.stdout.splitlines()
+    return len(lines) > 1 and bool(lines[1])
 
 
 def is_running_linux(pid: int):
     try:
         os.kill(int(pid), 0)
+        return True
+    except PermissionError:
+        # EPERM: the process exists but belongs to another user
         return True
     except OSError:
         return False
@@ -1231,7 +1282,9 @@ def is_running(pid):
     >>> is_running(os.getpid() * 10)  # Assume process is not running
     False
     >>> current_pid = os.getpid()
-    >>> # sometimes may return False on Windows due to permission issues!
+    >>> # on Windows the answer comes from `tasklist`, which may not report a
+    >>> # process it cannot access, so a False answer there is not conclusive;
+    >>> # on POSIX a PermissionError (EPERM) counts as running
     >>> is_running(current_pid) or is_running(current_pid)  # Check if the current process is running
     True
     >>> is_running("not_a_pid")  # Invalid PID input should be handled and return False
@@ -1248,7 +1301,7 @@ def is_running(pid):
         return is_running_linux(pid)
 
 
-def set_pid_file(
+def set_pid_file(  # noqa: C901  # linear flow: locate caller -> pick dir -> probe old pid -> write and register atexit; splitting it would fragment the lock state
     path: Optional[Union[str, Path]] = None,
     raise_error=False,
     default_dir="",
@@ -1298,8 +1351,6 @@ def set_pid_file(
                         break
                 else:
                     raise ValueError("Could not find caller path")
-                if not caller_path.is_file():
-                    pass
                 parts: list = []
                 for index, part in enumerate(caller_path.as_posix().split("/")[::-1]):
                     if index < default_level:
@@ -1308,15 +1359,18 @@ def set_pid_file(
                         break
                 default_name = "__".join(parts) + ".pid"
             except Exception as e:
-                raise ValueError("Could not set default name for PID file: %s" % e)
+                raise ValueError(f"Could not set default name for PID file: {e}") from e
         if not default_dir:
-            default_dir = Path("/dev/shm")
+            # /dev/shm is the Unix shared-memory dir: every instance of the PID lock
+            # must see the same file. Fall back to the system temp dir where it is absent.
+            default_dir = Path("/dev/shm")  # noqa: S108  # nosec B108  # shared-memory dir is required by the cross-process PID lock
             if not default_dir.is_dir():
                 default_dir = Path(tempfile.gettempdir())
         path = Path(default_dir) / default_name
     if not isinstance(path, Path):
         path = Path(path)
     running = False
+    old_pid = None
     if path.is_file():
         try:
             old_pid = int(path.read_text().strip())
@@ -1336,9 +1390,7 @@ def set_pid_file(
         new_pid = path.read_text().strip()
         if pid_str != new_pid:
             if raise_error:
-                raise RuntimeError(
-                    f"{path.as_posix()} is locked by other process {new_pid}"
-                )
+                raise RuntimeError(f"{path.as_posix()} is locked by other process {new_pid}")
             else:
                 return False
 
@@ -1376,7 +1428,7 @@ def get_paste() -> Union[str, None]:
     finally:
         if _tk:
             _tk.destroy()
-        return text
+    return text
 
 
 def set_clip(text: str):
@@ -1390,21 +1442,26 @@ def set_clip(text: str):
     """
     if sys.platform != "win32":
         raise RuntimeError("set_clip is only supported on Windows, you need pyperclip")
+    path = Path(tempfile.gettempdir()) / "set_clip.txt"
     try:
-        path = Path(tempfile.gettempdir()) / "set_clip.txt"
         path.write_text(text)
-        subprocess.run(
-            f'clip.exe < "{path.name}"',
-            cwd=path.parent.absolute(),
-            shell=True,
-        )
+        with open(path, "rb") as f:
+            # feed the temp file through stdin instead of a shell redirection,
+            # removing the shell=True injection surface while keeping the
+            # same "clip.exe consumes the file bytes" behavior
+            subprocess.run(  # noqa: S603  # clip.exe ships with Windows and has no fixed absolute path
+                ["clip.exe"],  # noqa: S607  # clip.exe ships with Windows and has no fixed absolute path
+                stdin=f,
+            )
     finally:
         path.unlink(missing_ok=True)
 
 
 class Clipboard:
     try:
-        import pyperclip
+        # optional dependency: the ImportError fallback below provides the
+        # tkinter/subprocess implementations when pyperclip is not installed
+        import pyperclip  # pyright: ignore[reportMissingModuleSource]  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-import]
 
         copy = pyperclip.copy
         paste = pyperclip.paste
@@ -1429,14 +1486,15 @@ def switch_flush_print():
 
     orignal_print = getattr(builtins, "orignal_print", None)
     if orignal_print:
-        orignal_print = orignal_print
         if builtins.print is not orignal_print:
             # back to orignal_print
             builtins.print = orignal_print
             return
     else:
         orignal_print = builtins.print
-        setattr(builtins, "orignal_print", orignal_print)
+        # deliberate monkeypatch: stash the original print on builtins so a
+        # later call can restore it; the name is not part of builtins' types
+        builtins.orignal_print = orignal_print  # pyright: ignore[reportAttributeAccessIssue]  # ty: ignore[unresolved-attribute]  # pyrefly: ignore[missing-attribute]
 
     def flush_print(*args, **kwargs):
         if "flush" not in kwargs:
@@ -1444,19 +1502,21 @@ def switch_flush_print():
         return orignal_print(*args, **kwargs)
 
     # set new flush_print
-    builtins.print = flush_print
+    # flush_print mirrors print's public signature, so the monkeypatch is intentional
+    builtins.print = flush_print  # ty: ignore[invalid-assignment]
 
 
 def unix_rlimit(max_mem: Optional[int] = None, max_file_size: Optional[int] = None):
     "Unix only. RLIMIT_RSS, RLIMIT_FSIZE to limit the max_memory and max_file_size"
     if sys.platform == "win32":
-        raise RuntimeError("set_clip is only supported on Windows")
+        raise RuntimeError("unix_rlimit is only supported on Unix")
     import resource
 
     if max_mem is not None:
-        resource.setrlimit(resource.RLIMIT_RSS, (max_mem, max_mem))
+        # resource is Unix-only; the win32 guard above returns before this import
+        resource.setrlimit(resource.RLIMIT_RSS, (max_mem, max_mem))  # pyrefly: ignore[missing-attribute]
     if max_file_size is not None:
-        resource.setrlimit(resource.RLIMIT_FSIZE, (max_file_size, max_file_size))
+        resource.setrlimit(resource.RLIMIT_FSIZE, (max_file_size, max_file_size))  # pyrefly: ignore[missing-attribute]
 
 
 class SimpleFilter:
@@ -1503,37 +1563,61 @@ class SimpleFilter:
         self.has_new = False
         self.w_lock = Lock()
         self.current_thread = current_thread()
+        # set once the with-block is left, so a timer that already fired can
+        # not write the file after the block ended
+        self._closed = False
 
     def add(self, key):
         self.has_new = True
         self.cache.add(key)
-        if not self.timer:
-            self.timer = Timer(self.delay, self.save_cache)
-            self.timer.start()
+        with self.w_lock:
+            # lock the check-then-act, or two threads could start two timers
+            if not self.timer:
+                self.timer = Timer(self.delay, self.save_cache)
+                # Timer.__init__ takes no daemon kwarg, set the attribute instead
+                self.timer.daemon = True
+                self.timer.start()
 
     def exist(self, key):
         return key in self.cache
 
-    def save_cache(self):
+    def save_cache(self, force=False):
         with self.w_lock:
+            if self._closed and not force:
+                # a timer firing before cancel() must not write: the late
+                # write would resurrect the file the next round unlinked.
+                # Checked under w_lock, the same lock that guards the unlink.
+                return
             if self.has_new:
-                self.path.write_bytes(pickle.dumps(self.cache))
+                # write a temp file then atomically replace it, so a
+                # concurrent reader never sees a half-written cache
+                temp = self.path.with_name(f"{self.path.name}.{id(self):x}.tmp")
+                try:
+                    temp.write_bytes(pickle.dumps(self.cache))
+                    os.replace(temp, self.path)
+                finally:
+                    temp.unlink(missing_ok=True)
             if self.timer:
                 if current_thread() is not self.current_thread:
                     # timer finished
                     self.timer = None
 
     def __enter__(self):
+        self._closed = False
         try:
-            self.cache = pickle.loads(self.path.read_bytes())
+            self.cache = pickle.loads(self.path.read_bytes())  # noqa: S301  # nosec B301  # the file is written by this class' own save_cache() via pickle.dumps, a local trusted cache format
         except Exception:
             self.cache = set()
             self.save_cache()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.timer and not self.timer.is_alive():
+        # mark closed before cancel(): cancel() does not wait for a timer that
+        # is already running, and such a timer must not write any more
+        self._closed = True
+        if self.timer is not None:
             self.timer.cancel()
+            self.timer = None
         if exc_type is None:
             # success & finish
             if self.success_unlink:
@@ -1542,7 +1626,7 @@ class SimpleFilter:
                     # remove cache file
                     self.path.unlink(missing_ok=True)
                 return
-        self.save_cache()
+        self.save_cache(force=True)
 
 
 class FileDict(dict):
@@ -1570,6 +1654,9 @@ class FileDict(dict):
         >>> d2.unlink()
     """
 
+    path: str
+    handler: Callable[..., Any]
+
     @classmethod
     def choose_handler(cls, filename):
         ext = os.path.splitext(filename)[1]
@@ -1586,11 +1673,8 @@ class FileDict(dict):
             try:
                 with open(temp, "w") as f:
                     json.dump(obj, f)
-                try:
-                    os.unlink(path)
-                except FileNotFoundError:
-                    pass
-                os.rename(temp, path)
+                # os.replace is atomic and also works on Windows
+                os.replace(temp, path)
             finally:
                 try:
                     os.unlink(temp)
@@ -1598,7 +1682,7 @@ class FileDict(dict):
                     pass
         else:
             try:
-                with open(path, "r") as f:
+                with open(path) as f:
                     return json.load(f)
             except FileNotFoundError:
                 return {}
@@ -1610,11 +1694,8 @@ class FileDict(dict):
             try:
                 with open(temp, "wb") as f:
                     pickle.dump(obj, f)
-                try:
-                    os.unlink(path)
-                except FileNotFoundError:
-                    pass
-                os.rename(temp, path)
+                # os.replace is atomic and also works on Windows
+                os.replace(temp, path)
             finally:
                 try:
                     os.unlink(temp)
@@ -1623,18 +1704,20 @@ class FileDict(dict):
         else:
             try:
                 with open(path, "rb") as f:
-                    return pickle.load(f)
+                    return pickle.load(f)  # noqa: S301  # nosec B301  # FileDict.load only reads .pkl files written by this class' own save()
             except FileNotFoundError:
                 return {}
 
     @classmethod
-    def load(cls, path: str, handler=None):
+    def load(cls, path: str, handler: Optional[Callable[..., Any]] = None):
         path = str(path)
         if not handler:
             handler = cls.choose_handler(str(path))
-        self = cls(handler(path))
-        setattr(self, "path", path)
-        setattr(self, "handler", handler)
+        # load() calls the handler with obj unset, so the save branch is never
+        # taken and the handler always returns a dict here
+        self = cls(cast(dict, handler(path)))
+        self.path = path
+        self.handler = handler
         return self
 
     def save(self):
@@ -1647,9 +1730,7 @@ class FileDict(dict):
             pass
 
 
-def i2b(
-    n: int, length=0, byteorder: Literal["little", "big"] = "big", signed=False
-) -> bytes:
+def i2b(n: int, length=0, byteorder: Literal["little", "big"] = "big", signed=False) -> bytes:
     r"""Convert an int to bytes of a specified length, commonly used in TCP communication.
 
     Parameters:
@@ -1668,11 +1749,11 @@ def i2b(
         3    16M-1
         4     4G-1
         5     1T-1
-        6    64T-1
-        7    16E-1
-        8   256Z-1
-        9    32Y-1
-        10    4P-1
+        6   256T-1
+        7    64P-1
+        8    16E-1
+        9     4Z-1
+        10    1Y-1
 
     >>> i2b(0)
     b''
@@ -1698,7 +1779,7 @@ def i2b(
     return n.to_bytes(length, byteorder=byteorder, signed=signed)
 
 
-def b2i(b: bytes, byteorder="big", signed=False) -> int:
+def b2i(b: bytes, byteorder: Literal["little", "big"] = "big", signed=False) -> int:
     r"""Convert a byte sequence to an integer.
 
     Parameters:
@@ -1729,8 +1810,23 @@ def b2i(b: bytes, byteorder="big", signed=False) -> int:
 
 
 class PathLock:
-    """A Lock/asyncio.Lock of a path, and the child-path lock will block the parent-path.
-    Ensure a path and its child-path are not busy. Can be used in a with statement to avoid race condition, such as rmtree.
+    """A Lock/asyncio.Lock of a path, shared along the path hierarchy.
+
+    Lock resolution is directional, not a guarantee over the whole hierarchy:
+    the same path always shares one lock, so it is mutually exclusive; a child
+    path holding its lock blocks a parent-path request; but a held parent-path
+    lock does NOT block a new child-path request. Can be used in a with
+    statement to avoid race conditions, such as rmtree.
+
+    Args:
+        path: the path to guard.
+        timeout: seconds to wait for the lock. Defaults to None (wait forever).
+        raise_on_timeout: only when True, a lock not acquired within `timeout`
+            raises TimeoutError. Defaults to False, the historical behaviour:
+            the with-block still runs, without holding the lock, and no lock is
+            released on exit. `timeout` and `raise_on_timeout` apply to the
+            thread lock (`with`) only; the async context manager (`async with`)
+            waits without a timeout.
 
     Demo::
 
@@ -1795,17 +1891,66 @@ class PathLock:
 
         test_sync_lock()
         asyncio.run(test_async_lock())
+
+    Examples::
+
+        >>> import tempfile
+        >>> import threading
+        >>> import time
+        >>> lock_path = Path(tempfile.gettempdir()) / "morebuiltins_pathlock_doctest"
+        >>> results = []
+        >>> holder_ready = threading.Event()
+
+        >>> def holder():
+        ...     with PathLock(lock_path, timeout=2):
+        ...         holder_ready.set()
+        ...         time.sleep(0.3)
+        ...         results.append("holder")
+
+        >>> def waiter(raise_on_timeout):
+        ...     try:
+        ...         with PathLock(lock_path, timeout=0.05, raise_on_timeout=raise_on_timeout):
+        ...             results.append("waiter")
+        ...     except TimeoutError:
+        ...         results.append("waiter-timeout")
+
+        >>> # raise_on_timeout=True: the timeout surfaces as TimeoutError
+        >>> thread = threading.Thread(target=holder)
+        >>> thread.start()
+        >>> holder_ready.wait(2)
+        True
+        >>> waiter(True)
+        >>> thread.join()
+        >>> results
+        ['waiter-timeout', 'holder']
+
+        >>> # default raise_on_timeout=False: the body runs anyway, without the lock
+        >>> results.clear()
+        >>> holder_ready.clear()
+        >>> thread = threading.Thread(target=holder)
+        >>> thread.start()
+        >>> holder_ready.wait(2)
+        True
+        >>> waiter(False)
+        >>> thread.join()
+        >>> results
+        ['waiter', 'holder']
     """
 
     GLOBAL_LOCK: Optional[Lock] = None
     LOCKS: List[Tuple[Path, Lock]] = []
     GLOBAL_ALOCK: Optional[asyncio.Lock] = None
     ALOCKS: List[Tuple[Path, asyncio.Lock]] = []
+    # the same attribute holds the thread lock in `with` and the asyncio lock
+    # in `async with`; each context manager stores and uses its own lock type
+    lock: Union[Lock, asyncio.Lock]
 
-    def __init__(self, path: Path, timeout=None):
+    def __init__(self, path: Path, timeout=None, *, raise_on_timeout: bool = False):
         # ensure resolved, avoid the ../../ or softlink problem
         self.path = Path(path).resolve()
         self.timeout = timeout
+        self.raise_on_timeout = raise_on_timeout
+        self._acquired = False
         if self.GLOBAL_LOCK is None:
             self.__class__.GLOBAL_LOCK = Lock()
 
@@ -1824,6 +1969,11 @@ class PathLock:
     def get_lock(self) -> Lock:
         with self.global_lock:
             for path, lock in self.LOCKS:
+                # one-way: a registered entry that is self.path or a
+                # descendant of it shares this lock, so holding a child lock
+                # blocks a parent request. A registered ancestor is ignored,
+                # otherwise a child request would wait for the parent holder
+                # and even a same-thread parent -> child nesting deadlocks.
                 if path.is_relative_to(self.path):
                     self.LOCKS.append((self.path, lock))
                     return lock
@@ -1841,44 +1991,77 @@ class PathLock:
             self.ALOCKS.append((self.path, lock))
             return lock
 
+    def _drop_registration(self, lock: Lock) -> None:
+        """Drop our own registration, without touching other holders.
+
+        Identical tuples make it safe to remove a single occurrence.
+        """
+        with self.global_lock:
+            try:
+                self.LOCKS.remove((self.path, lock))
+            except ValueError:
+                pass
+
     def __enter__(self):
-        self.lock = self.get_lock()
-        if self.timeout:
-            self.lock.acquire(blocking=True, timeout=self.timeout)
-        else:
-            self.lock.acquire(blocking=True)
+        lock = self.get_lock()
+        self.lock = lock
+        self._acquired = False
+        try:
+            if self.timeout:
+                if not lock.acquire(blocking=True, timeout=self.timeout):
+                    if self.raise_on_timeout:
+                        raise TimeoutError(f"PathLock({self.path.as_posix()!r}) timed out after {self.timeout} seconds")
+                    # historical behaviour: run the with-block without the lock.
+                    # _acquired stays False, so __exit__ neither releases nor
+                    # unregisters a lock this context does not hold
+                    self._drop_registration(lock)
+                    return self
+            else:
+                lock.acquire(blocking=True)
+            self._acquired = True
+        except BaseException:
+            self._drop_registration(lock)
+            raise
 
     def __exit__(self, *_):
+        if not self._acquired:
+            # we never got the lock, nothing to remove or release
+            return
+        self._acquired = False
+        # __exit__ only runs after __enter__, which stores the thread lock;
+        # the shared attribute is a union only because __aenter__ reuses it
+        lock = cast(Lock, self.lock)
+        locked = False
         try:
             if self.GLOBAL_LOCK:
                 locked = self.GLOBAL_LOCK.acquire(blocking=True)
-            else:
-                locked = False
-            self.LOCKS.remove((self.path, self.lock))
+            self.LOCKS.remove((self.path, lock))
         except ValueError:
             pass
         finally:
             if self.GLOBAL_LOCK and locked:
                 self.GLOBAL_LOCK.release()
-        self.lock.release()
+        lock.release()
 
     async def __aenter__(self):
-        self.lock = await self.get_alock()
-        await self.lock.acquire()
+        alock = await self.get_alock()
+        self.lock = alock
+        await alock.acquire()
 
     async def __aexit__(self, *_):
+        # __aexit__ only runs after __aenter__, which stores the asyncio lock
+        alock = cast(asyncio.Lock, self.lock)
+        locked = False
         try:
             if self.GLOBAL_ALOCK:
                 locked = await self.GLOBAL_ALOCK.acquire()
-            else:
-                locked = False
-            self.ALOCKS.remove((self.path, self.lock))
+            self.ALOCKS.remove((self.path, alock))
         except ValueError:
             pass
         finally:
             if self.GLOBAL_ALOCK and locked:
                 self.GLOBAL_ALOCK.release()
-        self.lock.release()
+        alock.release()
 
 
 def get_size(obj, seen=None, iterate_unsafe=False) -> int:
@@ -1927,9 +2110,7 @@ def get_size(obj, seen=None, iterate_unsafe=False) -> int:
         size += sum([get_size(k, seen, iterate_unsafe) for k in obj.keys()])
     elif hasattr(obj, "__dict__"):
         size += get_size(obj.__dict__, seen, iterate_unsafe)
-    elif isinstance(obj, types.GeneratorType) or isinstance(
-        obj, collections.abc.Iterator
-    ):
+    elif isinstance(obj, types.GeneratorType) or isinstance(obj, collections.abc.Iterator):
         if iterate_unsafe:
             # Warning: this will consume the generator/iterator
             size += sum([get_size(i, seen, iterate_unsafe) for i in obj])
@@ -1946,13 +2127,18 @@ def base_encode(
     """Encode a number to a base-N string.
 
     Args:
-        num (int): The number to encode.
+        num (int): The number to encode. Must be non-negative, otherwise ValueError is raised.
         alphabet (str, optional): Defaults to "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", which follows the order of ASCII characters.
 
     Returns:
         str: The encoded string.
 
     Examples:
+    >>> try:
+    ...     base_encode(-5)
+    ... except ValueError as e:
+    ...     e
+    ValueError('num must be a non-negative int, got -5')
     >>> base_encode(0)
     '0'
     >>> base_encode(1)
@@ -1984,6 +2170,9 @@ def base_encode(
     >>> sorted(a) == a
     True
     """
+    if num < 0:
+        # divmod of a negative num is a fixed point, the loop below would never end
+        raise ValueError(f"num must be a non-negative int, got {num}")
     length = len(alphabet)
     result = ""
     while num:
@@ -1994,13 +2183,13 @@ def base_encode(
 
 def base_decode(
     string: str,
-    alphabet: str = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    alphabet: str = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
 ) -> int:
     """Decode a base-N string to a number.
 
     Args:
         string (str): The string to decode.
-        alphabet (str, optional): Defaults to "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".
+        alphabet (str, optional): Defaults to "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", the same alphabet as `base_encode`.
 
     Returns:
         int: The decoded number.
@@ -2010,8 +2199,10 @@ def base_decode(
     0
     >>> base_decode("1")
     1
-    >>> base_decode("2Q3rKTOE")
+    >>> base_decode("2q3Rktoe")
     10000000000000
+    >>> base_decode(base_encode(123456789))
+    123456789
     >>> base_decode("10000000000000", "0123456789")
     10000000000000
     """
@@ -2023,7 +2214,7 @@ def base_decode(
 
 
 def gen_id(rand_len=4, sep="_") -> str:
-    """Generate a readable & unique ID based on the current time(ms) and random bytes.
+    """Generate a readable & unique ID based on the current time(us) and random bytes.
     The performance is about 400000 IDs per second.
 
     If rand_len=0 the length of ID will be 18, rand_len=4 the length of ID will be 22.
@@ -2034,15 +2225,17 @@ def gen_id(rand_len=4, sep="_") -> str:
 
     rand_len |  urandom_size  |    Safe Range
     ---------------------------------------------
-         2    |         1      |       10
-         4    |         2      |      100
-         6    |         3      |     1000
-         8    |         4      |    10000
-        10    |         5      |   100000
-        12    |         6      |  1000000
-        14    |         7      | 10000000
+         2    |         2      |       10
+         4    |         3      |      100
+         6    |         4      |     1000
+         8    |         5      |    10000
+        10    |         6      |   100000
+        12    |         7      |  1000000
+        14    |         8      | 10000000
 
-    Seems like rand_len -> 10 ** (rand_len // 2) safe range.
+    urandom_size is the real number of random bytes read, `rand_len // 2 + 1`.
+    The actual random space is 16 ** rand_len, so the Safe Range above is a
+    conservative value.
 
     Args:
         rand_len (int, optional): Defaults to 4.
@@ -2063,7 +2256,7 @@ def gen_id(rand_len=4, sep="_") -> str:
     >>> # gen_id() => 251111_235204_0xYfc4f8
     >>> # gen_id(sep="") => 2511112352291nTq972c
     """
-    now = datetime.now()
+    now = datetime.now()  # noqa: DTZ005  # id segments encode the user-visible local clock, naive by design (same as date.py)
     s1 = now.strftime(f"%y%m%d{sep}%H%M%S")
     s2 = base_encode(now.microsecond)
     if rand_len:
@@ -2098,9 +2291,7 @@ def timeti(
     >>> timeti(lambda : 1 + 1, number=100000) > 100000
     True
     """
-    result = timeit.timeit(
-        stmt=stmt, setup=setup, timer=timer, number=number, globals=globals
-    )
+    result = timeit.timeit(stmt=stmt, setup=setup, timer=timer, number=number, globals=globals)
     return int(1 / (result / number))
 
 
@@ -2200,9 +2391,7 @@ class SnowFlake:
 
     def get_max_timestamp(self):
         """Get maximum timestamp that can be represented"""
-        return (1 << (self.max_bits - self.sign_bit)) - 1 >> (
-            self.seq_bit + self.worker_id_bit + self.machine_id_bit
-        )
+        return (1 << (self.max_bits - self.sign_bit)) - 1 >> (self.seq_bit + self.worker_id_bit + self.machine_id_bit)
 
     def timestamp_overflow_check(self):
         """Check how many milliseconds left until timestamp overflows"""
@@ -2220,9 +2409,7 @@ class SnowFlake:
     def _wait_next_millis(self, last_timestamp):
         """Wait until next millisecond"""
         if not self.wait_for_next_ms:
-            raise RuntimeError(
-                f"Over {self.max_seq} IDs generated in 1ms, increase the wait_for_next_ms parameter"
-            )
+            raise RuntimeError(f"Over {self.max_seq} IDs generated in 1ms, increase the wait_for_next_ms parameter")
         timestamp = self._ms_passed()
         while timestamp <= last_timestamp:
             timestamp = self._ms_passed()
@@ -2250,12 +2437,7 @@ class SnowFlake:
 
         self.last_timestamp = now
         # Compose ID from components
-        return (
-            (now << self.timestamp_shift)
-            | (self.machine_id_part)
-            | (self.worker_id_part)
-            | self.seq
-        )
+        return (now << self.timestamp_shift) | (self.machine_id_part) | (self.worker_id_part) | self.seq
 
 
 def cut_file(path_or_file, max_bytes, remain_ratio=0.5, ensure_line_start=False):
@@ -2283,6 +2465,7 @@ def cut_file(path_or_file, max_bytes, remain_ratio=0.5, ensure_line_start=False)
     b''
     """
     need_close = False
+    f = None
     try:
         if isinstance(path_or_file, (str, Path)):
             f = open(path_or_file, "r+b")
@@ -2302,7 +2485,9 @@ def cut_file(path_or_file, max_bytes, remain_ratio=0.5, ensure_line_start=False)
             f.write(left)
             f.flush()
     finally:
-        if need_close:
+        # f stays None only when open() itself failed, in which case need_close
+        # is still False; the explicit check keeps the type checker happy
+        if need_close and f is not None:
             f.close()
 
 
