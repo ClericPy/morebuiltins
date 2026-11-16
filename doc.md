@@ -693,7 +693,9 @@ Examples:
 >>> is_running(os.getpid() * 10)  # Assume process is not running
 False
 >>> current_pid = os.getpid()
->>> # sometimes may return False on Windows due to permission issues!
+>>> # on Windows the answer comes from `tasklist`, which may not report a
+>>> # process it cannot access, so a False answer there is not conclusive;
+>>> # on POSIX a PermissionError (EPERM) counts as running
 >>> is_running(current_pid) or is_running(current_pid)  # Check if the current process is running
 True
 >>> is_running("not_a_pid")  # Invalid PID input should be handled and return False
@@ -901,11 +903,22 @@ Demo::
 
 
 ```python
-A path and its child-path are guaranteed not to be busy at the same
-time, with a one-way rule: a registered child-path lock also blocks a
-parent-path request, while a held parent-path lock does not block a new
-child-path request. Can be used in a with statement to avoid race
-condition, such as rmtree.
+
+Lock resolution is directional, not a guarantee over the whole hierarchy:
+the same path always shares one lock, so it is mutually exclusive; a child
+path holding its lock blocks a parent-path request; but a held parent-path
+lock does NOT block a new child-path request. Can be used in a with
+statement to avoid race conditions, such as rmtree.
+
+Args:
+    path: the path to guard.
+    timeout: seconds to wait for the lock. Defaults to None (wait forever).
+    raise_on_timeout: only when True, a lock not acquired within `timeout`
+        raises TimeoutError. Defaults to False, the historical behaviour:
+        the with-block still runs, without holding the lock, and no lock is
+        released on exit. `timeout` and `raise_on_timeout` apply to the
+        thread lock (`with`) only; the async context manager (`async with`)
+        waits without a timeout.
 
 Demo::
 
@@ -978,28 +991,42 @@ Examples::
     >>> import time
     >>> lock_path = Path(tempfile.gettempdir()) / "morebuiltins_pathlock_doctest"
     >>> results = []
-
-    >>> # same-path: the second acquire must raise TimeoutError
     >>> holder_ready = threading.Event()
+
     >>> def holder():
     ...     with PathLock(lock_path, timeout=2):
     ...         holder_ready.set()
     ...         time.sleep(0.3)
     ...         results.append("holder")
-    >>> def waiter():
+
+    >>> def waiter(raise_on_timeout):
     ...     try:
-    ...         with PathLock(lock_path, timeout=0.05):
+    ...         with PathLock(lock_path, timeout=0.05, raise_on_timeout=raise_on_timeout):
     ...             results.append("waiter")
     ...     except TimeoutError:
     ...         results.append("waiter-timeout")
+
+    >>> # raise_on_timeout=True: the timeout surfaces as TimeoutError
     >>> thread = threading.Thread(target=holder)
     >>> thread.start()
     >>> holder_ready.wait(2)
     True
-    >>> waiter()
+    >>> waiter(True)
     >>> thread.join()
     >>> results
     ['waiter-timeout', 'holder']
+
+    >>> # default raise_on_timeout=False: the body runs anyway, without the lock
+    >>> results.clear()
+    >>> holder_ready.clear()
+    >>> thread = threading.Thread(target=holder)
+    >>> thread.start()
+    >>> holder_ready.wait(2)
+    True
+    >>> waiter(False)
+    >>> thread.join()
+    >>> results
+    ['waiter', 'holder']
 
 ```
 
@@ -1563,6 +1590,14 @@ Args:
 Returns:
     callable: decorator function
 
+Notes:
+    - `maxsize <= 0` disables caching and returns the function unchanged, so
+      `.cache`/`.ttl_clean` are not set even with `controls=True`.
+    - With `controls=True`, `.cache` maps an argument tuple (kwargs sorted by
+      name) to `(result,)` or `(result, expire_ts)`; it is not the old
+      hash-int-keyed dict, so keys read as tuples.
+    - Unhashable arguments are not cached and fall through to the function.
+
 >>> import time
 >>> # test ttl
 >>> values = [1, 2]
@@ -2098,7 +2133,9 @@ Demo::
 
     >>> import time
     >>> calls = []
-    >>> @debounce(0.05)
+    >>> # wide margins (0.2s window, 0.4-0.5s sleeps) keep this stable on a
+    >>> # loaded machine; a tight 0.05s window makes the doctest flaky
+    >>> @debounce(0.2)
     ... def lead(value):
     ...     calls.append(value)
     ...     return value
@@ -2106,29 +2143,29 @@ Demo::
     0
     >>> lead(1) is None  # inside the window: dropped
     True
-    >>> time.sleep(0.1)
+    >>> time.sleep(0.4)
     >>> lead(2)  # window elapsed: runs again
     2
     >>> calls
     [0, 2]
-    >>> @debounce(0.05, mode="trailing")
+    >>> @debounce(0.2, mode="trailing")
     ... def trail(value):
     ...     calls.append(value)
     ...     return value
     >>> [trail(i) for i in range(5)]  # every call just resets the timer
     [None, None, None, None, None]
-    >>> time.sleep(0.15)  # window closed: only the last call runs
+    >>> time.sleep(0.5)  # window closed: only the last call runs
     >>> calls[-1]
     4
     >>> async def main():
     ...     seen = []
-    ...     @debounce(0.05)
+    ...     @debounce(0.2)
     ...     async def alead(value):
     ...         seen.append(value)
     ...         return value
     ...     first = await alead(0)
     ...     second = await alead(1)
-    ...     await asyncio.sleep(0.1)
+    ...     await asyncio.sleep(0.4)
     ...     third = await alead(2)
     ...     return first, second, third, seen
     >>> asyncio.run(main())

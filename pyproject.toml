@@ -15,3 +15,31 @@ scripts = {morebuiltins = "morebuiltins.cmd.bin._runner:runner"}
 
 [project.urls]
 Home = "https://github.com/ClericPy/morebuiltins"
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "S", "PERF", "B", "UP", "DTZ"]
+# E501: docstrings are this project's product (they generate doc.md/README) and
+# doctest expected-output lines cannot be wrapped without breaking the tests.
+# Code line length is enforced by `ruff format` instead of the linter.
+ignore = ["E501", "W291", "W293", "E203"]
+
+[tool.ruff.lint.per-file-ignores]
+# standalone self-check script: asserts are the test mechanism
+"test.py" = ["S101"]
+"morebuiltins/zipapps/__main__.py" = ["S101"]
+
+# Scratch scripts (temp*.py) are gitignored and are not part of the package;
+# keep type checkers off them so the gate reflects the shipped code.
+[tool.pyright]
+exclude = ["temp*.py", "**/temp*.py", ".cache", ".venv", "dist", "morebuiltins.pyz"]
+
+[tool.pyrefly]
+use-ignore-files = true
+project-excludes = ["temp*.py", "**/temp*.py", ".cache", ".venv", "dist", "morebuiltins.pyz"]
+
+[tool.ty.src]
+exclude = ["temp*.py", "**/temp*.py", ".cache", ".venv", "dist", "morebuiltins.pyz"]

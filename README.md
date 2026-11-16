@@ -75,7 +75,7 @@ print(morebuiltins.__file__)
 
 1.2 `ptime` - Parses a timestring formatted as %Y-%m-%d %H:%M:%S back into a timestamp.
 
-1.3 `slice_into_pieces` - Divides a sequence into “n” segments, returning a generator that yields “n” pieces.
+1.3 `slice_into_pieces` - Divides a sequence into “n” segments, returning a generator that yields at most “n” pieces.
 
 1.4 `slice_by_size` - Slices a sequence into chunks of a specified “size”, returning a generator that produces tuples of chunks.
 
@@ -127,7 +127,7 @@ print(morebuiltins.__file__)
 
 1.28 `FileDict` - A dict that can be saved to a file.
 
-1.29 `PathLock` - A Lock/asyncio.Lock of a path, and the child-path lock will block the parent-path.
+1.29 `PathLock` - A Lock/asyncio.Lock of a path, shared along the path hierarchy.
 
 1.30 `i2b` - Convert an int to bytes of a specified length, commonly used in TCP communication.
 
@@ -143,7 +143,7 @@ print(morebuiltins.__file__)
 
 1.36 `base_decode` - Decode a base-N string to a number.
 
-1.37 `gen_id` - Generate a readable & unique ID based on the current time(ms) and random bytes.
+1.37 `gen_id` - Generate a readable & unique ID based on the current time(us) and random bytes.
 
 1.38 `timeti` - Return the number of iterations per second for a given statement.
 
@@ -183,18 +183,30 @@ print(morebuiltins.__file__)
 
 3.12 `check_recursion` - Check if a function is recursive by inspecting its AST.
 
-3.13 `debounce` - Debounce a function, delaying its execution until after a specified wait time.
+3.13 `debounce` - Debounce a function, rate-limiting (leading) or delaying (trailing) its execution.
 
 3.14 `async_call` - Automatically call a function asynchronously, whether it's sync or async.
+
+3.15 `countdown` - A simple countdown timer that prints to the console inline.
+
+3.17 `LineProfiler` - Line-by-line performance profiler.
+
+3.18 `line_profiler` - Decorator to profile a function line-by-line.
 
 
 ## 4. morebuiltins.ipc
 
 4.1 `IPCEncoder` - An abstract base class for all encoders; implementing the necessary communication protocol requires only the definition of two abstract methods. Be mindful that varying header lengths will impact the maximum packaging size.
 
+4.2 `JSONEncoder` - JSON text encoder (UTF-8); see IPCEncoder.dumps/loads for the frame convention.
+
+4.3 `PickleEncoder` - Pickle bytes encoder; only use it between trusted peers, pickle can execute arbitrary code on load.
+
 4.4 `SocketLogHandlerEncoder` - For a practical demonstration, refer to the test code: morebuiltins/ipc.py:_test_ipc_logging.
 
 4.5 `SocketServer` - To see an example in action, view the test code: morebuiltins/ipc.py:_test_ipc.
+
+4.6 `SocketClient` - Client counterpart to SocketServer: use `async with SocketClient(host, port, encoder=...)`,
 
 4.7 `find_free_port` - Finds and returns an available port number.
 
@@ -213,12 +225,14 @@ print(morebuiltins.__file__)
 
 5.6 `make_response` - Generates an HTTP response based on the provided parameters.
 
-5.7 `custom_dns` - Custom the DNS of socket.getaddrinfo, only effect current thread.
+5.7 `custom_dns` - Patch socket.getaddrinfo to translate hosts/ports through a custom map.
+
+5.8 `restore_dns` - Restore socket.getaddrinfo to the original function frozen at import time.
 
 
 ## 6. morebuiltins.download_python
 
-6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m download_python -i` or `python -m download_python -a`(auto download the latest version matched the current platform: x86_64+install_only) or `python -m download_python --auto -k 3.11 -u`
+6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases.
 
 
 ## 7. morebuiltins.tk
@@ -235,6 +249,8 @@ print(morebuiltins.__file__)
 
 9.1 `LogServer` - Log server for SocketHandler, create a socket server with asyncio.start_server. Custom formatter or rotation strategy with extra in log record.
 
+9.2 `get_logger` - Get a singleton logger that sends logs to the LogServer.
+
 
 ## 10. morebuiltins.cmd.proxy_checker
 
@@ -242,6 +258,8 @@ print(morebuiltins.__file__)
 
 
 ## 11. morebuiltins.cmd.ui
+
+11.1 `launch_ui` - Interactive mode, value can be parsed by JSON parser.
 
 11.2 `handle_cli` - Command Line Interface: interactive mode
 
@@ -309,7 +327,7 @@ print(morebuiltins.__file__)
 ## cmd utils
 
 1. download_python
-   1. `python -m morebuiltins.cmd.download_python -a -k 3.11 -u`
+   1. `python -m morebuiltins.download_python -a -k 3.11 -u`
    2. `-a` will filt with current platform(x86_64+install_only), `-k` is the keywords, `-u` will unzip the tar.gz
 2. zipapps
    1. `python -m morebuiltins.zipapps -h`
