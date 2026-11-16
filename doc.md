@@ -39,7 +39,7 @@ Args:
     fmt (_type_, optional): strptime fmt. Defaults to "%Y-%m-%d %H:%M:%S".
 
 Returns:
-    str: time string formatted.
+    int: the parsed timestamp.
 
 ```
 
@@ -48,7 +48,7 @@ Returns:
 
 
 
-1.3 `slice_into_pieces` - Divides a sequence into “n” segments, returning a generator that yields “n” pieces.
+1.3 `slice_into_pieces` - Divides a sequence into “n” segments, returning a generator that yields at most “n” pieces.
 
 
 ```python
@@ -60,14 +60,14 @@ Returns:
 (8, 9)
 
 Args:
-    seq (_type_): input a sequence.
-    n (_type_): split the given sequence into "n" pieces.
+    items (Sequence): the input sequence.
+    n (int): split the given sequence into at most "n" pieces.
 
 Returns:
     Generator[tuple, None, None]: a generator with tuples.
 
 Yields:
-    Iterator[Generator[tuple, None, None]]: a tuple with n of items.
+    tuple: the next piece of the sequence, at most "n" pieces in total.
 
 ```
 
@@ -89,14 +89,16 @@ Yields:
 (9,)
 
 Args:
-    items (Sequence): _description_
-    size (int): _description_
+    items (Sequence): the input sequence.
+    size (int): the max number of items per chunk.
+    callback (Callable, optional): applied to each islice of the iterator
+        to build a chunk. Defaults to tuple.
 
 Returns:
     Generator[tuple, None, None]: a generator with tuples.
 
 Yields:
-    Iterator[Generator[tuple, None, None]]: a tuple with n of items.
+    tuple: the next chunk with at most `size` items.
 
 ```
 
@@ -121,10 +123,10 @@ Args:
     key (Callable): the function to normalize each item.
 
 Returns:
-    Generator[tuple, None, None]: a generator with unique items.
+    Generator[Any, None, None]: a generator with unique items.
 
 Yields:
-    Iterator[Generator[tuple, None, None]]: the unique item.
+    Any: the next unique item, normalized by `key` when given.
 
 ```
 
@@ -143,9 +145,15 @@ Yields:
 >>> new_func = retry(tries=2, exceptions=(ZeroDivisionError,))(func)
 >>> new_func(items)
 1.0
+>>> try:
+...     retry(tries=0)
+... except ValueError as e:
+...     e
+ValueError('tries must be >= 1, got 0')
 
 Args:
-    tries (int, optional): try n times, if n==1 means no retry. Defaults to 1.
+    tries (int, optional): try n times, if n==1 means no retry. Defaults to 2.
+        Raises ValueError if tries < 1.
     exceptions (Tuple[Type[BaseException]], optional): only retry the given errors. Defaults to (Exception,).
     return_exception (bool, optional): raise the last exception or return it. Defaults to False.
 
@@ -181,6 +189,11 @@ Args:
 
 ```python
 
+When `n` is an int, it must be in range 1..len(digest) (32 for md5, 64 for sha256),
+otherwise ValueError is raised; when `n` is a tuple/list, it is used as a (start, end) slice.
+Other types (including float) are rejected with ValueError instead of being
+used in slicing, which would raise TypeError later.
+
 >>> get_hash(123456, 10)
 'a59abbe56e'
 >>> get_hash('test')
@@ -191,6 +204,21 @@ Args:
 'a6072e063d36a09052a9e5eb389a425a3dc158d3a5955808159a118aa192c718'
 >>> get_hash(['list_demo'], 16, func=hashlib.sha256)
 '389a425a3dc158d3'
+>>> try:
+...     get_hash('test', 40)
+... except ValueError as e:
+...     e
+ValueError('n must be in range 1..32, got 40')
+>>> try:
+...     get_hash('test', -5)
+... except ValueError as e:
+...     e
+ValueError('n must be in range 1..32, got -5')
+>>> try:
+...     get_hash('test', 10.0)
+... except ValueError as e:
+...     e
+ValueError('n must be an int or a (start, end) tuple/list, got float')
 
 ```
 
@@ -212,6 +240,8 @@ Args:
 [(6, 8), (9, 11), (17, 25)]
 >>> list(find_jsons('xxxx[{"a": 1, "b": [1,2,3]}]xxxx', return_as='object'))
 [[{'a': 1, 'b': [1, 2, 3]}]]
+>>> list(find_jsons('xx[unclosed {"a": 1}'))
+['{"a": 1}']
 
 ```
 
@@ -338,6 +368,8 @@ Returns:
 
 
 ```python
+
+Note: PEP 563 (`from __future__ import annotations`) is not supported, string annotations cannot be resolved.
 
 >>> from dataclasses import dataclass, field
 >>>
@@ -865,11 +897,15 @@ Demo::
 
 
 
-1.29 `PathLock` - A Lock/asyncio.Lock of a path, and the child-path lock will block the parent-path.
+1.29 `PathLock` - A Lock/asyncio.Lock of a path, shared along the path hierarchy.
 
 
 ```python
-Ensure a path and its child-path are not busy. Can be used in a with statement to avoid race condition, such as rmtree.
+A path and its child-path are guaranteed not to be busy at the same
+time, with a one-way rule: a registered child-path lock also blocks a
+parent-path request, while a held parent-path lock does not block a new
+child-path request. Can be used in a with statement to avoid race
+condition, such as rmtree.
 
 Demo::
 
@@ -935,6 +971,36 @@ Demo::
     test_sync_lock()
     asyncio.run(test_async_lock())
 
+Examples::
+
+    >>> import tempfile
+    >>> import threading
+    >>> import time
+    >>> lock_path = Path(tempfile.gettempdir()) / "morebuiltins_pathlock_doctest"
+    >>> results = []
+
+    >>> # same-path: the second acquire must raise TimeoutError
+    >>> holder_ready = threading.Event()
+    >>> def holder():
+    ...     with PathLock(lock_path, timeout=2):
+    ...         holder_ready.set()
+    ...         time.sleep(0.3)
+    ...         results.append("holder")
+    >>> def waiter():
+    ...     try:
+    ...         with PathLock(lock_path, timeout=0.05):
+    ...             results.append("waiter")
+    ...     except TimeoutError:
+    ...         results.append("waiter-timeout")
+    >>> thread = threading.Thread(target=holder)
+    >>> thread.start()
+    >>> holder_ready.wait(2)
+    True
+    >>> waiter()
+    >>> thread.join()
+    >>> results
+    ['waiter-timeout', 'holder']
+
 ```
 
 
@@ -963,11 +1029,11 @@ Length  Maximum::
     3    16M-1
     4     4G-1
     5     1T-1
-    6    64T-1
-    7    16E-1
-    8   256Z-1
-    9    32Y-1
-    10    4P-1
+    6   256T-1
+    7    64P-1
+    8    16E-1
+    9     4Z-1
+    10    1Y-1
 
 >>> i2b(0)
 b''
@@ -1143,13 +1209,18 @@ True
 ```python
 
 Args:
-    num (int): The number to encode.
+    num (int): The number to encode. Must be non-negative, otherwise ValueError is raised.
     alphabet (str, optional): Defaults to "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", which follows the order of ASCII characters.
 
 Returns:
     str: The encoded string.
 
 Examples:
+>>> try:
+...     base_encode(-5)
+... except ValueError as e:
+...     e
+ValueError('num must be a non-negative int, got -5')
 >>> base_encode(0)
 '0'
 >>> base_encode(1)
@@ -1195,7 +1266,7 @@ True
 
 Args:
     string (str): The string to decode.
-    alphabet (str, optional): Defaults to "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".
+    alphabet (str, optional): Defaults to "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", the same alphabet as `base_encode`.
 
 Returns:
     int: The decoded number.
@@ -1205,8 +1276,10 @@ Examples:
 0
 >>> base_decode("1")
 1
->>> base_decode("2Q3rKTOE")
+>>> base_decode("2q3Rktoe")
 10000000000000
+>>> base_decode(base_encode(123456789))
+123456789
 >>> base_decode("10000000000000", "0123456789")
 10000000000000
 
@@ -1217,7 +1290,7 @@ Examples:
 
 
 
-1.37 `gen_id` - Generate a readable & unique ID based on the current time(ms) and random bytes.
+1.37 `gen_id` - Generate a readable & unique ID based on the current time(us) and random bytes.
 
 
 ```python
@@ -1231,15 +1304,17 @@ The following table shows the relationship between rand_len and the safe range o
 
 rand_len |  urandom_size  |    Safe Range
 ---------------------------------------------
-     2    |         1      |       10
-     4    |         2      |      100
-     6    |         3      |     1000
-     8    |         4      |    10000
-    10    |         5      |   100000
-    12    |         6      |  1000000
-    14    |         7      | 10000000
+     2    |         2      |       10
+     4    |         3      |      100
+     6    |         4      |     1000
+     8    |         5      |    10000
+    10    |         6      |   100000
+    12    |         7      |  1000000
+    14    |         8      | 10000000
 
-Seems like rand_len -> 10 ** (rand_len // 2) safe range.
+urandom_size is the real number of random bytes read, `rand_len // 2 + 1`.
+The actual random space is 16 ** rand_len, so the Safe Range above is a
+conservative value.
 
 Args:
     rand_len (int, optional): Defaults to 4.
@@ -1386,6 +1461,11 @@ Demo:
 >>> list(ScheduleTimer.iter_datetimes("!%H=12", count=2, start_date=noon, callback=str))
 ['2023-02-01 13:00:00', '2023-02-01 13:01:00']
 
+Notes:
+    - count is the number of matches: a callback returning the same value
+      on every match is still yielded once per match, so count items are
+      produced (unlike Crontab, where count counts distinct values).
+
 ```
 
 
@@ -1422,6 +1502,17 @@ Demo:
 ['2023-02-01 00:00:00', '2023-02-01 00:15:00']
 >>> list(Crontab.iter_datetimes("0 9 1 * 5", count=5, start_date=start_date, callback=str))
 ['2023-02-01 09:00:00', '2023-02-03 09:00:00', '2023-02-10 09:00:00', '2023-02-17 09:00:00', '2023-02-24 09:00:00']
+>>> # "*/2" starts with a "*", so it is unrestricted: ANDed with the weekday.
+>>> list(Crontab.iter_datetimes("0 0 */2 * 1", count=3, start_date=start_date, callback=str))
+['2023-02-13 00:00:00', '2023-02-27 00:00:00', '2023-03-13 00:00:00']
+>>> # "1-31" does not start with a "*", so both fields are restricted: ORed, hence every day.
+>>> list(Crontab.iter_datetimes("0 0 1-31 * 1", count=3, start_date=start_date, callback=str))
+['2023-02-01 00:00:00', '2023-02-02 00:00:00', '2023-02-03 00:00:00']
+>>> # Only the first character matters: "10,*" is restricted (ORed, hence every day), "*,10" is not.
+>>> list(Crontab.iter_datetimes("0 0 10,* * 2", count=3, start_date=start_date, callback=str))
+['2023-02-01 00:00:00', '2023-02-02 00:00:00', '2023-02-03 00:00:00']
+>>> list(Crontab.iter_datetimes("0 0 *,10 * 2", count=3, start_date=start_date, callback=str))
+['2023-02-07 00:00:00', '2023-02-14 00:00:00', '2023-02-21 00:00:00']
 >>> list(Crontab.iter_datetimes("abc * * * *", count=1, start_date=start_date))
 Traceback (most recent call last):
     ...
@@ -1432,9 +1523,20 @@ Notes:
     - Malformed or out-of-range fields raise ValueError instead of silently
       returning a pattern that never matches.
     - Day-of-month and day-of-week follow Vixie cron: they are ANDed when
-      either field is unrestricted ("*"), and ORed when both are restricted.
+      either field is unrestricted, and ORed when both are restricted.
+      A field is unrestricted only when it **starts** with `*`, matching
+      cronie's entry.c, which sets DOM_STAR/DOW_STAR from the field's first
+      character (the man page's looser "contain" wording is not what the
+      code does, so `10,*` is restricted). The criterion is also not "the
+      parsed set covers the whole range", since `*/2` parses to a subset yet
+      is still unrestricted.
     - ValueError is raised when no match is found within max_tries, instead
       of silently yielding nothing.
+    - count counts distinct callback values: consecutive equal callback
+      results are yielded once, so a callback returning a constant (or
+      None) raises ValueError once max_tries is exhausted instead of
+      yielding duplicates. So count counts distinct values here, not
+      matches (unlike ScheduleTimer, where count is the number of matches).
 
 ```
 
@@ -1498,6 +1600,42 @@ Returns:
 4
 >>> len(func1.cache)
 3
+>>> # test kwargs order insensitive
+>>> kw_calls = []
+>>> @lru_cache_ttl(5, controls=True)
+... def kwfunc(a=0, b=0):
+...     kw_calls.append((a, b))
+...     return a + b
+>>> kwfunc(a=1, b=2)
+3
+>>> kwfunc(b=2, a=1)
+3
+>>> len(kwfunc.cache)
+1
+>>> # test unhashable args: not cached, the original function is called
+>>> list_calls = []
+>>> @lru_cache_ttl(5, controls=True)
+... def listfunc(items):
+...     list_calls.append(items)
+...     return sum(items)
+>>> listfunc([1, 2])
+3
+>>> listfunc([1, 2])
+3
+>>> len(list_calls)
+2
+>>> len(listfunc.cache)
+0
+>>> # test maxsize=0: short-circuit to a no-cache decorator
+>>> nocache_calls = []
+>>> @lru_cache_ttl(0)
+... def nocache(i):
+...     nocache_calls.append(i)
+...     return i
+>>> [nocache(1), nocache(1)]
+[1, 1]
+>>> nocache_calls
+[1, 1]
 
 ```
 
@@ -1566,6 +1704,11 @@ Returns:
 
 
 ```python
+
+Warning: if the lock can not be acquired within `timeout`, `__enter__`
+returns None, so `lock` in `as lock` will be None, but the with-body
+still runs - always check `if lock:` inside the body before assuming
+the lock is held.
 
 Demo::
 
@@ -1641,6 +1784,10 @@ Demo::
 
 
 ```python
+
+Note: only parameters whose type (annotation, or inferred from the
+default value) is in ALLOW_TYPES are kept; annotations outside
+ALLOW_TYPES are silently dropped.
 
 >>> def test(a, b: str, /, c=1, *, d=["d"], e=0.1, f={"f"}, g=(1, 2), h=True, i={1}, **kws):
 ...     return
@@ -1756,6 +1903,12 @@ Demo::
 
 ```python
 
+Required parameters (no default value) are only reported as missing when
+the user did not pass them on the command line: argparse uses
+`default=SUPPRESS` for them, so "not passed" can be told from "passed".
+With auto_default=True, missing required parameters are silently filled
+with a zero value of the parameter type ("" for str, 0 for int, ...).
+
 Demo::
 
     def test(str: str, /, int=1, *, list=["d"], float=0.1, set={"f"}, tuple=(1, 2), bool=True, dict={"k": 1}):
@@ -1773,7 +1926,8 @@ Demo::
         """
         print(locals())
 
-    # raise ValueError if auto_default is False and user do not input nessessary args.
+    # raise ValueError only if auto_default is False and a required arg
+    # is missing from the command line.
     func_cmd(test, auto_default=False)
 
     CMD args:
@@ -1813,6 +1967,24 @@ Demo::
                             {'type': <class 'tuple'>, 'default': (1, 2)}
     -b BOOL, --bool BOOL  {'type': <class 'bool'>, 'default': True}
     -d DICT, --dict DICT  {'type': <class 'dict'>, 'default': {'k': 1}}
+
+Doctest::
+
+    >>> import sys
+    >>> def cmd_demo(str: str, /, int=1, *, bool=True):
+    ...     return str, int, bool
+    >>> _argv = sys.argv
+    >>> sys.argv = ["app.py", "--str", "hello", "--int", "2"]
+    >>> func_cmd(cmd_demo, run=False, auto_default=False)
+    (['hello'], {'int': 2, 'bool': True})
+    >>> sys.argv = ["app.py"]
+    >>> try:func_cmd(cmd_demo, run=False, auto_default=False)
+    ... except ValueError as e: e
+    ValueError('`str` has no default value.')
+    >>> sys.argv = ["app.py"]
+    >>> func_cmd(cmd_demo, run=False, auto_default=True)  # missing required arg is silently filled
+    ([''], {'int': 1, 'bool': True})
+    >>> sys.argv = _argv
 
 ```
 
@@ -1893,26 +2065,74 @@ Demo::
 
 
 
-3.13 `debounce` - Debounce a function, delaying its execution until after a specified wait time.
+3.13 `debounce` - Debounce a function, rate-limiting (leading) or delaying (trailing) its execution.
 
 
 ```python
 
+Two modes are supported, selected by ``mode``:
+
+- ``"leading"`` (**default**, the original semantics): the first call runs
+  immediately and returns its real result; calls arriving within ``wait``
+  seconds of that run are dropped and return None.
+- ``"trailing"``: every call resets the timer and only the last call runs,
+  ``wait`` seconds after the final one. The wrapper always returns None
+  immediately; the debounced call's return value is discarded.
+
+Trailing-mode semantics:
+- exceptions raised by the debounced function never reach the caller: the
+  sync version raises inside the timer thread, the async version inside
+  the task created at trigger time.
+- pending calls are dropped silently when the event loop closes or the
+  process exits; nothing is flushed to the caller.
+- arguments are read from the last call when the debounced call actually
+  runs, earlier calls' arguments are discarded together with their timer.
+
 Args:
-    wait (float): The amount of time to wait before executing the function.
+    wait (float): The window length in seconds.
+    mode (str): ``"leading"`` or ``"trailing"``; any other value raises
+        ValueError. Defaults to ``"leading"`` to keep the pre-existing
+        behaviour available without a migration.
 
 Demo::
 
-    >>> @debounce(0.1)
-    ... def test():
-    ...     print("Function executed")
-    >>> test()
-    Function executed
-    >>> test()
+    >>> import time
+    >>> calls = []
+    >>> @debounce(0.05)
+    ... def lead(value):
+    ...     calls.append(value)
+    ...     return value
+    >>> lead(0)  # window open: runs immediately and returns the real value
+    0
+    >>> lead(1) is None  # inside the window: dropped
+    True
     >>> time.sleep(0.1)
-    >>> test()
-    Function executed
-    >>> test()
+    >>> lead(2)  # window elapsed: runs again
+    2
+    >>> calls
+    [0, 2]
+    >>> @debounce(0.05, mode="trailing")
+    ... def trail(value):
+    ...     calls.append(value)
+    ...     return value
+    >>> [trail(i) for i in range(5)]  # every call just resets the timer
+    [None, None, None, None, None]
+    >>> time.sleep(0.15)  # window closed: only the last call runs
+    >>> calls[-1]
+    4
+    >>> async def main():
+    ...     seen = []
+    ...     @debounce(0.05)
+    ...     async def alead(value):
+    ...         seen.append(value)
+    ...         return value
+    ...     first = await alead(0)
+    ...     second = await alead(1)
+    ...     await asyncio.sleep(0.1)
+    ...     third = await alead(2)
+    ...     return first, second, third, seen
+    >>> asyncio.run(main())
+    (0, None, 2, [0, 2])
 
 ```
 
@@ -1966,11 +2186,99 @@ Example::
 ---
 
 
+
+3.15 `countdown` - A simple countdown timer that prints to the console inline.
+
+
+```python
+
+Demo: countdown(5)
+
+Args:
+    secs (float): Total seconds to count down.
+    interval (Union[float, int], optional): Update interval in seconds. Defaults to 1.
+    prefix (str, optional): Prefix string for the countdown message. Defaults to "Sleeping: ".
+
+```
+
+
+---
+
+
+
+3.17 `LineProfiler` - Line-by-line performance profiler.
+
+
+
+
+
+---
+
+
+
+3.18 `line_profiler` - Decorator to profile a function line-by-line.
+
+
+```python
+
+    Demo usage:
+        >>> import sys, io
+        >>> LineProfiler.stdout = io.StringIO()  # Redirect stdout to capture print output
+        >>> @line_profiler
+        ... def example_function():
+        ...     result = 0
+        ...     for i in range(10):
+        ...         result += i  # Simulate some work
+        ...     return result
+        >>> example_function()
+        45
+        >>> output = LineProfiler.stdout.getvalue()
+        >>> output.splitlines()[0].startswith("=" * 95) and "`example_function` profiling report:" in output
+        True
+        >>> LineProfiler.stdout = sys.stdout  # Restore original stdout
+
+===============================================================================================
+`example_function` profiling report:
+Start at 2025-07-26 17:09:58 | Total: 1.122 ms
+===============================================================================================
+  Line    %    Total(ms)    Count      Avg(ms)  Source Code
+-----------------------------------------------------------------------------------------------
+     3   73        0.825        1        0.825  -
+     4    3        0.040       11        0.004  -
+     5    4        0.050       10        0.005  -
+===============================================================================================
+
+```
+
+
+---
+
+
 ## 4. morebuiltins.ipc
 
 
 
 4.1 `IPCEncoder` - An abstract base class for all encoders; implementing the necessary communication protocol requires only the definition of two abstract methods. Be mindful that varying header lengths will impact the maximum packaging size.
+
+
+
+
+
+---
+
+
+
+4.2 `JSONEncoder` - JSON text encoder (UTF-8); see IPCEncoder.dumps/loads for the frame convention.
+
+
+
+
+
+---
+
+
+
+4.3 `PickleEncoder` - Pickle bytes encoder; only use it between trusted peers, pickle can execute arbitrary code on load.
 
 
 
@@ -2020,6 +2328,12 @@ And provide a simple implementation for generating logs for coroutine code with 
 
 ```python
 
+[SECURITY WARNING]: There is no authentication on the socket protocol, and
+client payloads are deserialized (pickle by default). The "[shutdown server]"
+control message is unauthenticated too: any connected client can shut the
+server down by sending it. Only use it between trusted processes, keep
+host=127.0.0.1 and never expose the server to untrusted networks.
+
 Demo::
 
     async def test_client(host="127.0.0.1", port=8090, encoder=None, cases=None):
@@ -2056,6 +2370,18 @@ Demo::
             async with SocketServer(host=host, port=port, encoder=encoder):
                 await test_client(host="127.0.0.1", port=8090, encoder=encoder, cases=cases)
 
+```
+
+
+---
+
+
+
+4.6 `SocketClient` - Client counterpart to SocketServer: use `async with SocketClient(host, port, encoder=...)`,
+
+
+```python
+then send/recv frames; send/recv of one instance are serialized by an asyncio.Lock.
 ```
 
 
@@ -2132,6 +2458,13 @@ True
 >>> r.json()["json"]
 {'data': 'yes json'}
 
+Notes:
+    - params accepts a dict (None values are dropped) or a sequence of
+      (key, value) pairs (None values dropped, duplicate keys kept).
+    - verify=False only takes effect when the caller does not pass its own
+      `context` through urlopen_kwargs; a caller-provided context is used
+      as-is and never mutated.
+
 ```
 
 
@@ -2143,6 +2476,10 @@ True
 
 
 ```python
+
+The constructor does no network IO: it only loads the local cache file.
+When the cache file is missing, it is downloaded lazily on the first
+parse_hostname / parse_url call.
 
 >>> domain_parser = DomainParser()
 >>> domain_parser.parse_hostname("github.com")
@@ -2224,15 +2561,24 @@ replace_kwargs is a dict to update attributes before sorting  (such as scheme / 
 
 
 
-5.7 `custom_dns` - Custom the DNS of socket.getaddrinfo, only effect current thread.
+5.7 `custom_dns` - Patch socket.getaddrinfo to translate hosts/ports through a custom map.
 
 
 ```python
 
-[WARNING] This will modify the global socket.getaddrinfo.
+[WARNING] The patch itself is process-global: it replaces
+socket.getaddrinfo for ALL threads. The ``thread`` argument only controls
+where the translation applies: with ``thread=True`` (default) the map is
+applied only when getaddrinfo is called from the installing thread, and
+calls from other threads fall through unchanged; with ``thread=False``
+the map applies to every thread.
+
+Installing multiple times chains wrappers (each one falls back to the
+previously installed function); call restore_dns() to restore the
+original function frozen at import time.
 
 >>> from concurrent.futures import ThreadPoolExecutor
->>> # this only effect current thread
+>>> # translation only applies to the installing thread
 >>> custom_dns({"1.1.1.1": ("127.0.0.1", 80), ("1.1.1.1", 80): ("192.168.0.1", 443)})
 >>> socket.getaddrinfo('1.1.1.1', 80)[0][-1]
 ('192.168.0.1', 443)
@@ -2240,10 +2586,13 @@ replace_kwargs is a dict to update attributes before sorting  (such as scheme / 
 ('127.0.0.1', 80)
 >>> ThreadPoolExecutor().submit(lambda : socket.getaddrinfo('1.1.1.1', 8888)[0][-1]).result()
 ('1.1.1.1', 8888)
->>> # this effect global socket.getaddrinfo
+>>> # translation applies to all threads
 >>> custom_dns({"1.1.1.1": ("127.0.0.1", 80), ("1.1.1.1", 80): ("192.168.0.1", 443)}, thread=False)
 >>> ThreadPoolExecutor().submit(lambda : socket.getaddrinfo('1.1.1.1', 8888)[0][-1]).result()
 ('127.0.0.1', 80)
+>>> restore_dns()
+>>> socket.getaddrinfo('1.1.1.1', 8888)[0][-1]
+('1.1.1.1', 8888)
 
 Demo:
 
@@ -2260,16 +2609,43 @@ Demo:
 ---
 
 
+
+5.8 `restore_dns` - Restore socket.getaddrinfo to the original function frozen at import time.
+
+
+
+
+
+---
+
+
 ## 6. morebuiltins.download_python
 
 
 
-6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases. `python -m download_python -i` or `python -m download_python -a`(auto download the latest version matched the current platform: x86_64+install_only) or `python -m download_python --auto -k 3.11 -u`
+6.1 `download_python` - Download python portable interpreter from https://github.com/indygreg/python-build-standalone/releases.
 
 
 ```python
 
-λ python -m download_python -i
+The downloaded file is verified against the release asset's `digest` field
+(``sha256:<hex>``) before it is renamed into place; releases without a
+digest are downloaded unverified.
+
+Usage:
+    python -m morebuiltins.download_python -i                    # interactive mode
+    python -m morebuiltins.download_python -a              # auto choose the best match for the current platform
+    python -m morebuiltins.download_python --auto -k 3.11 -u     # auto mode with keyword, unzip after download
+    python -m morebuiltins.download_python -k 3.11,gnu -t ./tmp  # filter by keywords, save under the target dir
+    python -m morebuiltins.download_python -a -k 3.11 -u -f    # unzip the tar.gz, overwrite an existing target dir
+
+Always combine -u/-f with -a or -k: using "-u -f" alone downloads the
+first asset of any platform.
+
+Options: -a/--auto, -k/--keywords (comma split), -i/--interactive,
+-t/--target (save dir, defaults to current dir), -u/--unzip, -f/--force.
+
+λ python -m morebuiltins.download_python -i
 [10:56:17] Checking https://api.github.com/repos/indygreg/python-build-standalone/releases/latest
 [10:56:19] View the rules:
 https://gregoryszorc.com/docs/python-build-standalone/main/running.html#obtaining-distributions
@@ -2307,12 +2683,9 @@ https://gregoryszorc.com/docs/python-build-standalone/main/running.html#obtainin
 [10:56:33] Filt with keyword: "install_only.tar.gz". 4 => 1
 [10:56:33] Download URL: 39.1 MB
 https://github.com/indygreg/python-build-standalone/releases/download/20240415/cpython-3.12.3%2B20240415-x86_64-pc-windows-msvc-install_only.tar.gz
-File path to save(defaults to `./cpython-3.12.3+20240415-x86_64-pc-windows-msvc-install_only.tar.gz`)?
-or `q` to exit.
-
 [10:56:38] Start downloading...
 https://github.com/indygreg/python-build-standalone/releases/download/20240415/cpython-3.12.3%2B20240415-x86_64-pc-windows-msvc-install_only.tar.gz
-D:\github\morebuiltins\morebuiltins\download_python\cpython-3.12.3+20240415-x86_64-pc-windows-msvc-install_only.tar.gz
+<target_dir>/cpython-3.12.3+20240415-x86_64-pc-windows-msvc-install_only.tar.gz
 [10:56:44] Downloading: 39.12 / 39.12 MB | 100.00% | 11.3 MB/s | 0s
 [10:56:44] Download complete.
 ```
@@ -2408,17 +2781,25 @@ Demo::
 Demo::
 
     with SimpleEmail("smtp.gmail.com", 465, "someone@gmail.com", "PASSWORD") as s:
-    print(
-        s.send_message(
-            "This is Title",
-            "This is body text or file path(.md/.txt)",
-            "Author<someone@gmail.com>",
-            "anybody@gmail.com",
-            files="a.py,b.py,c.txt",
-            filename="files.zip",
-            encoding="u8",
+        print(
+            s.send_message(
+                "This is Title",
+                "This is body text or file path(.md/.txt)",
+                "Author<someone@gmail.com>",
+                "anybody@gmail.com",
+                files="a.py,b.py,c.txt",
+                filename="files.zip",
+                encoding="u8",
+            )
         )
-    )
+
+Notes:
+    - encoding defaults to utf-8 and is used to read a .txt/.md body file;
+      GBK or other non-utf-8 files must pass encoding explicitly.
+    - When the body path exists, a read failure raises instead of silently
+      sending the path string as the body.
+    - Attachment files are zipped and 0-byte files are still attached;
+      prepare_attach("") returns None (no attachment part).
 
 ```
 
@@ -2435,6 +2816,11 @@ Demo::
 
 ```python
 
+[SECURITY WARNING]: There is no authentication on the socket protocol. Every
+incoming frame is still decoded as a bare pickle (arbitrary code on load); the
+restricted unpickler only guards formatter settings nested in the "log_setting"
+payload. Keep host=127.0.0.1 and never expose the server to untrusted networks.
+
 [WARNING]: Ensure your log msg is "" if you only want to update settings, or the msg will be skipped.
 
 logger.info("", extra={"log_setting": {"formatter": formatter, "max_size": 1024**2, "level_specs": [logging.ERROR]}})
@@ -2445,7 +2831,7 @@ logger.info("", extra={"log_setting": {"formatter": formatter, "max_size": 1024*
     > python -m morebuiltins.cmd.log_server
 
 ### Server demo2:
-    custom options to log to "logs" directory, default rotates at 10MB with 5 backups, no log_stream, enable compress
+    custom options to log to "logs" directory, default rotates at 10MB with 1 backup, no log_stream, enable compress
     > python -m morebuiltins.cmd.log_server --log-dir=./logs --host 127.0.0.1 --port 8901 --log-stream=None --compress
 
 ### Server demo3:
@@ -2493,11 +2879,11 @@ logger.info(
 for _ in range(5):
     logger.info("hello world!")
 
-# [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
-# [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
-# [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
-# [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
-# [client] 2024-08-10 19:30:07,114 - temp3.py - hello world!
+# 2024-08-10 19:30:07,113 - temp3.py - hello world!
+# 2024-08-10 19:30:07,113 - temp3.py - hello world!
+# 2024-08-10 19:30:07,113 - temp3.py - hello world!
+# 2024-08-10 19:30:07,113 - temp3.py - hello world!
+# 2024-08-10 19:30:07,114 - temp3.py - hello world!
 ```
 
 ### Client demo2:
@@ -2518,6 +2904,40 @@ logger.warning("warning")
 
 More docs:
     > python -m morebuiltins.cmd.log_server -h
+
+```
+
+
+---
+
+
+
+9.2 `get_logger` - Get a singleton logger that sends logs to the LogServer.
+
+
+```python
+For easy use, you can use original logging.handlers.SocketHandler, but you need to manage the handler yourself.
+
+Demo::
+
+    # python -m morebuiltins.cmd.log_server --host localhost --port 8901 --log-dir logs
+    import logging
+    import logging.handlers
+    logger = logging.getLogger("client")
+    logger.setLevel(logging.DEBUG)
+    h = logging.handlers.SocketHandler("localhost", 8901)
+    h.setLevel(logging.DEBUG)
+    logger.addHandler(h)
+    # Add custom settings
+    # Add error log to a specific log file; use a custom formatter and max_size; set msg to ""
+    formatter = logging.Formatter(fmt="%(asctime)s - %(filename)s - %(message)s")
+    logger.info("", extra={"log_setting": {"formatter": formatter, "max_size": 1024**2, "level_specs": [logging.ERROR]}})
+    for _ in range(5):
+        logger.info("hello world!")
+    # Send some error logs
+    logger.error("this is an error!")
+    # The remote log server will create a "client_error.log" file in log_dir if settings are applied
+
 
 ```
 
@@ -2573,6 +2993,51 @@ python -m morebuiltins.cmd.proxy_checker -h
 
 
 ## 11. morebuiltins.cmd.ui
+
+
+
+11.1 `launch_ui` - Interactive mode, value can be parsed by JSON parser.
+
+
+```python
+
+Demo::
+
+    > python -m morebuiltins.cmd.ui -e urllib.parse:urlparse --cli
+
+    Input the value of url(type=str):
+    http://github.com
+    url = 'http://github.com'
+    Input the value of scheme(type=str, default=''):
+
+    scheme = ''
+    Input the value of allow_fragments(type=bool, default=True):
+    false
+    allow_fragments = False
+    Result:
+    --------------------------------------------------
+    ParseResult(scheme='http', netloc='github.com', path='', params='', query='', fragment='')
+    --------------------------------------------------
+
+    1. try `python -m morebuiltins.cmd.ui -e re:findall --cli`
+    2. try `python -m morebuiltins.cmd.ui -e re:findall --gui1`
+    3. try `python -m morebuiltins.cmd.ui -e re:findall --gui2`
+    4. try `python -m morebuiltins.cmd.ui -e test_func_web --web --web-open --web-timeout=30`
+
+    try a custom function:
+
+    def test_func_web(ok: bool = True, a={"<b>123</b>123\n&gt;      &#62;111\n111\n\n": 123}):
+        "test string: html escape, html tag, unicode, enter, tab. type: dict, bool"
+        for _ in range(5):
+            print(str(_) * 100)
+            time.sleep(0.2)
+        return f"a={a} ok={ok!r}"
+
+
+```
+
+
+---
 
 
 
@@ -2803,7 +3268,7 @@ Example usage:
     python -m morebuiltins.cmd.systemd.timer -name mytimer -OnCalendar "*:0/15" -ExecStart "/bin/echo hello"
 4. Dry run (print actions without executing):
     python -m morebuiltins.cmd.systemd.timer -name mytimer -enable --dry-run -OnCalendar "*:0/15" -ExecStart "/bin/echo hello"
-    
+
 ```
 
 
@@ -2821,11 +3286,26 @@ Example usage:
 
 
 ```python
-Use `with` context or `close_atexit` to ensure the shared memory is closed in case the process crashes.
+Use `with` context or `close_atexit` to clean up the shared memory when the process exits normally.
+
+If the process crashes (or is killed), that cleanup does not run. On POSIX, `SharedMemory` registers the
+segment with the `resource_tracker` by default, and that tracker is a separate process which may outlive
+the holder and still unlink the segment at its own exit, so "leaks until manually removed" only holds when
+tracking is disabled (`track=False`) or the tracker itself is gone (e.g. the whole process group was
+killed). On Windows the segment is freed by the kernel once every handle is closed, and `unlink()` is a
+no-op, so a crash does not leave the name behind either. Use `force=True` or `kill_with_name` to take over
+or clear leftovers.
 
 Args:
     name (str): name of the shared memory
-    force (bool, optional): whether to force rewrite the existing shared memory. Defaults to False.
+    force (bool, optional): when True and the segment already exists, the stored pid is unconditionally
+        rewritten to self.pid without signaling the holder — racy by design: the previous holder may still
+        be alive and believe it owns the lock, so only force-rewrite when that process is known dead.
+        Defaults to False.
+    force_signum (int, optional): signal number sent to the current holder before the pid is rewritten,
+        e.g. 15 (SIGTERM); the rewrite is skipped when the signal cannot be delivered, and this only takes
+        effect together with `force=True`. `force` alone never signals the holder; `force_signum` alone
+        (without force) is ignored. Defaults to None (no signal).
     close_atexit (bool, optional): whether to close the shared memory at process exit. Defaults to False, to use __del__ or __exit__ instead.
 
 Demo:
@@ -2878,7 +3358,7 @@ b'Hello, World!'
 >>> sb.get(name="test")
 b'New Data'
 >>> sb.close()
->>> sb.get(name="test", default=b"")  # This will raise ValueError since the shared memory is closed
+>>> sb.get(name="test", default=b"")  # close() unlinked the segment, so the default is returned
 b''
 
 ```
@@ -3078,7 +3558,7 @@ Demo::
 
     import logging
     import time
-    from morebuiltins.funcs import SizedTimedRotatingFileHandler
+    from morebuiltins.logs import SizedTimedRotatingFileHandler
 
     logger = logging.getLogger("test1")
     h = SizedTimedRotatingFileHandler(

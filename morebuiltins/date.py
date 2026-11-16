@@ -1,8 +1,12 @@
 import re
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple
+from typing import Callable, Dict, Generator, List, Optional, Set, Tuple
 
 __all__ = ["ScheduleTimer", "Crontab"]
+
+# sentinel for "no previous callback value yet": a callback legitimately
+# returning None must still be deduplicated against the previous value
+_UNSET = object()
 
 
 class ScheduleTimer:
@@ -57,6 +61,11 @@ class ScheduleTimer:
     >>> noon = datetime.strptime("2023-02-01 12:00:00", "%Y-%m-%d %H:%M:%S")
     >>> list(ScheduleTimer.iter_datetimes("!%H=12", count=2, start_date=noon, callback=str))
     ['2023-02-01 13:00:00', '2023-02-01 13:01:00']
+
+    Notes:
+        - count is the number of matches: a callback returning the same value
+          on every match is still yielded once per match, so count items are
+          produced (unlike Crontab, where count counts distinct values).
     """
 
     prefix_not = "!"
@@ -81,9 +90,7 @@ class ScheduleTimer:
     min_delta = timedelta(minutes=1)
 
     def __init__(self):
-        raise NotImplementedError(
-            "Performance issue needs to be optimized, use the classmethod instead"
-        )
+        raise NotImplementedError("Performance issue needs to be optimized, use the classmethod instead")
 
     @staticmethod
     def divide(a: str, b: str):
@@ -146,20 +153,18 @@ class ScheduleTimer:
             _start_date = start_date
         pattern_list, steps = cls.sort_pattern(pattern)
         min_step = min(steps.values())
-        last_item: Any = None
         matched = 0
         for tries in range(1, max_tries + 1):
             ok, miss_pattern = cls.is_at(pattern_list, _start_date)
             if ok:
                 item = callback(_start_date)
-                if last_item is None or item != last_item:
-                    matched += 1
-                    if yield_tries:
-                        yield tries, item
-                    else:
-                        yield item
-                    if matched == count:
-                        break
+                matched += 1
+                if yield_tries:
+                    yield tries, item
+                else:
+                    yield item
+                if matched == count:
+                    break
                 step = min_step
             else:
                 step = steps[miss_pattern]
@@ -227,6 +232,17 @@ class Crontab:
     ['2023-02-01 00:00:00', '2023-02-01 00:15:00']
     >>> list(Crontab.iter_datetimes("0 9 1 * 5", count=5, start_date=start_date, callback=str))
     ['2023-02-01 09:00:00', '2023-02-03 09:00:00', '2023-02-10 09:00:00', '2023-02-17 09:00:00', '2023-02-24 09:00:00']
+    >>> # "*/2" starts with a "*", so it is unrestricted: ANDed with the weekday.
+    >>> list(Crontab.iter_datetimes("0 0 */2 * 1", count=3, start_date=start_date, callback=str))
+    ['2023-02-13 00:00:00', '2023-02-27 00:00:00', '2023-03-13 00:00:00']
+    >>> # "1-31" does not start with a "*", so both fields are restricted: ORed, hence every day.
+    >>> list(Crontab.iter_datetimes("0 0 1-31 * 1", count=3, start_date=start_date, callback=str))
+    ['2023-02-01 00:00:00', '2023-02-02 00:00:00', '2023-02-03 00:00:00']
+    >>> # Only the first character matters: "10,*" is restricted (ORed, hence every day), "*,10" is not.
+    >>> list(Crontab.iter_datetimes("0 0 10,* * 2", count=3, start_date=start_date, callback=str))
+    ['2023-02-01 00:00:00', '2023-02-02 00:00:00', '2023-02-03 00:00:00']
+    >>> list(Crontab.iter_datetimes("0 0 *,10 * 2", count=3, start_date=start_date, callback=str))
+    ['2023-02-07 00:00:00', '2023-02-14 00:00:00', '2023-02-21 00:00:00']
     >>> list(Crontab.iter_datetimes("abc * * * *", count=1, start_date=start_date))
     Traceback (most recent call last):
         ...
@@ -237,9 +253,20 @@ class Crontab:
         - Malformed or out-of-range fields raise ValueError instead of silently
           returning a pattern that never matches.
         - Day-of-month and day-of-week follow Vixie cron: they are ANDed when
-          either field is unrestricted ("*"), and ORed when both are restricted.
+          either field is unrestricted, and ORed when both are restricted.
+          A field is unrestricted only when it **starts** with `*`, matching
+          cronie's entry.c, which sets DOM_STAR/DOW_STAR from the field's first
+          character (the man page's looser "contain" wording is not what the
+          code does, so `10,*` is restricted). The criterion is also not "the
+          parsed set covers the whole range", since `*/2` parses to a subset yet
+          is still unrestricted.
         - ValueError is raised when no match is found within max_tries, instead
           of silently yielding nothing.
+        - count counts distinct callback values: consecutive equal callback
+          results are yielded once, so a callback returning a constant (or
+          None) raises ValueError once max_tries is exhausted instead of
+          yielding duplicates. So count counts distinct values here, not
+          matches (unlike ScheduleTimer, where count is the number of matches).
     """
 
     mins = list(range(0, 60))
@@ -255,9 +282,7 @@ class Crontab:
     _field_part_re = re.compile(r"(?P<base>\*|\d+|\d+-\d+)(?:/(?P<step>\d+))?")
 
     @classmethod
-    def parse_field(
-        cls, value: str, range_list: List[int], field: str = "field"
-    ) -> Set[int]:
+    def parse_field(cls, value: str, range_list: List[int], field: str = "field") -> Set[int]:
         """Parse a single cron field into a set of matching values.
 
         Malformed or out-of-range values raise ValueError instead of being
@@ -273,9 +298,7 @@ class Crontab:
         return results
 
     @classmethod
-    def _parse_part(
-        cls, part: str, lo: int, hi: int, field: str
-    ) -> Tuple[int, int, int]:
+    def _parse_part(cls, part: str, lo: int, hi: int, field: str) -> Tuple[int, int, int]:
         """Turn a single cron field part into an inclusive (start, end, step)."""
         match = cls._field_part_re.fullmatch(part)
         if not match:
@@ -292,20 +315,13 @@ class Crontab:
         else:
             start = end = int(base)
             if step != 1:
-                raise ValueError(
-                    f"invalid crontab field for {field}: {part!r} "
-                    f"(use {base}-{hi}/{step} or */{step})"
-                )
+                raise ValueError(f"invalid crontab field for {field}: {part!r} (use {base}-{hi}/{step} or */{step})")
         if not (lo <= start <= end <= hi):
-            raise ValueError(
-                f"crontab field {field} out of range {lo}-{hi} or reversed: {part!r}"
-            )
+            raise ValueError(f"crontab field {field} out of range {lo}-{hi} or reversed: {part!r}")
         return start, end, step
 
     @staticmethod
-    def _match_day(
-        date: datetime, days: Set[int], py_weekdays: Set[int], dom_dow_or: bool
-    ) -> bool:
+    def _match_day(date: datetime, days: Set[int], py_weekdays: Set[int], dom_dow_or: bool) -> bool:
         """Match day-of-month and day-of-week the way Vixie cron does."""
         day_matched = date.day in days
         weekday_matched = date.weekday() in py_weekdays
@@ -314,15 +330,11 @@ class Crontab:
         return day_matched and weekday_matched
 
     @classmethod
-    def _parse_pattern(
-        cls, pattern: str
-    ) -> Tuple[Set[int], Set[int], Set[int], Set[int], Set[int], bool]:
+    def _parse_pattern(cls, pattern: str) -> Tuple[Set[int], Set[int], Set[int], Set[int], Set[int], bool]:
         """Parse and validate a 5-field crontab pattern."""
         fields = pattern.split()
         if len(fields) != 5:
-            raise ValueError(
-                f"crontab pattern must have exactly 5 fields, got {len(fields)}: {pattern!r}"
-            )
+            raise ValueError(f"crontab pattern must have exactly 5 fields, got {len(fields)}: {pattern!r}")
         M, H, d, m, w = fields
         mins = cls.parse_field(M, cls.mins, "minute")
         hours = cls.parse_field(H, cls.hours, "hour")
@@ -330,8 +342,11 @@ class Crontab:
         months = cls.parse_field(m, cls.months, "month")
         weeks = cls.parse_field(w, cls.weeks, "day of week")
         py_weekdays = {cls.wrap_cron_to_python[i] for i in weeks}
-        # Vixie cron: DOM and DOW are ORed only when both are restricted.
-        dom_dow_or = days != set(cls.days) and weeks != set(cls.weeks)
+        # Vixie cron: DOM and DOW are ORed only when both are restricted, and a field is
+        # restricted iff it does not start with `*` (cronie entry.c sets DOM_STAR/DOW_STAR
+        # from the field's first character). Judging by set coverage would call `*/2`
+        # restricted and invert the result.
+        dom_dow_or = not d.startswith("*") and not w.startswith("*")
         return mins, hours, days, months, py_weekdays, dom_dow_or
 
     @classmethod
@@ -373,7 +388,7 @@ class Crontab:
         parsed = cls._parse_pattern(pattern)
         tries = 0
         matched = 0
-        last_match = None
+        last_match = _UNSET
         try:
             while tries < max_tries:
                 tries += 1
@@ -382,7 +397,7 @@ class Crontab:
                     _start_date = candidate
                     continue
                 item = callback(_start_date)
-                if not last_match or item != last_match:
+                if last_match is _UNSET or item != last_match:
                     matched += 1
                     if yield_tries:
                         yield tries, item
@@ -393,14 +408,9 @@ class Crontab:
                         break
                 _start_date += timedelta(minutes=1)
             else:
-                raise ValueError(
-                    f"no matching datetime within max_tries={max_tries} "
-                    f"for crontab pattern: {pattern!r}"
-                )
+                raise ValueError(f"no matching datetime within max_tries={max_tries} for crontab pattern: {pattern!r}")
         except OverflowError:
-            raise ValueError(
-                f"crontab pattern never matches a valid datetime: {pattern!r}"
-            ) from None
+            raise ValueError(f"crontab pattern never matches a valid datetime: {pattern!r}") from None
 
 
 if __name__ == "__main__":
