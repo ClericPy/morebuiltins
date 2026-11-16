@@ -6,8 +6,7 @@ import sys
 import time
 import typing
 from contextlib import contextmanager
-from contextvars import ContextVar, copy_context
-from functools import partial
+from contextvars import ContextVar
 from gzip import GzipFile
 from io import TextIOBase
 from logging import Filter
@@ -19,6 +18,8 @@ from threading import RLock, Thread
 from typing import Dict, List, Optional, TextIO, Tuple, Union
 from weakref import WeakSet
 
+from morebuiltins.funcs import to_thread
+
 __all__ = [
     "async_logger",
     "AsyncQueueListener",
@@ -28,12 +29,6 @@ __all__ = [
     "ContextFilter",
     "LoggerStream",
 ]
-
-
-async def to_thread(func, /, *args, **kwargs):
-    """Asynchronously run function *func* in a separate thread, same as `asyncio.to_thread` in python 3.9+."""
-    func_call = partial(copy_context().run, func, *args, **kwargs)
-    return await asyncio.get_running_loop().run_in_executor(None, func_call)
 
 
 class LogHelper:
@@ -87,7 +82,7 @@ class LogHelper:
                 handler.close()
                 cls.FILENAME_HANDLER_MAP.pop(key, None)
                 result.append((key, True, None))
-            except Exception as e:
+            except Exception as e:  # noqa: PERF203  # one failing handler must not abort closing the rest
                 result.append((key, False, e))
         return result
 
@@ -95,9 +90,7 @@ class LogHelper:
     def bind_handler(
         cls,
         name: Optional[str] = "main",
-        filename: Union[
-            TextIO, TextIOBase, None, logging.Handler, str, Path
-        ] = sys.stderr,
+        filename: Union[TextIO, TextIOBase, None, logging.Handler, str, Path] = sys.stderr,
         when="h",
         interval=1,
         backupCount=0,
@@ -117,10 +110,14 @@ class LogHelper:
         Args:
             name (str, optional): The logger name. Defaults to "main".
             filename (Union[TextIO, TextIOWrapper, None, logging.Handler, str, Path], optional):
-                The log destination. Can be a file path, stream, handler, or None to clear handlers. Defaults to sys.stderr.
+                The log destination. Can be a file path, stream, handler, or None to
+                detach the logger's handlers (the detached handlers are not closed;
+                their lifetime belongs to the creator, use close_all_handlers to
+                reclaim them). Defaults to sys.stderr.
             when (str, optional): Time interval for log rotation (if file handler). Defaults to "h".
             interval (int, optional): Rotation interval. Defaults to 1.
-            backupCount (int, optional): Number of backup files to keep. Defaults to 0.
+            backupCount (int, optional): Number of backup files to keep; 0 or less keeps
+                every rotated file, following the stdlib contract. Defaults to 0.
             maxBytes (int, optional): Maximum file size before rotation. Defaults to 0 (no size-based rotation).
             encoding (str, optional): File encoding. Defaults to None.
             delay (bool, optional): Delay file opening until first write. Defaults to False.
@@ -158,29 +155,130 @@ class LogHelper:
         """
         logger = logging.getLogger(name)
         if filename is None:
-            logger.handlers.clear()
+            return cls._detach_handlers(logger)
+        handler = cls._get_handler(
+            filename,
+            when=when,
+            interval=interval,
+            backupCount=backupCount,
+            maxBytes=maxBytes,
+            encoding=encoding,
+            delay=delay,
+            utc=utc,
+            compress=compress,
+        )
+        # Update the levels of the handler and logger
+        if handler_level is not None:
+            handler.setLevel(handler_level)
+        if logger_level is not None:
+            logger.setLevel(logger_level)
+        # Set the formatter for the handler
+        handler.setFormatter(cls._make_formatter(formatter))
+        # Add the handler to the logger
+        if queue:
+            _bind_queue_handler(logger, handler, queue)
             return logger
-        # Check if handler already exists for the given filename
-        elif isinstance(filename, TextIOBase):
-            key = str(id(filename))
-            if key in cls.FILENAME_HANDLER_MAP:
-                handler: logging.Handler = cls.FILENAME_HANDLER_MAP[key]
+        # skip direct binding when a live AsyncQueueListener already
+        # manages the same handler, or every record would be written twice
+        if cls._managed_by_listener(logger, handler):
+            logging.getLogger(__name__).warning(
+                "%r is managed by a live AsyncQueueListener, skip direct binding to avoid duplicate logs",
+                handler,
+            )
+            return logger
+        if handler not in logger.handlers:
+            cls._drop_same_file_handlers(logger, handler)
+            logger.addHandler(handler)
+        return logger
+
+    @classmethod
+    def _drop_same_file_handlers(cls, logger: logging.Logger, handler: logging.Handler) -> None:
+        """Detach other handlers this class created for the same file.
+
+        A reloaded module (or a fresh handler cache) can leave a closed handler
+        of the same file attached to the logger; keeping both would open the
+        same file twice, so rotation fails and the log line is written twice.
+        Only handlers tracked in FILENAME_HANDLER_MAP are detached and closed:
+        a FileHandler the user attached themselves owns its formatter, filters
+        and file position, so it is left attached with a warning instead.
+        """
+        base = getattr(handler, "baseFilename", None)
+        if base is None:
+            return
+        for old in list(logger.handlers):
+            if old is handler or not isinstance(old, logging.FileHandler) or old.baseFilename != base:
+                continue
+            if cls._is_owned_handler(old):
+                logger.removeHandler(old)
+                old.close()
             else:
-                handler = logging.StreamHandler(filename)
-                cls.FILENAME_HANDLER_MAP[key] = handler
-        elif isinstance(filename, logging.Handler):
+                logging.getLogger(__name__).warning(
+                    "%r writes the same file as %r but was not created by LogHelper, leaving it attached",
+                    old,
+                    handler,
+                )
+
+    @classmethod
+    def _is_owned_handler(cls, handler: logging.Handler) -> bool:
+        """Check whether this module created the handler.
+
+        The class-module check survives a module reload, where a fresh
+        FILENAME_HANDLER_MAP cannot see the handler objects the previous
+        instance created - and that leftover is exactly the case this cleanup
+        exists for. Leaving such a closed handler attached is harmful:
+        FileHandler.emit reopens its stream, so the same file ends up open
+        twice. A handler from another module (the user's own FileHandler) is
+        never touched here, only warned about.
+        """
+        if type(handler).__module__ == __name__:
+            return True
+        return any(cached is handler for cached in cls.FILENAME_HANDLER_MAP.values())
+
+    @classmethod
+    def _detach_handlers(cls, logger: logging.Logger) -> logging.Logger:
+        """Detach every handler from logger without closing it.
+
+        The shared handlers are cached by filename and may still be attached to
+        other loggers. They are neither closed nor dropped from
+        FILENAME_HANDLER_MAP: dropping the cache entry would lose the reference
+        close_all_handlers needs to reclaim the file handle, and closing them
+        here would break those loggers and make the next same-name binding
+        write to the file twice. Handler lifetime belongs to whoever created
+        them; close_all_handlers reclaims everything at the end.
+        """
+        for handler in list(logger.handlers):
+            logger.removeHandler(handler)
+        return logger
+
+    @classmethod
+    def _get_handler(
+        cls,
+        filename: Union[TextIO, TextIOBase, logging.Handler, str, Path],
+        *,
+        when: str,
+        interval: int,
+        backupCount: int,
+        maxBytes: int,
+        encoding: Optional[str],
+        delay: bool,
+        utc: bool,
+        compress: bool,
+    ) -> logging.Handler:
+        """Resolve filename to a cached handler, creating it on first use."""
+        if isinstance(filename, TextIOBase):
             key = str(id(filename))
-            if key in cls.FILENAME_HANDLER_MAP:
-                handler = cls.FILENAME_HANDLER_MAP[key]
-            else:
-                handler = filename
-                cls.FILENAME_HANDLER_MAP[key] = handler
-        elif isinstance(filename, str) or isinstance(filename, Path):
+            if key not in cls.FILENAME_HANDLER_MAP:
+                cls.FILENAME_HANDLER_MAP[key] = logging.StreamHandler(filename)
+            return cls.FILENAME_HANDLER_MAP[key]
+        if isinstance(filename, logging.Handler):
+            key = str(id(filename))
+            if key not in cls.FILENAME_HANDLER_MAP:
+                cls.FILENAME_HANDLER_MAP[key] = filename
+            return cls.FILENAME_HANDLER_MAP[key]
+        if isinstance(filename, (str, Path)):
             key = Path(filename).resolve().as_posix()
-            if key in cls.FILENAME_HANDLER_MAP:
-                handler = cls.FILENAME_HANDLER_MAP[key]
-            else:
-                handler = SizedTimedRotatingFileHandler(
+            if key not in cls.FILENAME_HANDLER_MAP:
+                cls.FILENAME_HANDLER_MAP[key] = SizedTimedRotatingFileHandler(
                     key,
                     when=when,
                     interval=interval,
@@ -191,63 +289,74 @@ class LogHelper:
                     utc=utc,
                     compress=compress,
                 )
-                cls.FILENAME_HANDLER_MAP[key] = handler
-        else:
-            raise TypeError(
-                f"filename must be str, Path, TextIO, or logging.Handler, not {type(filename)}"
-            )
-        # Update the levels of the handler and logger
-        if handler_level is not None:
-            handler.setLevel(handler_level)
-        if logger_level is not None:
-            logger.setLevel(logger_level)
-        # Set the formatter for the handler
+            return cls.FILENAME_HANDLER_MAP[key]
+        raise TypeError(f"filename must be str, Path, TextIO, or logging.Handler, not {type(filename)}")
+
+    @classmethod
+    def _make_formatter(cls, formatter) -> logging.Formatter:
+        """Normalize a format string / Formatter / None into a Formatter."""
         if isinstance(formatter, str):
-            formatter = logging.Formatter(formatter)
-        elif isinstance(formatter, logging.Formatter):
-            formatter = formatter
-        else:
-            formatter = logging.Formatter(cls.DEFAULT_FORMAT)
-        handler.setFormatter(formatter)
-        # Add the handler to the logger
-        if queue:
-            if queue is True:
-                queue = Queue()
-            elif not isinstance(queue, (Queue, ProcessQueue)):
-                raise TypeError("queue must be a Queue, ProcessQueue, True, or False")
+            return logging.Formatter(formatter)
+        if isinstance(formatter, logging.Formatter):
+            return formatter
+        return logging.Formatter(cls.DEFAULT_FORMAT)
+
+    @staticmethod
+    def _managed_by_listener(logger: logging.Logger, handler: logging.Handler) -> bool:
+        """Whether a live AsyncQueueListener of logger already owns handler."""
+        for queued in logger.handlers:
+            listener = getattr(queued, "listener", None)
             if (
-                len(logger.handlers) == 1
-                and isinstance(logger.handlers[0], QueueHandler)
-                and isinstance(logger.handlers[0].listener, AsyncQueueListener)
+                isinstance(queued, QueueHandler)
+                and isinstance(listener, AsyncQueueListener)
+                and listener._started
+                and not listener._stopped
+                and handler in listener.original_handlers
             ):
-                # already a QueueHandler
-                async_listener: AsyncQueueListener = logger.handlers[0].listener
-                async_listener.bind_new_handler(handler)
-                return logger
-            else:
-                logger.addHandler(handler)
-                async_listener = AsyncQueueListener(logger, queue=queue)
-                async_listener.start()
-                atexit.register(async_listener.stop)
-        else:
-            if handler not in logger.handlers:
-                logger.addHandler(handler)
-        return logger
+                return True
+        return False
 
     @classmethod
     def shorten_level(
         cls,
-        mapping: Dict[int, str] = {logging.WARNING: "WARN", logging.CRITICAL: "FATAL"},
+        mapping: Optional[Dict[int, str]] = None,
     ):
         """Shorten the level names less than 5 chars: WARNING to WARN, CRITICAL to FATAL."""
+        if mapping is None:
+            mapping = {logging.WARNING: "WARN", logging.CRITICAL: "FATAL"}
         for level, name in mapping.items():
             logging.addLevelName(level, name)
 
     @classmethod
     def handle_crash(cls, logger: logging.Logger, msg="[Uncaught Exception]"):
-        sys.excepthook = lambda exctype, value, tb: logger.critical(
-            msg, exc_info=(exctype, value, tb)
-        )
+        sys.excepthook = lambda exctype, value, tb: logger.critical(msg, exc_info=(exctype, value, tb))
+
+
+def _bind_queue_handler(
+    logger: logging.Logger,
+    handler: logging.Handler,
+    queue: Union[bool, Queue, ProcessQueue],
+) -> None:
+    """Attach handler to logger through an AsyncQueueListener (queue=True creates a Queue)."""
+    if queue is True:
+        queue = Queue()
+    elif not isinstance(queue, (Queue, ProcessQueue)):
+        raise TypeError("queue must be a Queue, ProcessQueue, True, or False")
+    if (
+        len(logger.handlers) == 1
+        and isinstance(logger.handlers[0], QueueHandler)
+        # listener is attached in AsyncQueueListener.start() and absent from
+        # the 3.8 stubs ty resolves, so it is a runtime attribute by design
+        and isinstance(logger.handlers[0].listener, AsyncQueueListener)  # ty: ignore[unresolved-attribute]
+    ):
+        # already a QueueHandler
+        async_listener: AsyncQueueListener = logger.handlers[0].listener  # ty: ignore[unresolved-attribute]
+        async_listener.bind_new_handler(handler)
+        return
+    logger.addHandler(handler)
+    async_listener = AsyncQueueListener(logger, queue=queue)
+    async_listener.start()
+    atexit.register(async_listener.stop)
 
 
 class RotatingFileWriter:
@@ -306,6 +415,8 @@ class RotatingFileWriter:
     """
 
     check_exist_every = 100
+    # set by LogServer.get_targets on per-level alias files; 0 means no filtering
+    level_spec: int = 0
 
     def __init__(
         self,
@@ -331,7 +442,7 @@ class RotatingFileWriter:
         self.buffering = buffering
         self.newline = newline
         self.compress = compress
-        self.file = self.reopen_file()
+        self.file: Optional[TextIO] = self.reopen_file()
         self._check_exist_count = self.check_exist_every + 1
 
     def get_suffix(self):
@@ -362,7 +473,8 @@ class RotatingFileWriter:
 
     def shutdown(self):
         self.close_file()
-        if self.compress:
+        # getattr for half-constructed instances collected by GC
+        if getattr(self, "compress", False):
             for t in self._compress_threads:
                 t.join()
 
@@ -384,9 +496,7 @@ class RotatingFileWriter:
         return self.file
 
     def check_exist(self):
-        return not (
-            self._check_exist_count > self.check_exist_every and not self.path.is_file()
-        )
+        return not (self._check_exist_count > self.check_exist_every and not self.path.is_file())
 
     def rotate(self, new_length):
         with self._rotate_lock:
@@ -406,9 +516,7 @@ class RotatingFileWriter:
                         else:
                             break
                     else:
-                        raise RuntimeError(
-                            "max_backups is too small for writing too fast"
-                        )
+                        raise RuntimeError("max_backups is too small for writing too fast")
                     self.path.rename(target_path)
                     self.reopen_file()
                     if not self.compress:
@@ -496,7 +604,7 @@ class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
 
         import logging
         import time
-        from morebuiltins.funcs import SizedTimedRotatingFileHandler
+        from morebuiltins.logs import SizedTimedRotatingFileHandler
 
         logger = logging.getLogger("test1")
         h = SizedTimedRotatingFileHandler(
@@ -564,20 +672,31 @@ class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
         self.suffix = "%Y%m%d_%H%M%S"
         self.compress = compress
         self.need_compress = False
-        self.comress_chunk_size = 64 * 1024
+        self._compressing = None
+        self.compress_chunk_size = 64 * 1024
         self.extMatch = re.compile(r"^\d{4}\d{2}\d{2}_\d{2}\d{2}\d{2}$", re.ASCII)
 
+    @property
+    def comress_chunk_size(self):
+        """Deprecated alias of compress_chunk_size, kept for compatibility."""
+        return self.compress_chunk_size
+
+    @comress_chunk_size.setter
+    def comress_chunk_size(self, value):
+        self.compress_chunk_size = value
+
     def do_compress_async(self):
-        if getattr(self, "_background_compress", None):
+        # guard re-entry: only start a new compress thread when the previous
+        # one has finished, need_compress stays set for it to pick up
+        if self._compressing and self._compressing.is_alive():
             return
-        self._compressing = Thread(
-            target=self.do_compress, daemon=False, name="do_compress_async"
-        )
+        self._compressing = Thread(target=self.do_compress, daemon=False, name="do_compress_async")
         self._compressing.start()
 
     def gzip_log(self, path: Path):
+        # assign before try, so the finally block can never hit an unbound name
+        temp_path = path.with_suffix(".tmp.gz")
         try:
-            temp_path = path.with_suffix(".tmp.gz")
             with open(path, "rb") as f:
                 with GzipFile(temp_path, "wb") as gz:
                     size = 0
@@ -585,25 +704,24 @@ class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
                     for line in f:
                         size += len(line)
                         lines.append(line)
-                        if size > self.comress_chunk_size:
+                        if size > self.compress_chunk_size:
                             gz.writelines(lines)
                             size = 0
                             lines = []
                     if lines:
                         gz.writelines(lines)
-            if path.is_file():
-                try:
-                    path.unlink()
-                    temp_path.rename(path.with_suffix(f"{path.suffix}.gz"))
-                except OSError:
-                    pass
-        except OSError:
-            pass
+            target_path = path.with_suffix(f"{path.suffix}.gz")
+            # replace first, unlink the original only after success, so a
+            # failed rename never loses both the original and the compressed copy
+            temp_path.replace(target_path)
+            path.unlink(missing_ok=True)
+        except OSError as e:
+            logging.getLogger(__name__).warning("gzip_log failed for %s: %s", path, e)
         finally:
             try:
                 temp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as e:
+                logging.getLogger(__name__).warning("failed to cleanup temp file %s: %s", temp_path, e)
 
     def do_compress(self):
         try:
@@ -616,17 +734,20 @@ class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
                     if path.suffix == now_suffix:
                         self.need_compress = True
                         continue
-                    for time_suffix in path.name.split(".")[-2:]:
-                        if self.extMatch.match(time_suffix):
-                            path_list.append((time_suffix, path))
+                    path_list.extend(
+                        (time_suffix, path)
+                        for time_suffix in path.name.split(".")[-2:]
+                        if self.extMatch.match(time_suffix)
+                    )
                 path_list.sort()
-                target_index = len(path_list) - self.backupCount
+                # backupCount <= 0 means keep all backups (stdlib contract)
+                target_index = len(path_list) - self.backupCount if self.backupCount > 0 else 0
                 for index, (_, path) in enumerate(path_list):
                     if index < target_index:
                         try:
                             path.unlink(missing_ok=True)
-                        except OSError:
-                            pass
+                        except OSError as e:
+                            logging.getLogger(__name__).warning("failed to unlink expired backup %s: %s", path, e)
                         continue
                     elif path.suffix == ".gz":
                         continue
@@ -645,7 +766,8 @@ class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
             return True
 
         if self.maxBytes > 0:
-            if self.stream.tell() >= self.maxBytes:
+            # a closed or redirected stream cannot be rolled over by size
+            if self.stream is not None and self.stream.tell() >= self.maxBytes:
                 return True
         return False
 
@@ -656,22 +778,22 @@ class SizedTimedRotatingFileHandler(TimedRotatingFileHandler):
         """
         try:
             super().doRollover()
-        except OSError:
-            pass
+        except OSError as e:
+            logging.getLogger(__name__).warning("rollover failed for %s: %s", self.baseFilename, e)
         finally:
             self.need_compress = True
         if self.compress:
             self.do_compress_async()
 
     def getFilesToDelete(self):
-        # always return null list
+        # compressed backups are trimmed by do_compress, no deletion here
         if self.compress:
             return []
         else:
             return super().getFilesToDelete()
 
     def __del__(self):
-        if self.compress:
+        if getattr(self, "compress", False):
             self.do_compress()
 
 
@@ -708,14 +830,11 @@ class AsyncQueueListener(QueueListener):
         respect_handler_level=True,
     ):
         self.logger = logger
-        self.queue_id = id(queue)
         self.queue = queue or Queue()
         # Store original handlers to restore later
         self.original_handlers = list(logger.handlers)
         # Get handlers that might block, send to parent class
-        self.blocking_handlers = [
-            h for h in self.original_handlers if not isinstance(h, QueueHandler)
-        ]
+        self.blocking_handlers = [h for h in self.original_handlers if not isinstance(h, QueueHandler)]
         # Initialize parent with queue and blocking handlers
         super().__init__(
             self.queue,
@@ -723,6 +842,7 @@ class AsyncQueueListener(QueueListener):
             respect_handler_level=respect_handler_level,
         )
         self._started = self._stopped = False
+        self.queue_handler = None
 
     def bind_new_handler(self, handler: logging.Handler):
         if isinstance(handler, QueueHandler):
@@ -736,15 +856,17 @@ class AsyncQueueListener(QueueListener):
         # Remove original handlers
         for handler in self.original_handlers:
             self.logger.removeHandler(handler)
-        # Add queue handler
+        # Add queue handler, keep the reference for an exact restore later
         queue_handler = QueueHandler(self.queue)
-        queue_handler.listener = self
+        queue_handler.listener = self  # ty: ignore[unresolved-attribute]  # read back by _bind_queue_handler
+        self.queue_handler = queue_handler
         self.logger.addHandler(queue_handler)
 
     def _restore_original_handlers(self):
         """Restore original handlers in a blocking context"""
-        # Remove queue handler
-        self.logger.removeHandler(self.logger.handlers[0])
+        # Remove the queue handler by identity, never guess by position
+        if self.queue_handler is not None:
+            self.logger.removeHandler(self.queue_handler)
         # Restore original handlers
         for handler in self.original_handlers:
             self.logger.addHandler(handler)
@@ -752,6 +874,7 @@ class AsyncQueueListener(QueueListener):
     def stop(self):
         if self._started and not self._stopped:
             self._stopped = True
+            atexit.unregister(self.stop)
             super().stop()
             self._restore_original_handlers()
 
@@ -953,7 +1076,9 @@ class LoggerStream:
     def restore_print(cls):
         import builtins
 
-        builtins.print = cls.BUILTINS_PRINT
+        # monkeypatching builtins.print is this feature; cast to Any because
+        # typeshed's print overloads cannot describe the replaced callable
+        builtins.print = typing.cast(typing.Any, cls.BUILTINS_PRINT)
 
     @classmethod
     def install_print(
@@ -1021,13 +1146,11 @@ class LoggerStream:
             else:
                 cls.BUILTINS_PRINT(*values, sep=sep, end=end, file=file, flush=flush)
 
-        builtins.print = custom_print
+        builtins.print = typing.cast(typing.Any, custom_print)  # see restore_print
 
 
 def test_LogHelper():
-    logger = LogHelper.bind_handler(
-        "app_test", filename="app_test.log", maxBytes=1, backupCount=2
-    )
+    logger = LogHelper.bind_handler("app_test", filename="app_test.log", maxBytes=1, backupCount=2)
     for i in range(3):
         logger.info(str(i))
     LogHelper.close_all_handlers()
@@ -1035,7 +1158,8 @@ def test_LogHelper():
     for path in Path(".").glob("app_test.log*"):
         path.unlink(missing_ok=True)
         count += 1
-    assert count == 2, count
+    if count != 2:
+        raise AssertionError(count)
 
 
 def test_AsyncQueueListener():
@@ -1050,9 +1174,7 @@ def test_AsyncQueueListener():
             logger.handlers.clear()
             logger.setLevel(logging.INFO)
             stream_handler = logging.StreamHandler(stream=mock_stdout)
-            stream_handler.setFormatter(
-                logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-            )
+            stream_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
             logger.addHandler(stream_handler)
             # Use async queue listener
             async with AsyncQueueListener(logger):
@@ -1061,11 +1183,15 @@ def test_AsyncQueueListener():
                     logger.info("log info")
                     logger.debug("log debug")
             text = mock_stdout.getvalue()
-            assert text.count("log info") == 5, text
-            assert text.count("log debug") == 0, text
+            if text.count("log info") != 5:
+                raise AssertionError(text)
+            if text.count("log debug") != 0:
+                raise AssertionError(text)
             return True
 
-    assert asyncio.run(_test()) is True
+    result = asyncio.run(_test())
+    if result is not True:
+        raise AssertionError(result)
 
 
 def test_LoggerStream():
@@ -1077,20 +1203,18 @@ def test_LoggerStream():
     def writer(msg: str):
         cache.append(msg)
 
-    with LoggerStream.replace_print_ctx(
-        skip_same_head=True, writer=writer, get_prefix=get_prefix
-    ):
+    with LoggerStream.replace_print_ctx(skip_same_head=True, writer=writer, get_prefix=get_prefix):
         print("123")
         print("456")
-        assert cache == ["PREFIX 123\n", "456\n"], cache
+        if cache != ["PREFIX 123\n", "456\n"]:
+            raise AssertionError(cache)
         cache.clear()
 
-    with LoggerStream.replace_print_ctx(
-        skip_same_head=False, writer=writer, get_prefix=get_prefix
-    ):
+    with LoggerStream.replace_print_ctx(skip_same_head=False, writer=writer, get_prefix=get_prefix):
         print("123")
         print("456")
-        assert cache == ["PREFIX 123\n", "PREFIX 456\n"], cache
+        if cache != ["PREFIX 123\n", "PREFIX 456\n"]:
+            raise AssertionError(cache)
         cache.clear()
 
 
@@ -1103,9 +1227,7 @@ def test_utils():
         "test_AsyncQueueListener passed",
     )
     test_LoggerStream()
-    print(
-        time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), "test_LoggerStream passed"
-    )
+    print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), "test_LoggerStream passed")
 
 
 def test():
