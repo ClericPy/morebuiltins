@@ -10,10 +10,10 @@ import typing
 import webbrowser
 from html import escape
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from queue import Queue
+from queue import Empty, Queue
 from string import Template
-from threading import Thread, Timer
-from urllib.parse import parse_qsl, unquote_plus
+from threading import Thread, Timer, get_ident
+from urllib.parse import parse_qsl, unquote_plus, urlsplit
 
 from ..funcs import FuncSchema, get_function
 
@@ -31,8 +31,9 @@ class TKUI:
         self.inputs = {}
         self.create_inputs()
         self.origin_std = (sys.stdout, sys.stderr)
-        sys.stdout = TextRedirector(self.text_output, "stdout")
-        sys.stderr = TextRedirector(self.text_output, "stderr")
+        self.output_queue: Queue = Queue()
+        sys.stdout = TextRedirector(self.output_queue, "stdout")
+        sys.stderr = TextRedirector(self.output_queue, "stderr")
         doc = getattr(self.function, "__doc__", "")
         if doc:
             print(doc)
@@ -47,9 +48,7 @@ class TKUI:
         window_height = int(screen_height * 0.6)
         x_cordinate = int((screen_width / 2) - (window_width / 2))
         y_cordinate = int((screen_height / 2) - (window_height / 2))
-        self.root.geometry(
-            "{}x{}+{}+{}".format(window_width, window_height, x_cordinate, y_cordinate)
-        )
+        self.root.geometry(f"{window_width}x{window_height}+{x_cordinate}+{y_cordinate}")
 
     def create_inputs(self):
         for key, value in self.schema.items():
@@ -74,7 +73,8 @@ class TKUI:
             if value["type"] is bool:
                 var = tk.BooleanVar()
                 checkbox = tk.Checkbutton(frame, variable=var)
-                var.set(default)
+                # a required bool has no default and `inspect._empty` is truthy
+                var.set(default is not inspect._empty and bool(default))
                 checkbox.pack(side=tk.LEFT, padx=(0, 10), fill=tk.X)
                 self.inputs[key] = (value["type"], default, var)
             else:
@@ -109,14 +109,13 @@ class TKUI:
             return ValueError(f"{', '.join(missing)} required")
         return values
 
-    def get_result(self):
+    def get_result(self, kwargs):
         ok = "OK"
         size = 0
         start = time.time()
         head = ""
         try:
             func = self.function
-            kwargs = self.get_input_values()
             if isinstance(kwargs, dict):
                 head = f">>> {self.func_name}(**{kwargs})"[:200]
                 result = func(**kwargs)
@@ -134,33 +133,62 @@ class TKUI:
         finally:
             end = time.time()
             elapsed = int(1000 * (end - start))
-            self.root.title(f"[{ok}, output: {size}, elapsed: {elapsed}ms] {head}")
+            title = f"[{ok}, output: {size}, elapsed: {elapsed}ms] {head}"
+            # Tk widgets are not thread-safe: hand the title back to the main
+            # thread, it is rendered by drain_output_queue
+            self.output_queue.put(("title", title))
+
+    def drain_output_queue(self):
+        "Render worker output on the main thread (Tk widgets are not thread-safe)."
+        while True:
+            try:
+                tag, text = self.output_queue.get_nowait()
+            except Empty:
+                break
+            if tag == "title":
+                self.root.title(text)
+            else:
+                self.text_output.insert(tk.END, text, (tag,))
+                self.text_output.see(tk.END)
 
     def on_button_click(self):
         self.text_output.delete(1.0, tk.END)
+        # Tk widgets must be read on the main thread; the worker gets plain values
+        kwargs = self.get_input_values()
         self.button.config(state=tk.DISABLED)
-        thread = Thread(target=self.get_result, daemon=True)
+        thread = Thread(target=self.get_result, args=(kwargs,), daemon=True)
         thread.start()
         self.root.after(100, lambda: self.check_thread(thread))
 
     def check_thread(self, thread):
-        if not thread.is_alive() and self.button.cget("state") == "disabled":
-            self.button.config(state=tk.NORMAL)
-        else:
+        if thread.is_alive():
+            # reuse the polling loop to drain worker output on the main thread
+            self.drain_output_queue()
             self.root.after(100, lambda: self.check_thread(thread))
+            return
+        # drain once more after the worker exited, its last title may still be queued
+        self.drain_output_queue()
+        if self.button.cget("state") == "disabled":
+            self.button.config(state=tk.NORMAL)
 
     def run(self):
+        # render the docstring printed before mainloop starts
+        self.drain_output_queue()
         self.root.mainloop()
 
 
 class TextRedirector:
-    def __init__(self, widget, tag="stdout"):
-        self.widget = widget
+    """Redirect a stream into a queue, the main thread polls and renders it.
+
+    Tk widgets are not thread-safe, so worker threads must never touch them.
+    """
+
+    def __init__(self, queue: Queue, tag="stdout"):
+        self.queue = queue
         self.tag = tag
 
     def write(self, str):
-        self.widget.insert(tk.END, str, (self.tag,))
-        self.widget.see(tk.END)
+        self.queue.put((self.tag, str))
 
     def flush(self):
         pass
@@ -190,7 +218,12 @@ def handle_cli(func):
             default_msg = f", default={default!r}"
         while True:
             msg = f"Input the value of {k}(type={tp}{default_msg}):\n"
-            value = input(msg) or v["default"]
+            try:
+                value = input(msg) or v["default"]
+            except EOFError:
+                # stdin closed (piped input or Ctrl-Z/Ctrl-D), exit cleanly
+                print("\nEOF on stdin, exiting", flush=True)
+                raise SystemExit(1) from None
             if value is inspect._empty:
                 print(ValueError(f"{k} is required"))
                 continue
@@ -237,15 +270,26 @@ def handle_tk2(func):
         else:
             msg += 'JSON supported, like: [1, 2, 3] or {"a": 2}'
         while True:
-            value = TKit.ask(arg, **_kwargs) or default
+            # askyesno returns a bool for bool fields, `or default` would
+            # swallow a valid False answer, so bool needs its own branch
+            value: typing.Any = TKit.ask(arg, **_kwargs)
+            if v["type"] is bool:
+                if value is None or value == "":
+                    # dialog closed without an answer, fall back to the default
+                    value = default
+                if value is inspect._empty:
+                    TKit.error(f"{k} is required")
+                    continue
+                # an explicit False is a valid answer, only None/"" means unanswered
+                _kws[k] = bool(value)
+                break
+            # `or default` only makes sense for string-ish dialog answers
+            value = value or default
             if value is inspect._empty:
                 TKit.error(f"{k} is required")
                 continue
-            break
-        if v["type"] is bool:
-            _kws[k] = value == "yes"
-        else:
             _kws[k] = FuncSchema.convert(value, v["type"])
+            break
         print(">>>", k, "=", repr(_kws[k]), flush=True)
     print("Result:")
     print(">" * 50)
@@ -264,19 +308,23 @@ class QueueStd:
         self.time_prefix = time_prefix
         self.f_code = function.__code__
         self.newline = True
+        # owner thread: output from a discarded request thread must not leak
+        # into the next request's queue
+        self._ident = get_ident()
 
     def write(self, string):
-        for stack in inspect.stack():
-            # self.stdout.write(f"{stack.function}\n")
-            # self.stdout.flush()
-            if stack.frame.f_code == self.f_code:
-                break
-        else:
+        if get_ident() != self._ident:
+            return
+        # walk frames manually, inspect.stack() is too slow for this hot path
+        frame = sys._getframe(1)
+        while frame is not None and frame.f_code != self.f_code:
+            frame = frame.f_back
+        if frame is None:
             self.stdout.write(string)
             return
         if self.time_prefix:
             if self.newline:
-                string = f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] {string}'
+                string = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {string}"
             if string.endswith("\n"):
                 self.newline = True
             else:
@@ -287,7 +335,7 @@ class QueueStd:
         pass
 
 
-class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+class FuncWebHandler(BaseHTTPRequestHandler):
     template = Template(r"""<!DOCTYPE html>
 <html>
 
@@ -362,11 +410,13 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     title = ""
     schema: dict = {}
     schema_string = ""
-    queue: Queue = Queue()
-    done = object()
     httpd: typing.Optional[HTTPServer] = None
     last_alive = time.time()
     keepalive_timeout = 60
+    # request body larger than this is rejected with 413
+    max_body_size = 1024 * 1024
+    # Host/Origin allowlist, guards against cross-site form posts and DNS rebinding
+    allowed_hosts = ("127.0.0.1", "localhost")
 
     @classmethod
     def setup_function(cls, function):
@@ -376,9 +426,7 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
         cls.schema_string = escape(
             json.dumps(
                 cls.schema,
-                default=lambda obj: None
-                if obj is inspect._empty
-                else getattr(obj, "__name__", str(obj)),
+                default=lambda obj: None if obj is inspect._empty else getattr(obj, "__name__", str(obj)),
                 # default=lambda obj: None if obj is inspect._empty else str(obj),
                 ensure_ascii=False,
                 indent=2,
@@ -410,7 +458,72 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                 result.append(line)
         return "\n".join(result)
 
+    def decode_value(self, key, value):
+        value = unquote_plus(value).replace(os.linesep, "\n")
+        if key in self.schema:
+            return FuncSchema.convert(value, self.schema[key]["type"])
+        else:
+            return value
+
+    def setup_std(self, queue: Queue, function, time_prefix=False):
+        sys.stdout = QueueStd(queue, function=function, time_prefix=time_prefix)
+        sys.stderr = QueueStd(queue, function=function, time_prefix=time_prefix)
+
+    def restore_std(self):
+        sys.stdout = QueueStd.stdout
+        sys.stderr = QueueStd.stderr
+
+    def run_function(self, kwargs: dict, queue: Queue, done, discarded: dict):
+        __handle_stdout__ = kwargs.pop("__handle_stdout__", False)
+        __print_time__ = kwargs.pop("__print_time__", False)
+        function = self.__class__.function
+        if not function:
+            queue.put(f"No function to run {kwargs}")
+            queue.put(done)
+            return
+        result = ""
+        try:
+            self.__class__.last_alive = 0
+            if __handle_stdout__:
+                self.setup_std(queue, function=function, time_prefix=__print_time__)
+            result = function(**kwargs)
+            if not isinstance(result, str):
+                result = repr(result)
+        except Exception as err:
+            # one-line repr plus the tail of the traceback for debugging
+            tb_tail = "\n".join(traceback.format_exc().rstrip().splitlines()[-5:])
+            result = f"{err!r}\n{tb_tail}"
+        finally:
+            if not discarded["flag"]:
+                if __print_time__:
+                    queue.put(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {result}")
+                else:
+                    queue.put(result)
+                queue.put(done)
+            if __handle_stdout__:
+                self.restore_std()
+            self.__class__.last_alive = time.time()
+
+    def check_host(self) -> bool:
+        """Only accept loopback Host/Origin headers, to guard against cross-site form posts and DNS rebinding."""
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]").lower()
+        if host not in self.__class__.allowed_hosts:
+            self.send_error(403, f"forbidden Host: {host!r}")
+            return False
+        origin = self.headers.get("Origin")
+        if origin:
+            try:
+                origin_host = urlsplit(origin).hostname or ""
+            except ValueError:
+                origin_host = ""
+            if origin_host not in self.__class__.allowed_hosts:
+                self.send_error(403, f"forbidden Origin: {origin!r}")
+                return False
+        return True
+
     def do_GET(self):
+        if not self.check_host():
+            return
         if self.__class__.last_alive:
             self.__class__.last_alive = time.time()
         self.send_response(200)
@@ -423,75 +536,69 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
             ).encode("utf-8")
         )
 
-    def decode_value(self, key, value):
-        value = unquote_plus(value).replace(os.linesep, "\n")
-        if key in self.schema:
-            return FuncSchema.convert(value, self.schema[key]["type"])
-        else:
-            return value
-
-    def setup_std(self, function, time_prefix=False):
-        sys.stdout = QueueStd(self.queue, function=function, time_prefix=time_prefix)
-        sys.stderr = QueueStd(self.queue, function=function, time_prefix=time_prefix)
-
-    def restore_std(self):
-        sys.stdout = QueueStd.stdout
-        sys.stderr = QueueStd.stderr
-
-    def run_function(self, kwargs: dict):
-        __handle_stdout__ = kwargs.pop("__handle_stdout__", False)
-        __print_time__ = kwargs.pop("__print_time__", False)
-        function = self.__class__.function
-        if not function:
-            self.queue.put(f"No function to run {kwargs}")
-            return
-        result = ""
-        try:
-            self.__class__.last_alive = 0
-            if __handle_stdout__:
-                self.setup_std(function=function, time_prefix=__print_time__)
-            result = function(**kwargs)
-            if not isinstance(result, str):
-                result = repr(result)
-        except Exception as err:
-            result = repr(err)
-        finally:
-            if __print_time__:
-                self.queue.put(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {result}")
-            else:
-                self.queue.put(result)
-            self.queue.put(self.done)
-            if __handle_stdout__:
-                self.restore_std()
-            self.__class__.last_alive = time.time()
-
     def do_POST(self):
+        if not self.check_host():
+            return
         if self.path == "/submit":
-            content_length = int(self.headers["Content-Length"])
+            raw_length = self.headers.get("Content-Length")
+            if raw_length is None:
+                self.send_error(400, "Content-Length header is required")
+                return
+            try:
+                content_length = int(raw_length)
+            except ValueError:
+                self.send_error(400, "invalid Content-Length")
+                return
+            if content_length < 0:
+                self.send_error(400, "invalid Content-Length")
+                return
+            if content_length > self.__class__.max_body_size:
+                self.send_error(413, "request body too large")
+                return
             post_data = self.rfile.read(content_length).decode("utf-8", "replace")
-            kwargs = {
-                key: self.decode_value(key, value)
-                for key, value in parse_qsl(post_data)
-            }
-            t = Thread(target=self.run_function, args=(kwargs,), daemon=True)
+            try:
+                kwargs = {key: self.decode_value(key, value) for key, value in parse_qsl(post_data)}
+            except Exception:
+                # invalid form data / bad json payload for typed fields
+                self.send_error(400, "invalid form data")
+                return
+            # per-request queue and sentinel: nothing leaks between requests
+            # when a client disconnects mid-run
+            queue: Queue = Queue()
+            done = object()
+            discarded = {"flag": False}
+            t = Thread(
+                target=self.run_function,
+                args=(kwargs, queue, done, discarded),
+                daemon=True,
+            )
             t.start()
             self.send_response(200)
             self.end_headers()
-            self.wfile.write("<pre>".encode("utf-8"))
-            while True:
-                line = self.queue.get()
-                if line is self.done:
-                    break
-                self.wfile.write(escape(line).encode("utf-8"))
-                self.wfile.flush()
-            self.wfile.write("</pre>".encode("utf-8"))
+            self.wfile.write(b"<pre>")
+            try:
+                while True:
+                    line = queue.get()
+                    if line is done:
+                        break
+                    self.wfile.write(escape(line).encode("utf-8"))
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                # client went away: discard this run, leftover output stays in
+                # this per-request queue instead of leaking to the next one
+                discarded["flag"] = True
+                return
+            self.wfile.write(b"</pre>")
 
     @classmethod
     def keepalive_daemon(cls):
         while True:
             if cls.last_alive:
                 if time.time() - cls.last_alive > cls.keepalive_timeout:
-                    cls.httpd.shutdown()
+                    # handle_web sets cls.httpd before this daemon starts
+                    httpd = cls.httpd
+                    if httpd is not None:
+                        httpd.shutdown()
                     print("keepalive timeout", cls.keepalive_timeout, flush=True)
                     break
             else:
@@ -500,9 +607,7 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
             time.sleep(1)
 
 
-def handle_web(
-    function, bind="127.0.0.1:8080", open_browser=False, keepalive_timeout=60
-):
+def handle_web(function, bind="127.0.0.1:8080", open_browser=False, keepalive_timeout=60):
     """Function to Web UI.
 
     Args:
@@ -514,21 +619,23 @@ def handle_web(
     host, port = bind.split(":")
     port = int(port)
     server_address = (host, port)
-    SimpleHTTPRequestHandler.setup_function(function)
-    SimpleHTTPRequestHandler.keepalive_timeout = keepalive_timeout
-    with HTTPServer(server_address, SimpleHTTPRequestHandler) as httpd:
-        SimpleHTTPRequestHandler.httpd = httpd
+    FuncWebHandler.setup_function(function)
+    FuncWebHandler.keepalive_timeout = keepalive_timeout
+    with HTTPServer(server_address, FuncWebHandler) as httpd:
+        FuncWebHandler.httpd = httpd
         print(f"Starting httpd on port http://{host}:{port}", flush=True)
         if open_browser:
             Timer(1, webbrowser.open_new_tab, (f"http://{host}:{port}",)).start()
-        t = Timer(3, SimpleHTTPRequestHandler.keepalive_daemon)
+        t = Timer(3, FuncWebHandler.keepalive_daemon)
         t.daemon = True
         t.start()
         httpd.serve_forever()
 
 
-def test_func_web(ok: bool = True, a={"<b>123</b>123\n&gt;	&#62;111\n111\n\n": 123}):
+def test_func_web(ok: bool = True, a=None):
     "test string: html escape, html tag, unicode, enter, tab. type: dict, bool"
+    if a is None:
+        a = {"<b>123</b>123\n&gt;\t&#62;111\n111\n\n": 123}
     for _ in range(5):
         print(str(_) * 100)
         time.sleep(0.2)
@@ -537,41 +644,42 @@ def test_func_web(ok: bool = True, a={"<b>123</b>123\n&gt;	&#62;111\n111\n\n": 1
 
 def launch_ui():
     r"""Interactive mode, value can be parsed by JSON parser.
-    
-Demo::
 
-    > python -m morebuiltins.cmd.ui -e urllib.parse:urlparse --cli
+    Demo::
 
-    Input the value of url(type=str):
-    http://github.com
-    >>> url = 'http://github.com'
-    Input the value of scheme(type=str, default=''):
+        > python -m morebuiltins.cmd.ui -e urllib.parse:urlparse --cli
 
-    >>> scheme = ''
-    Input the value of allow_fragments(type=bool, default=True):
-    false
-    >>> allow_fragments = False
-    result:
-    >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-    ParseResult(scheme='http', netloc='github.com', path='', params='', query='', fragment='')
-    >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        Input the value of url(type=str):
+        http://github.com
+        url = 'http://github.com'
+        Input the value of scheme(type=str, default=''):
 
-    1. try `python -m morebuiltins.cmd.ui -e re:findall --cli`
-    2. try `python -m morebuiltins.cmd.ui -e re:findall --gui1`
-    3. try `python -m morebuiltins.cmd.ui -e re:findall --gui2`
-    4. try `python -m morebuiltins.cmd.ui -e test_func_web --web --web-open --web-timeout=30`
+        scheme = ''
+        Input the value of allow_fragments(type=bool, default=True):
+        false
+        allow_fragments = False
+        Result:
+        --------------------------------------------------
+        ParseResult(scheme='http', netloc='github.com', path='', params='', query='', fragment='')
+        --------------------------------------------------
 
-    try a custom function:
+        1. try `python -m morebuiltins.cmd.ui -e re:findall --cli`
+        2. try `python -m morebuiltins.cmd.ui -e re:findall --gui1`
+        3. try `python -m morebuiltins.cmd.ui -e re:findall --gui2`
+        4. try `python -m morebuiltins.cmd.ui -e test_func_web --web --web-open --web-timeout=30`
 
-    def test_func_web(ok: bool = True, a={"<b>123</b>123\n&gt;	&#62;111\n111\n\n": 123}):
-        "test string: html escape, html tag, unicode, enter, tab. type: dict, bool"
-        for _ in range(5):
-            print(str(_) * 100)
-            time.sleep(0.2)
-        return f"a={a} ok={ok!r}"
+        try a custom function:
 
-    """.strip()
-    parser = argparse.ArgumentParser(usage=launch_ui.__doc__)
+        def test_func_web(ok: bool = True, a={"<b>123</b>123\n&gt;	&#62;111\n111\n\n": 123}):
+            "test string: html escape, html tag, unicode, enter, tab. type: dict, bool"
+            for _ in range(5):
+                print(str(_) * 100)
+                time.sleep(0.2)
+            return f"a={a} ok={ok!r}"
+
+    """
+    usage = typing.cast(str, launch_ui.__doc__).strip()
+    parser = argparse.ArgumentParser(usage=usage)
     parser.add_argument(
         "--func",
         "--entrypoint",
@@ -588,9 +696,7 @@ Demo::
         default=60,
         help="web mode keepalive timeout",
     )
-    parser.add_argument(
-        "--web-bind", "-bind", default="127.0.0.1:8080", help="web mode bind address"
-    )
+    parser.add_argument("--web-bind", "-bind", default="127.0.0.1:8080", help="web mode bind address")
     parser.add_argument(
         "--web-browser",
         "--web-open",
@@ -606,12 +712,8 @@ Demo::
         action="store_true",
         help="run in gui mode(tkinter)",
     )
-    parser.add_argument(
-        "--gui2", "-gui2", action="store_true", help="run in gui mode(TKit)"
-    )
-    parser.add_argument(
-        "--path", dest="path", help="insert to index 0 of sys.path", default=""
-    )
+    parser.add_argument("--gui2", "-gui2", action="store_true", help="run in gui mode(TKit)")
+    parser.add_argument("--path", dest="path", help="insert to index 0 of sys.path", default="")
     args = parser.parse_args()
     if not args.entrypoint:
         raise ValueError("entrypoint is required")

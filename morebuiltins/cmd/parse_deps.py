@@ -18,6 +18,95 @@ except AttributeError:
 stds_libs = stdlibs | set(sys.builtin_module_names)
 
 
+def _relative_import_siblings(file_path: Path, node: ast.ImportFrom):
+    """Resolve `from . import sibling` to sibling modules that exist on disk.
+
+    A node without a module name but with a level (``node.module is None and
+    node.level``) imports names from the relative base directory; only names
+    matching an actual module file are dependencies.
+    """
+    base_dir = file_path.parent
+    for _ in range(node.level - 1):
+        base_dir = base_dir.parent
+    siblings = set()
+    for alias in node.names:
+        sibling = alias.name
+        if not sibling or sibling == "*":
+            continue
+        sibling_path = base_dir / sibling
+        if sibling_path.with_suffix(".py").is_file() or (sibling_path / "__init__.py").is_file():
+            siblings.add("." * node.level + sibling)
+    return siblings
+
+
+def _deps_from_import(node: ast.Import, ignore_stds: bool) -> set:
+    """Dependencies declared by one `import a, b` statement."""
+    result = set()
+    for alias in node.names:
+        name = alias.name
+        if name and not (ignore_stds and name.split(".", 1)[0] in stds_libs):
+            result.add(name)
+    return result
+
+
+def _deps_from_importfrom(node: ast.ImportFrom, file_path: Path, ignore_stds: bool) -> set:
+    """Dependencies declared by one `from a import b` statement."""
+    if node.module is None and node.level:
+        return _relative_import_siblings(file_path, node)
+    name = node.module or ""
+    if not name:
+        return set()
+    if ignore_stds and name.split(".", 1)[0] in stds_libs:
+        return set()
+    return {"." * node.level + name}
+
+
+def _get_dependencies(file_path: Path, ignore_stds=True):
+    dependencies: set = set()
+    try:
+        tree = ast.parse(file_path.read_text("utf-8", "ignore"))
+    except SyntaxError:
+        return dependencies
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            dependencies.update(_deps_from_import(node, ignore_stds))
+        elif isinstance(node, ast.ImportFrom):
+            dependencies.update(_deps_from_importfrom(node, file_path, ignore_stds))
+    return dependencies
+
+
+def _fix_path(file_path: Path, name: str, project_dir: Path):
+    match = re.match(r"^(\.+)(.+)", name)
+    if match:
+        # a/b/c.py + ..d => a/d.py
+        # fix relative import .. to absolute import
+        level = len(match[1])
+        tail = match[2]
+        base = file_path
+        for _ in range(level):
+            base = base.parent
+        name = ".".join([base.name, tail])
+    # name to path
+    path_tail = name.replace(".", "/") + ".py"
+    head_name, _, tail = path_tail.partition("/")
+    dir_path = file_path.parent
+    for _ in range(len(file_path.parts)):
+        if dir_path.name == head_name:
+            result_path = dir_path.joinpath(tail)
+            if result_path.is_file():
+                result = "./" + result_path.relative_to(project_dir).as_posix()
+                return result
+            else:
+                maybe_dir = result_path.with_suffix("")
+                if maybe_dir.is_dir():
+                    maybe_file = maybe_dir.joinpath("__init__.py")
+                    if maybe_file.is_file():
+                        result = "./" + maybe_file.relative_to(project_dir).as_posix()
+                        return result
+        dir_path = dir_path.parent
+    return name
+
+
 def parse_deps(project_dir, ignore_stds=True, format_path=True, pattern_list=("*.py",)):
     r"""Parse dependencies of a project directory, and find circular dependencies.
 
@@ -111,73 +200,19 @@ def parse_deps(project_dir, ignore_stds=True, format_path=True, pattern_list=("*
 
     """
 
-    def get_dependencies(file_path: Path, ignore_stds=True):
-        dependencies: set = set()
-        try:
-            tree = ast.parse(file_path.read_text("utf-8", "ignore"))
-        except SyntaxError:
-            return dependencies
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    name = alias.name
-                    if name and name.split(".", 1)[0] not in stds_libs:
-                        dependencies.add(name)
-            elif isinstance(node, ast.ImportFrom):
-                name = node.module or ""
-                if not name:
-                    continue
-                if ignore_stds and name.split(".", 1)[0] in stds_libs:
-                    continue
-                dependencies.add("." * (node.level) + name)
-        return dependencies
-
-    def fix_path(file_path: Path, name: str, project_dir: Path):
-        match = re.match(r"^(\.+)(.+)", name)
-        if match:
-            # a/b/c.py + ..d => a/d.py
-            # fix relative import .. to absolute import
-            level = len(match[1])
-            tail = match[2]
-            base = file_path
-            for _ in range(level):
-                base = base.parent
-            name = ".".join([base.name, tail])
-        # name to path
-        path_tail = name.replace(".", "/") + ".py"
-        head_name, _, tail = path_tail.partition("/")
-        dir_path = file_path.parent
-        for _ in range(len(file_path.parts)):
-            if dir_path.name == head_name:
-                result_path = dir_path.joinpath(tail)
-                if result_path.is_file():
-                    result = "./" + result_path.relative_to(project_dir).as_posix()
-                    return result
-                else:
-                    maybe_dir = result_path.with_suffix("")
-                    if maybe_dir.is_dir():
-                        maybe_file = maybe_dir.joinpath("__init__.py")
-                        if maybe_file.is_file():
-                            result = (
-                                "./" + maybe_file.relative_to(project_dir).as_posix()
-                            )
-                            return result
-            dir_path = dir_path.parent
-        return name
-
     project_dir = Path(project_dir)
     if not project_dir.is_dir():
         raise ValueError(f"{project_dir} is not a directory")
     dependencies = {}
     for pattern in pattern_list:
         for file_path in project_dir.rglob(pattern):
-            deps = get_dependencies(file_path, ignore_stds=ignore_stds)
+            deps = _get_dependencies(file_path, ignore_stds=ignore_stds)
             if deps:
                 key = "./" + file_path.relative_to(project_dir).as_posix()
                 if key in dependencies:
                     continue
                 if format_path:
-                    deps = {fix_path(file_path, name, project_dir) for name in deps}
+                    deps = {_fix_path(file_path, name, project_dir) for name in deps}
                     deps = {i for i in deps if i}
                     if not deps:
                         continue

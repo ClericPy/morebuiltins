@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import io
 import json
 import logging
 import logging.handlers
@@ -9,21 +10,23 @@ import re
 import shutil
 import signal
 import sys
+import threading
 import time
 import traceback
 import typing
-from collections import Counter
+from collections import Counter, OrderedDict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Empty, Full, Queue
 from threading import Event as SyncEvent
 from threading import Thread
 
+from morebuiltins.funcs import to_thread
 from morebuiltins.ipc import SocketLogHandlerEncoder, SocketServer
 from morebuiltins.logs import LogHelper, RotatingFileWriter
 from morebuiltins.utils import Validator, format_error, read_size, ttime
 
-__all__ = ["LogServer"]
+__all__ = ["LogServer", "get_logger", "create_handler"]
 
 
 class QueueMsg:
@@ -36,6 +39,34 @@ class QueueMsg:
 
 class STOP_SIG(QueueMsg):
     pass
+
+
+class _FormatterUnpickler(pickle.Unpickler):
+    """Restricted unpickler for formatter payloads from untrusted log clients.
+
+    Only logging's builtin formatter classes are allowed, so a malicious
+    payload cannot execute arbitrary code while unpickling.
+    """
+
+    _allowed = {
+        ("logging", "Formatter"),
+        ("logging", "PercentStyle"),
+        ("logging", "StrFormatStyle"),
+        ("logging", "StringTemplateStyle"),
+        # StringTemplateStyle holds a string.Template for style="$"
+        ("string", "Template"),
+        # protocol 0/1 pickles instances via copy_reg._reconstructor; its cls
+        # argument is still a GLOBAL and goes through find_class()
+        ("copy_reg", "_reconstructor"),
+        # protocol 0/1 reduce() references object as the base class
+        ("__builtin__", "object"),
+        ("builtins", "object"),
+    }
+
+    def find_class(self, module, name):
+        if (module, name) in self._allowed:
+            return super().find_class(module, name)
+        raise pickle.UnpicklingError(f"forbidden class in formatter payload: {module}.{name}")
 
 
 class DefaultLogSetting:
@@ -60,6 +91,20 @@ class DefaultLogSetting:
 
 @dataclass
 class LogSetting(Validator):
+    """Log setting for a logger, with a lossless asdict/from_dict round-trip.
+
+    Demo::
+
+        >>> from dataclasses import asdict
+        >>> setting = LogSetting(level_specs=["Level 13"])
+        >>> setting.level_specs
+        [13]
+        >>> LogSetting.from_dict(**asdict(setting)).level_specs
+        [13]
+        >>> LogSetting(level_specs=["debug", "Warning"]).level_specs
+        [10, 30]
+    """
+
     formatter: logging.Formatter = DefaultLogSetting.formatter
     max_size: int = DefaultLogSetting.max_size
     max_backups: int = DefaultLogSetting.max_backups
@@ -86,15 +131,18 @@ class LogSetting(Validator):
         for index, level in enumerate(self.level_specs):
             if isinstance(level, int):
                 continue
-            level = str(level).upper()
+            level = str(level)
             if level not in logging._nameToLevel:
-                if re.match(r"^Level \d+$", level):
-                    level = level.split()[-1]
-                    return int(level)
+                # level names are case-insensitive: retry with the upper-cased name
+                upper = level.upper()
+                if upper in logging._nameToLevel:
+                    level = upper
+                elif re.match(r"^Level \d+$", level, re.IGNORECASE):
+                    # e.g. "Level 13" produced by level_to_name for custom levels
+                    self.level_specs[index] = int(level.split()[-1])
+                    continue
                 else:
-                    raise ValueError(
-                        f"level_specs[{index}] invalid log level name: {level}"
-                    )
+                    raise ValueError(f"level_specs[{index}] invalid log level name: {level}")
             self.level_specs[index] = logging._nameToLevel[level]
         super().__post_init__()
 
@@ -108,7 +156,9 @@ class LogSetting(Validator):
 
     @staticmethod
     def pickle_from_base64(data: str):
-        return pickle.loads(base64.b64decode(data.encode("utf-8")))
+        # restricted unpickler: formatter payloads come from untrusted clients
+        fp = io.BytesIO(base64.b64decode(data.encode("utf-8")))
+        return _FormatterUnpickler(fp).load()
 
     @classmethod
     def from_dict(cls, **kwargs):
@@ -165,6 +215,11 @@ class LogSetting(Validator):
 class LogServer(SocketServer):
     """Log server for SocketHandler, create a socket server with asyncio.start_server. Custom formatter or rotation strategy with extra in log record.
 
+    [SECURITY WARNING]: There is no authentication on the socket protocol. Every
+    incoming frame is still decoded as a bare pickle (arbitrary code on load); the
+    restricted unpickler only guards formatter settings nested in the "log_setting"
+    payload. Keep host=127.0.0.1 and never expose the server to untrusted networks.
+
     [WARNING]: Ensure your log msg is "" if you only want to update settings, or the msg will be skipped.
 
     logger.info("", extra={"log_setting": {"formatter": formatter, "max_size": 1024**2, "level_specs": [logging.ERROR]}})
@@ -175,7 +230,7 @@ class LogServer(SocketServer):
         > python -m morebuiltins.cmd.log_server
 
     ### Server demo2:
-        custom options to log to "logs" directory, default rotates at 10MB with 5 backups, no log_stream, enable compress
+        custom options to log to "logs" directory, default rotates at 10MB with 1 backup, no log_stream, enable compress
         > python -m morebuiltins.cmd.log_server --log-dir=./logs --host 127.0.0.1 --port 8901 --log-stream=None --compress
 
     ### Server demo3:
@@ -223,11 +278,11 @@ class LogServer(SocketServer):
     for _ in range(5):
         logger.info("hello world!")
 
-    # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
-    # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
-    # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
-    # [client] 2024-08-10 19:30:07,113 - temp3.py - hello world!
-    # [client] 2024-08-10 19:30:07,114 - temp3.py - hello world!
+    # 2024-08-10 19:30:07,113 - temp3.py - hello world!
+    # 2024-08-10 19:30:07,113 - temp3.py - hello world!
+    # 2024-08-10 19:30:07,113 - temp3.py - hello world!
+    # 2024-08-10 19:30:07,113 - temp3.py - hello world!
+    # 2024-08-10 19:30:07,114 - temp3.py - hello world!
     ```
 
     ### Client demo2:
@@ -249,6 +304,11 @@ class LogServer(SocketServer):
     More docs:
         > python -m morebuiltins.cmd.log_server -h
     """
+
+    # max concurrently opened log files, least recently used ones get closed
+    MAX_OPENED_FILES = 256
+    # timeout to wait for the queue consumer before closing files on shutdown
+    CONSUMER_JOIN_TIMEOUT = 30
 
     def __init__(
         self,
@@ -308,27 +368,25 @@ class LogServer(SocketServer):
         self.log_dir = Path(log_dir).resolve() if log_dir else None
         if self.log_dir:
             self.log_dir.mkdir(exist_ok=True, parents=True)
-            self.setting_path: typing.Optional[Path] = self.log_dir.joinpath(
-                f"{self.name}_settings.jsonl"
-            )
+            self.setting_path: typing.Optional[Path] = self.log_dir.joinpath(f"{self.name}_settings.jsonl")
         else:
             self.setting_path = None
-        self._server_log_setting = LogSetting(
-            max_size=max_size, max_backups=max_backups
-        )
+        self._server_log_setting = LogSetting(max_size=max_size, max_backups=max_backups)
         self._loop: typing.Optional[asyncio.AbstractEventLoop] = None
         self._shutdown_signals = 0
         self._lines_counter: Counter = Counter()
         self._size_counter: Counter = Counter()
-        self._formatters_cache: typing.Dict[str, logging.Formatter] = {}
         self._default_formatter = LogHelper.DEFAULT_FORMATTER
-        self._opened_files = typing.cast(typing.Dict[str, RotatingFileWriter], {})
+        # OrderedDict keeps write order for LRU eviction of idle files
+        self._opened_files = typing.cast(typing.OrderedDict[str, RotatingFileWriter], OrderedDict())
         self.max_queue_size = max_queue_size
         self._write_queue: Queue = Queue(maxsize=max_queue_size)
         self.max_queue_buffer = max_queue_buffer
         self.handle_signals = DefaultLogSetting.handler_signals
-        for sig in self.handle_signals:
-            signal.signal(sig, self.handle_signal)
+        if threading.current_thread() is threading.main_thread():
+            # signal.signal raises ValueError outside the main thread
+            for sig in self.handle_signals:
+                signal.signal(sig, self.handle_signal)
         self._log_settings = self.load_settings()
         if self.name in self._log_settings:
             self._log_settings[self.name] = self._server_log_setting
@@ -338,31 +396,81 @@ class LogServer(SocketServer):
         result = typing.cast(typing.Dict[str, LogSetting], {})
         if not (self.setting_path and self.setting_path.is_file()):
             return result
+        bad_lines = 0
         try:
             with self.setting_path.open("r", encoding="utf-8") as f:
-                for line in f:
-                    data = json.loads(line)
-                    name = data["name"]
-                    setting = LogSetting.from_dict(**data["setting"])
-                    result[name] = setting
-            self.send_log(
-                f"Loaded log settings from {self.setting_path}, {len(result)} items"
-            )
+                for line_no, line in enumerate(f, 1):
+                    # one bad line must not abort the whole load
+                    try:
+                        if not line.strip():
+                            continue
+                        data = json.loads(line)
+                        name = data["name"]
+                        setting = LogSetting.from_dict(**data["setting"])
+                        result[name] = setting
+                    except Exception as e:
+                        bad_lines += 1
+                        self.send_log(
+                            f"skip bad setting line {line_no} in {self.setting_path}: {e!r}",
+                            level=logging.WARNING,
+                        )
+            self.send_log(f"Loaded log settings from {self.setting_path}, {len(result)} items")
+            if bad_lines:
+                self.send_log(
+                    f"{bad_lines} bad setting lines skipped in {self.setting_path}",
+                    level=logging.WARNING,
+                )
         except Exception as e:
             self.send_log(f"Failed to load log settings from {self.setting_path}: {e}")
         return result
 
     async def __aenter__(self):
         await super().__aenter__()
-        self._queue_consumer_task = self.loop.run_in_executor(
-            self._default_executor, self.write_queue_consumer
-        )
+        self._queue_consumer_task = self.loop.run_in_executor(self._default_executor, self.write_queue_consumer)
         return self
 
     async def __aexit__(self, *_errors):
         await asyncio.sleep(0.01)
+        if not self.is_serving():
+            # close() may already have run (e.g. from handle_signal) or the
+            # server never served; join the consumer before close_opened_files
+            # so no in-flight write races with closing its file. If
+            # end_callback already stopped it, _stop_queue_consumer returns
+            # immediately instead of enqueuing a second STOP_SIG.
+            await self._stop_queue_consumer()
         await super().__aexit__(*_errors)
-        await asyncio.to_thread(self.close_opened_files)
+        await to_thread(self.close_opened_files)
+
+    async def _stop_queue_consumer(self, timeout: typing.Optional[float] = None):
+        """Stop the queue consumer: enqueue STOP_SIG unless it already exited, then join it."""
+        if timeout is None:
+            timeout = self.CONSUMER_JOIN_TIMEOUT
+        task = getattr(self, "_queue_consumer_task", None)
+        if task is not None and task.done():
+            # consumer already stopped, another STOP_SIG would only linger
+            return
+        try:
+            self._write_queue.put_nowait(STOP_SIG)
+        except Full:
+            # queue is full, the consumer still exits via _shutdown_ev; avoid
+            # send_log here because it enqueues into the same full queue
+            print("could not enqueue STOP_SIG: queue is full", file=sys.stderr, flush=True)
+        if task is None:
+            return
+        deadline = time.time() + timeout
+        while not task.done() and time.time() < deadline:
+            await asyncio.sleep(0.05)
+        if not task.done():
+            self.send_log(
+                f"queue consumer did not stop within {timeout}s, close files anyway",
+                level=logging.WARNING,
+            )
+
+    async def close(self):
+        await super().close()
+        # unblock wait_close_sync once the server is fully closed
+        if getattr(self, "shutdown_event", None) and not self.shutdown_event.is_set():
+            self.shutdown_event.set()
 
     @staticmethod
     def default_settings():
@@ -376,11 +484,22 @@ class LogServer(SocketServer):
             self._loop = self.server.get_loop()
         return self._loop
 
-    async def end_callback(self):
-        self._write_queue.put_nowait(STOP_SIG)
-        await self._queue_consumer_task
+    # SocketServer stores these hooks as Optional[Callable] instance attributes;
+    # LogServer supplies them as methods and hands the bound methods to the
+    # parent, so the narrower method type is the intended override
+    async def end_callback(self):  # pyrefly: ignore[bad-override-mutable-attribute]
+        task = getattr(self, "_queue_consumer_task", None)
+        if task is None:
+            return
+        if not task.done():
+            try:
+                self._write_queue.put_nowait(STOP_SIG)
+            except Full:
+                # queue full, the consumer still exits via _shutdown_ev
+                pass
+        await task
 
-    def start_callback(self):
+    def start_callback(self):  # pyrefly: ignore[bad-override-mutable-attribute]  # see end_callback
         self.send_log(
             f"started log server on {self.host}:{self.port}, handle_signals={self.handle_signals}, max_queue_size={self.max_queue_size}, max_queue_buffer={self.max_queue_buffer}, log_stream={getattr(self.log_stream, 'name', None)}, compress={self.compress}, log_dir={self.log_dir}, setting={self._server_log_setting}",
         )
@@ -408,7 +527,52 @@ class LogServer(SocketServer):
         if init_setting:
             record[DefaultLogSetting._key_name] = asdict(self._server_log_setting)
         q_msg = QueueMsg(name=self.name, record=record)
-        self._write_queue.put_nowait(q_msg)
+        try:
+            self._write_queue.put_nowait(q_msg)
+        except Full:
+            # never raise from a logging helper: send_log runs in signal
+            # handlers and the consumer, a full queue must only drop the record
+            print(msg, file=sys.stderr, flush=True)
+
+    def _reuse_opened_writer(self, name, max_size, max_backups):
+        """Move an open writer to the LRU tail and refresh its rotation limits."""
+        fw = self._opened_files[name]
+        # mark as recently used for LRU eviction
+        self._opened_files.move_to_end(name)
+        if fw.max_size != max_size:
+            fw.max_size = max_size
+        if fw.max_backups != max_backups:
+            fw.max_backups = max_backups
+        return fw
+
+    def _open_writer(self, name, max_size, max_backups):
+        """Validate a log name, open its writer and register it for LRU eviction."""
+        if not name or name in (".", ".."):
+            raise ValueError(f"invalid log name: {name!r}")
+        # get_targets only calls this inside `if self.log_dir`, so log_dir is
+        # set here; the cast keeps the None path unchanged (still AttributeError)
+        log_dir = typing.cast(Path, self.log_dir)
+        path = log_dir.joinpath(name)
+        # fill .log suffix
+        if not path.suffix:
+            path = path.with_suffix(".log")
+        # sub-directories are allowed, but the resolved path must
+        # stay inside log_dir (rejects absolute paths, ".." escapes
+        # and symlink tricks)
+        log_dir = log_dir.resolve()
+        resolved = path.resolve()
+        if resolved == log_dir or not resolved.is_relative_to(log_dir):
+            raise ValueError(f"invalid log name: {name!r}")
+        fw = RotatingFileWriter(
+            path,
+            max_size=max_size,
+            max_backups=max_backups,
+            compress=self.compress,
+        )
+        self._opened_files[name] = fw
+        # never evict a file this batch is still going to write to
+        self._evict_opened_files(protect={name})
+        return fw
 
     def get_targets(
         self,
@@ -427,26 +591,10 @@ class LogServer(SocketServer):
                 targets.append(self.log_stream)
         if self.log_dir:
             if name in self._opened_files:
-                fw = self._opened_files[name]
-                if fw.max_size != max_size:
-                    fw.max_size = max_size
-                if fw.max_backups != max_backups:
-                    fw.max_backups = max_backups
-                targets.append(fw)
+                targets.append(self._reuse_opened_writer(name, max_size, max_backups))
             else:
                 try:
-                    path = self.log_dir.joinpath(name)
-                    # fill .log suffix
-                    if not path.suffix:
-                        path = path.with_suffix(".log")
-                    fw = RotatingFileWriter(
-                        path,
-                        max_size=max_size,
-                        max_backups=max_backups,
-                        compress=self.compress,
-                    )
-                    self._opened_files[name] = fw
-                    targets.append(fw)
+                    targets.append(self._open_writer(name, max_size, max_backups))
                 except Exception as e:
                     self.send_log(
                         f"get targets error ({name!r}, {max_size!r}, {max_backups!r}) {e!r}",
@@ -456,8 +604,39 @@ class LogServer(SocketServer):
         if level_spec is not None:
             for t in targets:
                 if isinstance(t, RotatingFileWriter):
-                    setattr(t, "level_spec", level_spec)
+                    t.level_spec = level_spec
         return targets
+
+    def _evict_opened_files(self, protect=()):
+        """Close the least recently used files when MAX_OPENED_FILES is exceeded.
+
+        Names in `protect` (used by the current batch) are never evicted.
+        A closed RotatingFileWriter reopens itself on the next write, so an
+        evicted name that gets written again is simply re-created.
+        """
+        evicted = []
+        while len(self._opened_files) > self.MAX_OPENED_FILES:
+            candidates = [n for n in self._opened_files if n not in protect]
+            if not candidates:
+                break
+            evicted_name = candidates[0]
+            fw = self._opened_files.pop(evicted_name)
+            try:
+                fw.close()
+            except Exception as e:
+                # best-effort close, keep evicting regardless
+                self.send_log(
+                    f"error closing evicted log file {evicted_name!r}: {e!r}",
+                    level=logging.WARNING,
+                )
+            evicted.append(evicted_name)
+        if evicted:
+            # aggregate into one record: logging each eviction would feed the
+            # queue that caused the eviction in the first place
+            self.send_log(
+                f"closed {len(evicted)} least recently used log files (limit={self.MAX_OPENED_FILES}): {evicted}",
+                level=logging.DEBUG,
+            )
 
     def save_new_setting(self, name, setting: LogSetting):
         if self._log_settings.get(name) == setting:
@@ -499,7 +678,7 @@ class LogServer(SocketServer):
                 setting = LogSetting.from_dict(**data)
                 self.save_new_setting(name, setting)
                 return True
-            except TypeError as e:
+            except Exception as e:
                 self.send_log(
                     f"`{name}` send invalid setting, {e!r}: {repr(data)[:100]}",
                     level=logging.WARNING,
@@ -535,6 +714,172 @@ class LogServer(SocketServer):
                 rv.__dict__[key] = extra[key]
         return rv
 
+    def _next_queue_msg(self, index: int):
+        """Return the next queue item, or None when this batch should end."""
+        if index == 0:
+            try:
+                return typing.cast(QueueMsg, self._write_queue.get(timeout=1))
+            except Empty:
+                return None
+        try:
+            return self._write_queue.get_nowait()
+        except Empty:
+            return None
+
+    def _make_record_or_none(self, name, record_dict):
+        """Build one LogRecord, reporting and dropping invalid payloads."""
+        try:
+            return self.make_record(
+                name=name,
+                level=record_dict.get("levelno", logging.INFO),
+                fn=record_dict.get("pathname", ""),
+                lno=record_dict.get("lineno", 0),
+                msg=record_dict.get("msg", ""),
+                args=record_dict.get("args", ()),
+                exc_info=record_dict.get("exc_info", None),
+                func=record_dict.get("funcName", None),
+                extra=record_dict,
+                sinfo=record_dict.get("stack_info", None),
+            )
+        except Exception as e:
+            self.send_log(
+                f"`{name}` send invalid record.__dict__, {e!r}: {repr(record_dict)[:100]}",
+                level=logging.WARNING,
+            )
+            return None
+
+    def _drain_write_queue(self):
+        """Drain one batch from the queue, returning ``(new_lines, stopped)``."""
+        stopped = False
+        if self._shutdown_ev and self._shutdown_ev.is_set():
+            self.send_log("stopping write_worker daemon(shutdown)")
+            stopped = True
+        new_lines = {}
+        for index in range(self.max_queue_buffer):
+            q_msg = self._next_queue_msg(index)
+            if q_msg is None:
+                break
+            if q_msg is STOP_SIG:
+                if not stopped:
+                    self.send_log("stopping write_worker daemon(signal)")
+                    stopped = True
+                continue
+            name, record_dict = q_msg.name, q_msg.record
+            if self.save_setting(name, record_dict):
+                # ignore msg only for setting
+                continue
+            log_record = self._make_record_or_none(name, record_dict)
+            if log_record is not None:
+                new_lines.setdefault(name, []).append(log_record)
+        return new_lines, stopped
+
+    def _format_records(self, name, record_list):
+        """Format a batch into (levelno, text) pairs, dropping unformattable ones."""
+        _format = self.get_setting(name).formatter.format
+        lines = []
+        for record in record_list:
+            if getattr(record, "nofmt", False):
+                lines.append((record.levelno, record.msg))
+                continue
+            try:
+                lines.append((record.levelno, _format(record)))
+            except Exception as e:
+                # one bad record must not kill the whole consumer
+                self.send_log(
+                    f"`{name}` format error, record dropped: {e!r}",
+                    level=logging.WARNING,
+                )
+        return lines
+
+    def _collect_targets(self, name, setting):
+        """Targets for a logger name, including per-level alias writers."""
+        targets = self.get_targets(
+            name,
+            max_size=setting.max_size,
+            max_backups=setting.max_backups,
+        )
+        if setting.level_specs:
+            for levelno in setting.level_specs:
+                levelname = LogSetting.level_to_name(levelno).lower().replace(" ", "-")
+                alias_name = f"{name}_{levelname}"
+                targets.extend(
+                    self.get_targets(
+                        alias_name,
+                        max_size=setting.max_size,
+                        max_backups=setting.max_backups,
+                        level_spec=levelno,
+                    )
+                )
+        return targets
+
+    def _write_to_targets(self, name, lines, targets):
+        """Write the batch to every target; returns the number of chars written."""
+        text_counter = 0
+        for log_file in targets:
+            try:
+                levelno = getattr(log_file, "level_spec", 0)
+                _lines = [text for level, text in lines if level >= levelno]
+                lines_text = "\n".join(_lines) + "\n"
+                text_counter += len(lines_text)
+                log_file.write(lines_text)
+                log_file.flush()
+            except Exception as e:  # noqa: PERF203  # one failing target must not abort the remaining writes in the batch
+                self.send_log(
+                    f"error in write_worker ({name})",
+                    e,
+                    level=logging.WARNING,
+                )
+        return text_counter
+
+    def _write_batch(self, new_lines):
+        """Format the collected records and write them to their targets."""
+        for name, record_list in new_lines.items():
+            setting = self.get_setting(name)
+            lines = self._format_records(name, record_list)
+            targets = self._collect_targets(name, setting)
+            text_counter = self._write_to_targets(name, lines, targets)
+            if name != self.name:
+                self._lines_counter[name] += len(lines)
+                self._size_counter[name] += text_counter
+
+    def _log_counters(self, last_log_time, interval):
+        """Flush idle files and emit counters; returns the new last log time."""
+        if not self._lines_counter:
+            return last_log_time
+        now = time.time()
+        if now - last_log_time <= interval:
+            return last_log_time
+        start = ttime(last_log_time, fmt="%H:%M:%S")
+        end = ttime(now, fmt="%H:%M:%S")
+        for name in self._lines_counter:
+            try:
+                fw = self._opened_files[name]
+                fw.flush()
+                # check idle close
+                if fw.path.is_file():
+                    mtime = fw.path.stat().st_mtime
+                    if now - mtime > self._idle_close_time:
+                        fw = self._opened_files.pop(name, None)
+                        if fw:
+                            fw.close()
+                        self.send_log(f"closed idle log file: {name} (last modified: {ttime(mtime)})")
+            except KeyError:  # noqa: PERF203  # the file may have been evicted since the counter snapshot; skip it
+                pass
+        lines_msg = json.dumps(
+            {name: value for name, value in self._lines_counter.most_common(30)},
+            ensure_ascii=False,
+        )
+        size_msg = json.dumps(
+            {name: read_size(value, 1, shorten=True) for name, value in self._size_counter.most_common(30)},
+            ensure_ascii=False,
+        )
+        self.send_log(
+            f"[{start} - {end}] log counter: {sum(self._lines_counter.values())} lines ({lines_msg}), {read_size(sum(self._size_counter.values()), 1, shorten=True)} ({size_msg})"
+        )
+        self._lines_counter.clear()
+        self._size_counter.clear()
+        return now
+
     def write_queue_consumer(self):
         self.send_log("start write_queue_consumer daemon")
         stopped = False
@@ -542,148 +887,10 @@ class LogServer(SocketServer):
         last_log_time = time.time()
         while not stopped:
             try:
-                if self._shutdown_ev and self._shutdown_ev.is_set():
-                    self.send_log("stopping write_worker daemon(shutdown)")
-                    stopped = True
-                new_lines = {}
-                for index in range(self.max_queue_buffer):
-                    try:
-                        if index == 0:
-                            try:
-                                q_msg = typing.cast(
-                                    QueueMsg, self._write_queue.get(timeout=1)
-                                )
-                            except Empty:
-                                break
-                        else:
-                            q_msg = self._write_queue.get_nowait()
-                        if q_msg is STOP_SIG:
-                            if not stopped:
-                                self.send_log("stopping write_worker daemon(signal)")
-                                stopped = True
-                            continue
-                        name, record_dict = q_msg.name, q_msg.record
-                        if self.save_setting(name, record_dict):
-                            # ignore msg only for setting
-                            continue
-                        try:
-                            log_record = self.make_record(
-                                name=name,
-                                level=record_dict.get("levelno", logging.INFO),
-                                fn=record_dict.get("pathname", ""),
-                                lno=record_dict.get("lineno", 0),
-                                msg=record_dict.get("msg", ""),
-                                args=record_dict.get("args", ()),
-                                exc_info=record_dict.get("exc_info", None),
-                                func=record_dict.get("funcName", None),
-                                extra=record_dict,
-                                sinfo=record_dict.get("stack_info", None),
-                            )
-                        except Exception as e:
-                            self.send_log(
-                                f"`{name}` send invalid record.__dict__, {e!r}: {repr(record_dict)[:100]}",
-                                level=logging.WARNING,
-                            )
-                            continue
-                        if name in new_lines:
-                            new_lines[name].append(log_record)
-                        else:
-                            new_lines[name] = [log_record]
-                    except Empty:
-                        break
-                for name, record_list in new_lines.items():
-                    setting = self.get_setting(name)
-                    _format = setting.formatter.format
-                    lines = [
-                        (
-                            record.levelno,
-                            record.msg
-                            if getattr(record, "nofmt", False)
-                            else _format(record),
-                        )
-                        for record in record_list
-                    ]
-                    targets = self.get_targets(
-                        name,
-                        max_size=setting.max_size,
-                        max_backups=setting.max_backups,
-                    )
-                    if setting.level_specs:
-                        for levelno in setting.level_specs:
-                            levelname = (
-                                LogSetting.level_to_name(levelno)
-                                .lower()
-                                .replace(" ", "-")
-                            )
-                            alias_name = f"{name}_{levelname}"
-                            targets.extend(
-                                self.get_targets(
-                                    alias_name,
-                                    max_size=setting.max_size,
-                                    max_backups=setting.max_backups,
-                                    level_spec=levelno,
-                                )
-                            )
-                    text_counter = 0
-                    for log_file in targets:
-                        try:
-                            levelno = getattr(log_file, "level_spec", 0)
-                            _lines = [text for level, text in lines if level >= levelno]
-                            lines_text = "\n".join(_lines) + "\n"
-                            text_counter += len(lines_text)
-                            log_file.write(lines_text)
-                            log_file.flush()
-                        except Exception as e:
-                            self.send_log(
-                                f"error in write_worker ({name})",
-                                e,
-                                level=logging.WARNING,
-                            )
-                    if name != self.name:
-                        self._lines_counter[name] += len(lines)
-                        self._size_counter[name] += text_counter
-                if self._lines_counter:
-                    now = time.time()
-                    if now - last_log_time > interval:
-                        start = ttime(last_log_time, fmt="%H:%M:%S")
-                        end = ttime(now, fmt="%H:%M:%S")
-                        last_log_time = now
-                        for name in self._lines_counter:
-                            try:
-                                fw = self._opened_files[name]
-                                fw.flush()
-                                # check idle close
-                                if fw.path.is_file():
-                                    mtime = fw.path.stat().st_mtime
-                                    if now - mtime > self._idle_close_time:
-                                        fw = self._opened_files.pop(name, None)
-                                        if fw:
-                                            fw.close()
-                                        self.send_log(
-                                            f"closed idle log file: {name} (last modified: {ttime(mtime)})"
-                                        )
-                            except KeyError:
-                                pass
-                        lines_msg = json.dumps(
-                            {
-                                name: value
-                                for name, value in self._lines_counter.most_common(30)
-                            },
-                            ensure_ascii=False,
-                        )
-                        size_msg = json.dumps(
-                            {
-                                name: read_size(value, 1, shorten=True)
-                                for name, value in self._size_counter.most_common(30)
-                            },
-                            ensure_ascii=False,
-                        )
-                        self.send_log(
-                            f"[{start} - {end}] log counter: {sum(self._lines_counter.values())} lines ({lines_msg}), {read_size(sum(self._size_counter.values()), 1, shorten=True)} ({size_msg})"
-                        )
-                        self._lines_counter.clear()
-                        self._size_counter.clear()
-            except Exception as e:
+                new_lines, stopped = self._drain_write_queue()
+                self._write_batch(new_lines)
+                last_log_time = self._log_counters(last_log_time, interval)
+            except Exception as e:  # noqa: PERF203  # one malformed batch must not kill the consumer daemon; logged then break
                 self.send_log("error in write_queue_consumer", e, level=logging.ERROR)
                 print(format_error(e), file=sys.stderr, flush=True)
                 traceback.print_exc()
@@ -691,17 +898,17 @@ class LogServer(SocketServer):
                 break
         self.send_log("stopped write_queue_consumer daemon")
 
-    async def default_handler(self, record: dict):
-        # record demo:
+    async def default_handler(self, item: dict):
+        # item demo:
         # {"name": "test_logger", "msg": "log server test message", "args": null, "levelname": "INFO", "levelno": 20, "pathname": "/PATH/temp.py", "filename": "temp.py", "module": "temp", "exc_info": null, "exc_text": null, "stack_info": null, "lineno": 38, "funcName": "main", "created": 1723270162.5119407, "msecs": 511.0, "relativeCreated": 102.74338722229004, "thread": 8712, "threadName": "MainThread", "processName": "MainProcess", "process": 19104}
         try:
-            if not isinstance(record, dict):
+            if not isinstance(item, dict):
                 raise TypeError("item must be a dict")
-            self._write_queue.put_nowait(QueueMsg(name=record["name"], record=record))
+            self._write_queue.put_nowait(QueueMsg(name=item["name"], record=item))
         except Exception as e:
             self.send_log("error in default_handler", e, level=logging.WARNING)
         finally:
-            del record
+            del item
 
     def handle_signal(self, sig, frame):
         self._shutdown_signals += 1
@@ -710,9 +917,17 @@ class LogServer(SocketServer):
         msg = f"received signal: {sig}, count: {self._shutdown_signals}"
         self.send_log(msg)
         self.shutdown()
-        self._write_queue.put_nowait(STOP_SIG)
+        try:
+            self._write_queue.put_nowait(STOP_SIG)
+        except Full:
+            # queue full, the consumer still exits via _shutdown_ev below
+            pass
         if self._shutdown_ev:
             self.loop.call_soon_threadsafe(self._shutdown_ev.set)
+        # unblock wait_close_sync in sync mode (shutdown_event may not exist
+        # when the server was never entered, hence the getattr guard)
+        if getattr(self, "shutdown_event", None) and not self.shutdown_event.is_set():
+            self.shutdown_event.set()
 
     def __del__(self):
         self.close_opened_files()
@@ -722,7 +937,7 @@ class LogServer(SocketServer):
             _, fw = self._opened_files.popitem()
             try:
                 fw.close()
-            except Exception:
+            except Exception:  # noqa: S110  # best-effort close during shutdown; logging here could re-enter the queue being torn down
                 pass
 
     async def run_wrapper(self):
@@ -735,24 +950,26 @@ class LogServer(SocketServer):
     def __enter__(self):
         "Sync entry, start log server in a thread."
         self.shutdown_event = SyncEvent()
-        self._thread = Thread(
-            target=asyncio.run, args=(self.run_wrapper(),), daemon=True
-        )
+        self._thread = Thread(target=asyncio.run, args=(self.run_wrapper(),), daemon=True)
         self._thread.start()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        # delay a bit to ensure all logs are processed. or use async with LogServer(...) as ls: ...
+        # teardown order: stop queue -> shutdown server -> join the worker
+        # thread (it joins the consumer before returning) -> close files.
+        # or use async with LogServer(...) as ls: ...
         time.sleep(0.01)
-        self._write_queue.put_nowait(STOP_SIG)
+        try:
+            self._write_queue.put_nowait(STOP_SIG)
+        except Full:
+            # queue full, shutdown below still lets the consumer exit
+            pass
         self.shutdown()
-        self._thread.join(timeout=1)
+        self._thread.join(timeout=self.CONSUMER_JOIN_TIMEOUT)
         self.close_opened_files()
 
 
-CONNECTED_HANDLERS: typing.Dict[
-    tuple, typing.Union[logging.handlers.SocketHandler, logging.NullHandler]
-] = {}
+CONNECTED_HANDLERS: typing.Dict[tuple, typing.Union[logging.handlers.SocketHandler, logging.NullHandler]] = {}
 
 
 def clear_handlers():
@@ -766,9 +983,7 @@ def create_handler(host: str, port: int, level=logging.DEBUG):
         import atexit
 
         atexit.register(clear_handlers)
-        CONNECTED_HANDLERS[("", 0)] = (
-            logging.NullHandler()
-        )  # dummy to avoid multiple register
+        CONNECTED_HANDLERS[("", 0)] = logging.NullHandler()  # dummy to avoid multiple register
     h = logging.handlers.SocketHandler(host, port)
     h.createSocket()
     if not h.sock:
@@ -896,7 +1111,9 @@ async def main():
     parser.add_argument(
         "--log-stream",
         default="sys.stderr",
-        help="log to stream, if --log-stream='' or --log-stream=- or --log-stream=0, will mute the stream log",
+        help="log to stream: 'sys.stdout' or 'sys.stderr', "
+        "if --log-stream='' or --log-stream=- or --log-stream=0, will mute the stream log, "
+        "unrecognized values are muted with a warning",
     )
     parser.add_argument(
         "--compress",
@@ -910,11 +1127,25 @@ async def main():
         help="use original log level names, not shortened",
     )
     parser.add_argument(
-        "--idle-close-time", dest="idle_close_time", type=int, default=300
+        "--idle-close-time",
+        dest="idle_close_time",
+        type=int,
+        default=DefaultLogSetting.idle_close_time,
+        help=f"close log files idle for this many seconds, default to {DefaultLogSetting.idle_close_time}",
     )
     args = parser.parse_args()
     stream_choices = {"sys.stdout": sys.stdout, "sys.stderr": sys.stderr}
-    log_stream = stream_choices.get(args.log_stream, "null")
+    if args.log_stream in ("", "-", "0", "None"):
+        log_stream = None
+    elif args.log_stream in stream_choices:
+        log_stream = stream_choices[args.log_stream]
+    else:
+        print(
+            f"warning: unrecognized --log-stream={args.log_stream!r}, stream log muted",
+            file=sys.stderr,
+            flush=True,
+        )
+        log_stream = None
     async with LogServer(
         host=args.host,
         port=args.port,
@@ -935,6 +1166,7 @@ async def main():
 async def async_test():
     async with LogServer(log_dir="logs"):
         logger = get_logger("test_async", level_specs=[logging.ERROR, logging.INFO])
+        i = 0
         for i in range(5):
             logger.info(f"log server test message {i + 1}")
         logger.error(f"log server test message {i + 1}")

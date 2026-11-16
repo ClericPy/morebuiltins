@@ -1,5 +1,4 @@
-import sys
-import runpy
+from __future__ import annotations
 
 # Usage:
 #   python runner.py <module> [args...]
@@ -7,9 +6,9 @@ import runpy
 #   python runner.py morebuiltins.cmd.log_server
 # uvx:
 #   uvx morebuiltins morebuiltins.cmd.log_server
-
-
 import importlib.util
+import runpy
+import sys
 
 
 def runner(mod_name: str | None = None, argv: list[str] | None = None) -> None:

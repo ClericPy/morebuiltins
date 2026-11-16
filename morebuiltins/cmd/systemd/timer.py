@@ -1,20 +1,20 @@
 import argparse
 import os
-import sys
-from typing import Any, Dict, Tuple
 import subprocess
+import sys
 from pathlib import Path
+from typing import Any, Dict, Tuple
 
 __all__ = ["timer_handler"]
 
 
 def run_systemctl(command: str, timer_name: str, dry_run: bool = False) -> int:
     """Execute systemctl command for timer"""
-    cmd = ["sudo", "systemctl", command, timer_name]
+    cmd = ["systemctl", command, timer_name]
     template = f"""
 # {"=" * 40}
-# Execute sudo systemctl {command}
->>> {' '.join(cmd)}"""
+# Execute systemctl {command}
+>>> {" ".join(cmd)}"""
 
     if dry_run:
         print(template)
@@ -22,7 +22,7 @@ def run_systemctl(command: str, timer_name: str, dry_run: bool = False) -> int:
 
     print(f"Executing: {' '.join(cmd)}")
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True)  # noqa: S603  # fixed systemctl argv, list form, never shell-interpolated
         print(f"Successfully executed: systemctl {command} {timer_name}")
         return 0
     except subprocess.CalledProcessError as e:
@@ -47,17 +47,19 @@ def manage_timer_files(
         template = f"""
 # {"=" * 40}
 # Create timer file: {timer_posix}
->>> sudo vim {timer_posix}
+# (run as root)
+>>> vim {timer_posix}
 {timer_content}
 
 # {"=" * 40}
 # Create service file: {service_posix}
->>> sudo vim {service_posix}
+# (run as root)
+>>> vim {service_posix}
 {service_content}
 
 # {"=" * 40}
-# Reload systemd daemon
->>> sudo systemctl daemon-reload"""
+# Reload systemd daemon (run as root)
+>>> systemctl daemon-reload"""
         print(template)
 
         if dry_run:
@@ -66,10 +68,12 @@ def manage_timer_files(
         print(f"Writing timer file to {timer_path}")
         print(f"Writing service file to {service_path}")
         try:
-            timer_path.write_text(timer_content)
-            service_path.write_text(service_content)
+            timer_path.write_text(timer_content, encoding="utf-8")
+            service_path.write_text(service_content, encoding="utf-8")
             print("Reloading systemd daemon...")
-            subprocess.run(["sudo", "systemctl", "daemon-reload"])
+            if subprocess.run(["systemctl", "daemon-reload"]).returncode != 0:  # noqa: S607  # systemctl is a system CLI resolved from PATH
+                print("Error: systemctl daemon-reload failed")
+                return 1
             return 0
         except Exception as e:
             print(f"Error creating timer files: {e}")
@@ -79,16 +83,16 @@ def manage_timer_files(
         service_posix = service_path.as_posix()
         template = f"""
 # {"=" * 40}
-# Remove timer file
->>> sudo rm {timer_posix}
+# Remove timer file (run as root)
+>>> rm {timer_posix}
 
 # {"=" * 40}
-# Remove service file
->>> sudo rm {service_posix}
+# Remove service file (run as root)
+>>> rm {service_posix}
 
 # {"=" * 40}
-# Reload systemd daemon
->>> sudo systemctl daemon-reload"""
+# Reload systemd daemon (run as root)
+>>> systemctl daemon-reload"""
         print(template)
 
         if dry_run:
@@ -102,7 +106,9 @@ def manage_timer_files(
             if service_path.exists():
                 service_path.unlink()
             print("Reloading systemd daemon...")
-            subprocess.run(["sudo", "systemctl", "daemon-reload"])
+            if subprocess.run(["systemctl", "daemon-reload"]).returncode != 0:  # noqa: S607  # systemctl is a system CLI resolved from PATH
+                print("Error: systemctl daemon-reload failed")
+                return 1
             return 0
         except Exception as e:
             print(f"Error removing timer files: {e}")
@@ -135,9 +141,7 @@ def create_timer_file(args: Dict[str, Any]) -> Tuple[str, str]:
         "Persistent",
         "WakeSystem",
     ]
-    for param in timer_params:
-        if args.get(param):
-            timer_content.append(f"{param}={args[param]}")
+    timer_content.extend(f"{param}={args[param]}" for param in timer_params if args.get(param))
 
     timer_content.append("\n[Install]")
     timer_content.append(f"WantedBy={args.get('WantedBy', 'timers.target')}")
@@ -159,8 +163,12 @@ def create_timer_file(args: Dict[str, Any]) -> Tuple[str, str]:
         "EnvironmentFile",
     ]
     for param in service_params:
-        if args.get(param):
-            service_content.append(f"{param}={args[param]}")
+        value = args.get(param)
+        if value:
+            if isinstance(value, list):
+                service_content.extend(f"{param}={v}" for v in value)
+            else:
+                service_content.append(f"{param}={value}")
 
     return "\n".join(timer_content), "\n".join(service_content)
 
@@ -168,16 +176,16 @@ def create_timer_file(args: Dict[str, Any]) -> Tuple[str, str]:
 def timer_handler():
     """Generate and manage systemd timer files
 
-Example usage:
+    Example usage:
 
-1. Create, enable and start timer:
-    python -m morebuiltins.cmd.systemd.timer -name mytimer -enable -OnCalendar "*:0/15" -ExecStart "/bin/echo hello"
-2. Stop, disable and remove timer:
-    python -m morebuiltins.cmd.systemd.timer -name mytimer -disable
-3. Print timer and service file content:
-    python -m morebuiltins.cmd.systemd.timer -name mytimer -OnCalendar "*:0/15" -ExecStart "/bin/echo hello"
-4. Dry run (print actions without executing):
-    python -m morebuiltins.cmd.systemd.timer -name mytimer -enable --dry-run -OnCalendar "*:0/15" -ExecStart "/bin/echo hello"
+    1. Create, enable and start timer:
+        python -m morebuiltins.cmd.systemd.timer -name mytimer -enable -OnCalendar "*:0/15" -ExecStart "/bin/echo hello"
+    2. Stop, disable and remove timer:
+        python -m morebuiltins.cmd.systemd.timer -name mytimer -disable
+    3. Print timer and service file content:
+        python -m morebuiltins.cmd.systemd.timer -name mytimer -OnCalendar "*:0/15" -ExecStart "/bin/echo hello"
+    4. Dry run (print actions without executing):
+        python -m morebuiltins.cmd.systemd.timer -name mytimer -enable --dry-run -OnCalendar "*:0/15" -ExecStart "/bin/echo hello"
     """
 
     parser = argparse.ArgumentParser(
@@ -298,13 +306,14 @@ hourly            - Every hour at minute 0""",
     parser.add_argument("-ExecStart", "--ExecStart", help="Command to execute")
     parser.add_argument("-User", "--User", help="User to run service")
     parser.add_argument("-Group", "--Group", help="Group to run service")
-    parser.add_argument("-Environment", "--Environment", help="Environment variables")
     parser.add_argument(
-        "-EnvironmentFile", "--EnvironmentFile", help="Environment file"
+        "-Environment",
+        "--Environment",
+        help="Environment variables",
+        action="append",
     )
-    parser.add_argument(
-        "-WorkingDirectory", "--WorkingDirectory", help="Working directory"
-    )
+    parser.add_argument("-EnvironmentFile", "--EnvironmentFile", help="Environment file")
+    parser.add_argument("-WorkingDirectory", "--WorkingDirectory", help="Working directory")
     parser.add_argument(
         "-Type",
         "--Type",
@@ -326,9 +335,16 @@ hourly            - Every hour at minute 0""",
         return 0
 
     if args.disable:
-        run_systemctl("stop", f"{args.name}.timer", dry_run=args.dry_run)
-        run_systemctl("disable", f"{args.name}.timer", dry_run=args.dry_run)
-        return manage_timer_files(args.name, action="delete", dry_run=args.dry_run)
+        return_codes = [
+            run_systemctl("stop", f"{args.name}.timer", dry_run=args.dry_run),
+            run_systemctl("disable", f"{args.name}.timer", dry_run=args.dry_run),
+            manage_timer_files(args.name, action="delete", dry_run=args.dry_run),
+        ]
+        failed_codes = [code for code in return_codes if code]
+        if failed_codes:
+            print(f"Error: failed with return codes {return_codes}")
+            return 1
+        return 0
 
     elif args.enable:
         if not args.ExecStart:
@@ -337,11 +353,7 @@ hourly            - Every hour at minute 0""",
             return 1
 
         if not (
-            args.OnCalendar
-            or args.OnBootSec
-            or args.OnUnitActiveSec
-            or args.OnUnitInactiveSec
-            or args.OnStartupSec
+            args.OnCalendar or args.OnBootSec or args.OnUnitActiveSec or args.OnUnitInactiveSec or args.OnStartupSec
         ):
             print("Error: At least one timing option is required")
             parser.print_help()
@@ -360,8 +372,14 @@ hourly            - Every hour at minute 0""",
         ):
             return 1
 
-        run_systemctl("enable", f"{args.name}.timer", dry_run=args.dry_run)
-        run_systemctl("start", f"{args.name}.timer", dry_run=args.dry_run)
+        return_codes = [
+            run_systemctl("enable", f"{args.name}.timer", dry_run=args.dry_run),
+            run_systemctl("start", f"{args.name}.timer", dry_run=args.dry_run),
+        ]
+        failed_codes = [code for code in return_codes if code]
+        if failed_codes:
+            print(f"Error: failed with return codes {return_codes}")
+            return 1
         return 0
     else:
         timer_content, service_content = create_timer_file(vars(args))
