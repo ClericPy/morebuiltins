@@ -109,11 +109,16 @@ class TKUI:
             return ValueError(f"{', '.join(missing)} required")
         return values
 
-    def get_result(self, kwargs):
+    def get_result(self, kwargs=None):
         ok = "OK"
         size = 0
         start = time.time()
         head = ""
+        if kwargs is None:
+            # pre-existing public method took no argument and read the widgets
+            # itself; the widgets must be read on the main thread now, so the
+            # no-arg call falls back to reading them here
+            kwargs = self.get_input_values()
         try:
             func = self.function
             if isinstance(kwargs, dict):
@@ -314,6 +319,10 @@ class QueueStd:
 
     def write(self, string):
         if get_ident() != self._ident:
+            # output from another thread must not leak into this request's
+            # queue, but dropping it would lose output that went to the real
+            # stdout before the redirect
+            self.stdout.write(string)
             return
         # walk frames manually, inspect.stack() is too slow for this hot path
         frame = sys._getframe(1)
@@ -415,8 +424,9 @@ class FuncWebHandler(BaseHTTPRequestHandler):
     keepalive_timeout = 60
     # request body larger than this is rejected with 413
     max_body_size = 1024 * 1024
-    # Host/Origin allowlist, guards against cross-site form posts and DNS rebinding
-    allowed_hosts = ("127.0.0.1", "localhost")
+    # Host/Origin allowlist, guards against cross-site form posts and DNS rebinding;
+    # handle_web widens it with the bind host and the --web-allowed-hosts values
+    allowed_hosts = ("127.0.0.1", "localhost", "::1")
 
     @classmethod
     def setup_function(cls, function):
@@ -490,9 +500,10 @@ class FuncWebHandler(BaseHTTPRequestHandler):
             if not isinstance(result, str):
                 result = repr(result)
         except Exception as err:
-            # one-line repr plus the tail of the traceback for debugging
-            tb_tail = "\n".join(traceback.format_exc().rstrip().splitlines()[-5:])
-            result = f"{err!r}\n{tb_tail}"
+            # the client gets one line; the traceback goes to the real process
+            # stderr (QueueStd.stderr), not to the response body
+            traceback.print_exc(file=QueueStd.stderr)
+            result = repr(err)
         finally:
             if not discarded["flag"]:
                 if __print_time__:
@@ -505,10 +516,10 @@ class FuncWebHandler(BaseHTTPRequestHandler):
             self.__class__.last_alive = time.time()
 
     def check_host(self) -> bool:
-        """Only accept loopback Host/Origin headers, to guard against cross-site form posts and DNS rebinding."""
+        """Accept only the configured Host/Origin hosts, to guard against cross-site form posts and DNS rebinding."""
         host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]").lower()
         if host not in self.__class__.allowed_hosts:
-            self.send_error(403, f"forbidden Host: {host!r}")
+            self.reject_request(f"forbidden Host: {host!r}")
             return False
         origin = self.headers.get("Origin")
         if origin:
@@ -517,9 +528,15 @@ class FuncWebHandler(BaseHTTPRequestHandler):
             except ValueError:
                 origin_host = ""
             if origin_host not in self.__class__.allowed_hosts:
-                self.send_error(403, f"forbidden Origin: {origin!r}")
+                self.reject_request(f"forbidden Origin: {origin!r}")
                 return False
         return True
+
+    def reject_request(self, message: str) -> None:
+        """Send the 403 and log the live allowlist, so a binding mistake is visible."""
+        allowed = ", ".join(self.__class__.allowed_hosts) or "<empty>"
+        print(f"[ui] {message}; allowed hosts: {allowed}", file=sys.stderr, flush=True)
+        self.send_error(403, message)
 
     def do_GET(self):
         if not self.check_host():
@@ -607,7 +624,25 @@ class FuncWebHandler(BaseHTTPRequestHandler):
             time.sleep(1)
 
 
-def handle_web(function, bind="127.0.0.1:8080", open_browser=False, keepalive_timeout=60):
+# the class was renamed to FuncWebHandler; keep the old public name importable
+SimpleHTTPRequestHandler = FuncWebHandler
+
+
+def _split_bind(bind: str) -> typing.Tuple[str, int]:
+    """Split "host:port", tolerating the bracketed IPv6 form "[::1]:8080"."""
+    host, sep, port = bind.rpartition(":")
+    if not sep:
+        raise ValueError(f"bind address must be host:port, got {bind!r}")
+    return host.strip("[]"), int(port)
+
+
+def handle_web(
+    function,
+    bind="127.0.0.1:8080",
+    open_browser=False,
+    keepalive_timeout=60,
+    allowed_hosts=None,
+):
     """Function to Web UI.
 
     Args:
@@ -615,9 +650,26 @@ def handle_web(function, bind="127.0.0.1:8080", open_browser=False, keepalive_ti
         bind (str, optional): Defaults to "127.0.0.1:8080".
         open_browser (bool, optional): auto open browser. Defaults to False.
         keepalive_timeout (int, optional): shutdown if no request after timeout. Defaults to 60.
+        allowed_hosts (Union[str, Sequence[str], None], optional): extra Host/Origin
+            hosts, comma separated or a sequence. Loopback and the bind host are
+            always allowed. Defaults to None.
+
+    Notes:
+        - The Host/Origin allowlist contains loopback (IPv4 and IPv6) plus the bind
+          host, so `--web-bind 0.0.0.0` is reachable: a client that types an IP or
+          hostname other than the bind host must be added with
+          `--web-allowed-hosts`. A rejected request prints the live allowlist to
+          stderr and answers 403.
     """
-    host, port = bind.split(":")
-    port = int(port)
+    host, port = _split_bind(bind)
+    hosts = {"127.0.0.1", "localhost", "::1", host.lower()}
+    if allowed_hosts:
+        if isinstance(allowed_hosts, str):
+            extras = [item.strip() for item in allowed_hosts.split(",")]
+        else:
+            extras = [str(item).strip() for item in allowed_hosts]
+        hosts.update(item.lower() for item in extras if item)
+    FuncWebHandler.allowed_hosts = tuple(sorted(hosts))
     server_address = (host, port)
     FuncWebHandler.setup_function(function)
     FuncWebHandler.keepalive_timeout = keepalive_timeout
@@ -698,6 +750,12 @@ def launch_ui():
     )
     parser.add_argument("--web-bind", "-bind", default="127.0.0.1:8080", help="web mode bind address")
     parser.add_argument(
+        "--web-allowed-hosts",
+        "-web-allowed-hosts",
+        default="",
+        help="web mode extra Host/Origin allowlist, comma separated; loopback and the bind host are always allowed",
+    )
+    parser.add_argument(
         "--web-browser",
         "--web-open",
         "-browser",
@@ -737,6 +795,7 @@ def launch_ui():
             bind=args.web_bind,
             open_browser=args.web_browser,
             keepalive_timeout=args.web_timeout,
+            allowed_hosts=args.web_allowed_hosts,
         )
     else:
         handle_cli(func)
