@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import io
+import ipaddress
 import json
 import logging
 import logging.handlers
@@ -215,10 +216,13 @@ class LogSetting(Validator):
 class LogServer(SocketServer):
     """Log server for SocketHandler, create a socket server with asyncio.start_server. Custom formatter or rotation strategy with extra in log record.
 
-    [SECURITY WARNING]: There is no authentication on the socket protocol. Every
-    incoming frame is still decoded as a bare pickle (arbitrary code on load); the
-    restricted unpickler only guards formatter settings nested in the "log_setting"
-    payload. Keep host=127.0.0.1 and never expose the server to untrusted networks.
+    [SECURITY WARNING]: There is no authentication on the socket protocol, and
+    every incoming frame is decoded as a bare pickle (arbitrary code on load);
+    the restricted unpickler only guards formatter settings nested in the
+    "log_setting" payload. Binding a non-loopback host is therefore refused at
+    construction: run the server on 127.0.0.1/::1 and forward logs through a
+    trusted channel (SSH tunnel, trusted subnet gateway). This guards against
+    misuse, not against a malicious client that can already reach the port.
 
     [WARNING]: Ensure your log msg is "" if you only want to update settings, or the msg will be skipped.
 
@@ -310,6 +314,16 @@ class LogServer(SocketServer):
     # timeout to wait for the queue consumer before closing files on shutdown
     CONSUMER_JOIN_TIMEOUT = 30
 
+    @staticmethod
+    def _is_loopback(host: str) -> bool:
+        """Check whether a bind host stays on the loopback interface."""
+        if host in ("localhost",):
+            return True
+        try:
+            return ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            return False
+
     def __init__(
         self,
         host=DefaultLogSetting.host,
@@ -325,6 +339,14 @@ class LogServer(SocketServer):
         shorten_level=DefaultLogSetting.shorten_level,
         idle_close_time=DefaultLogSetting.idle_close_time,
     ):
+        if not self._is_loopback(host):
+            # the frame decoder is a bare pickle, so a reachable port is remote
+            # code execution; refuse instead of trusting the operator's firewall
+            raise ValueError(
+                f"refusing to listen on non-loopback host {host!r}: the socket protocol has no "
+                "authentication and every incoming frame is unpickled; bind 127.0.0.1/::1 and "
+                "forward logs through a trusted channel"
+            )
         super().__init__(
             host,
             port,
@@ -497,7 +519,15 @@ class LogServer(SocketServer):
             except Full:
                 # queue full, the consumer still exits via _shutdown_ev
                 pass
-        await task
+        try:
+            await asyncio.wait_for(asyncio.shield(task), self.CONSUMER_JOIN_TIMEOUT)
+        except asyncio.TimeoutError:
+            # a stuck consumer must not hang close() forever, or wait_close_sync
+            # would never see shutdown_event; report and continue shutting down
+            self.send_log(
+                f"queue consumer did not stop within {self.CONSUMER_JOIN_TIMEOUT}s, closing anyway",
+                level=logging.WARNING,
+            )
 
     def start_callback(self):  # pyrefly: ignore[bad-override-mutable-attribute]  # see end_callback
         self.send_log(
@@ -898,17 +928,17 @@ class LogServer(SocketServer):
                 break
         self.send_log("stopped write_queue_consumer daemon")
 
-    async def default_handler(self, item: dict):
-        # item demo:
+    async def default_handler(self, record: dict):
+        # record demo:
         # {"name": "test_logger", "msg": "log server test message", "args": null, "levelname": "INFO", "levelno": 20, "pathname": "/PATH/temp.py", "filename": "temp.py", "module": "temp", "exc_info": null, "exc_text": null, "stack_info": null, "lineno": 38, "funcName": "main", "created": 1723270162.5119407, "msecs": 511.0, "relativeCreated": 102.74338722229004, "thread": 8712, "threadName": "MainThread", "processName": "MainProcess", "process": 19104}
         try:
-            if not isinstance(item, dict):
-                raise TypeError("item must be a dict")
-            self._write_queue.put_nowait(QueueMsg(name=item["name"], record=item))
+            if not isinstance(record, dict):
+                raise TypeError("record must be a dict")
+            self._write_queue.put_nowait(QueueMsg(name=record["name"], record=record))
         except Exception as e:
             self.send_log("error in default_handler", e, level=logging.WARNING)
         finally:
-            del item
+            del record
 
     def handle_signal(self, sig, frame):
         self._shutdown_signals += 1
@@ -930,7 +960,11 @@ class LogServer(SocketServer):
             self.shutdown_event.set()
 
     def __del__(self):
-        self.close_opened_files()
+        # __init__ may raise before _init_settings created the file map (e.g.
+        # the non-loopback host refusal), and a half-built instance still gets
+        # finalized: only close what actually exists
+        if getattr(self, "_opened_files", None):
+            self.close_opened_files()
 
     def close_opened_files(self):
         while self._opened_files:
@@ -1072,7 +1106,9 @@ async def main():
     import argparse
 
     parser = argparse.ArgumentParser(usage=(LogServer.__doc__ or "").replace("%", "%%"))
-    parser.add_argument("--host", default=DefaultLogSetting.host)
+    parser.add_argument(
+        "--host", default=DefaultLogSetting.host, help="bind host; must be loopback (127.0.0.1/::1/localhost)"
+    )
     parser.add_argument("--port", default=DefaultLogSetting.port, type=int)
     parser.add_argument(
         "-t",
@@ -1134,6 +1170,11 @@ async def main():
         help=f"close log files idle for this many seconds, default to {DefaultLogSetting.idle_close_time}",
     )
     args = parser.parse_args()
+    if not LogServer._is_loopback(args.host):
+        parser.error(
+            f"refusing to bind non-loopback host {args.host!r}: the socket protocol has no authentication "
+            "and every incoming frame is unpickled; bind 127.0.0.1/::1 and forward logs through a trusted channel"
+        )
     stream_choices = {"sys.stdout": sys.stdout, "sys.stderr": sys.stderr}
     if args.log_stream in ("", "-", "0", "None"):
         log_stream = None
