@@ -71,18 +71,25 @@ def _auto_filter_sets(keywords):
     return not_include
 
 
-def _asset_matches(url: str, keywords, not_include) -> bool:
-    if any(k in url for k in not_include):
+def _asset_matches(asset: Asset, keywords, not_include) -> bool:
+    """Match keywords against an asset name and url, one rule for both paths.
+
+    The interactive and the non-interactive flow used to filter on different
+    fields (name vs url), so the same keywords could select different assets.
+    """
+    if any(k in asset.url for k in not_include):
         return False
-    return all(k in url for k in keywords)
+    return all(k in asset.name or k in asset.url for k in keywords)
 
 
 def _asset_sort_key(asset: Asset):
-    # cpython-3.9.19, weights keep 3.13.0 sorting above 3.12.10
+    # cpython-3.9.19, weights keep 3.13.0 sorting above 3.12.10; both branches
+    # return a tuple so an unversioned asset never compares a byte size against
+    # a version number. Unversioned assets sort last (reverse=True).
     m = re.search(r"-(\d+)\.(\d+)\.(\d+)", asset.name)
     if m:
-        return int(m[1]) * 10**6 + int(m[2]) * 10**3 + int(m[3])
-    return asset.size
+        return (0, int(m[1]) * 10**6 + int(m[2]) * 10**3 + int(m[3]))
+    return (-1, asset.size)
 
 
 def choose_asset(assets: list, keywords, auto=False):
@@ -91,7 +98,7 @@ def choose_asset(assets: list, keywords, auto=False):
     if auto:
         not_include = _auto_filter_sets(keywords)
 
-    result = [a for a in assets if _asset_matches(a.url, keywords, not_include)]
+    result = [a for a in assets if _asset_matches(a, keywords, not_include)]
     if not result:
         raise ValueError("No asset found.")
     if len(result) > 1:
@@ -275,7 +282,7 @@ def download_python():  # noqa: C901  # CLI flow (interactive filters + best-eff
     if args.interactive:
         if args.keywords:
             old = len(assets)
-            assets = [a for a in assets if all(k in a.name for k in keywords)]
+            assets = [a for a in assets if _asset_matches(a, keywords, set())]
             print(
                 f'[{get_time()}] Filt with keywords: "{args.keywords}".',
                 old,
@@ -351,9 +358,10 @@ def download_python():  # noqa: C901  # CLI flow (interactive filters + best-eff
     target_path = target / asset.name
     # pid suffix avoids concurrent runs clobbering the same temp file
     temp_path = target_path.with_name(f"python_downloading.tmp{os.getpid()}")
-    for _path in [target_path, temp_path]:
-        if _path.is_file():
-            _path.unlink()
+    # only the temp file is cleaned here: an existing target is replaced after
+    # the download verifies, so a failed download keeps the previous good file
+    if temp_path.is_file():
+        temp_path.unlink()
     print(f"[{get_time()}] Start downloading...")
     print(download_url)
     print(target_path.resolve(), flush=True)
@@ -392,9 +400,9 @@ def download_python():  # noqa: C901  # CLI flow (interactive filters + best-eff
                 download_url, temp_path.absolute().as_posix(), reporthook=reporthook
             )
             # verify the temp file first: a corrupt download never replaces an
-            # existing good file and the partial temp is removed below
+            # existing good file, and the partial temp is removed on failure
             verify_digest(asset.digest, temp_path)
-            temp_path.rename(target_path)
+            temp_path.replace(target_path)
             downloaded = True
             print(
                 f"\n[{get_time()}] Download complete.",

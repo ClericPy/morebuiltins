@@ -6,25 +6,25 @@ import tempfile
 import time
 import typing
 import venv
+from datetime import datetime
 from pathlib import Path
 
 
 def ttime(timestamp=None, tzone=None, fail="", fmt="%Y-%m-%d %H:%M:%S"):
-    if tzone is None:
-        # compute the local UTC offset at call time (not import time),
-        # considering the daylight saving time
-        if time.daylight and time.localtime().tm_isdst > 0:
-            tzone = int(-time.altzone / 3600)
-        else:
-            tzone = int(-time.timezone / 3600)
-    fix_tz = tzone * 3600
-    if timestamp is None:
-        timestamp = time.time()
-    else:
+    if timestamp is not None:
         timestamp = float(timestamp)
         if 1e12 <= timestamp < 1e13:
             # Compatible timestamp with 13-digit milliseconds
             timestamp = timestamp / 1000
+    if tzone is None:
+        # compute the local UTC offset at call time (not import time) and for
+        # the moment being formatted: its DST state can differ from now, and
+        # inferring from the current time shifts a summer timestamp by an hour
+        moment = time.time() if timestamp is None else timestamp
+        tzone = int(datetime.fromtimestamp(moment).astimezone().utcoffset().total_seconds() / 3600)
+    fix_tz = tzone * 3600
+    if timestamp is None:
+        timestamp = time.time()
     try:
         timestamp = time.time() if timestamp is None else timestamp
         return time.strftime(fmt, time.gmtime(timestamp + fix_tz))

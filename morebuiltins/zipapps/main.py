@@ -8,7 +8,7 @@ import time
 import typing
 import zipapp
 from glob import glob
-from hashlib import md5
+from hashlib import md5, sha256
 from pathlib import Path
 from pkgutil import get_data
 from zipfile import ZIP_DEFLATED, ZIP_STORED, BadZipFile, ZipFile
@@ -454,10 +454,16 @@ class ZipApp:
     def get_md5(value: typing.Any):
         if not isinstance(value, bytes):
             value = str(value).encode("utf-8")
-        if sys.version_info < (3, 9):
-            # hashlib's usedforsecurity keyword was added in Python 3.9
-            return md5(value).hexdigest()  # noqa: S324  # nosec B324  # cache fingerprint only, not a security primitive
-        return md5(value, usedforsecurity=False).hexdigest()
+        try:
+            if sys.version_info < (3, 9):
+                # hashlib's usedforsecurity keyword was added in Python 3.9
+                return md5(value).hexdigest()  # noqa: S324  # nosec B324  # cache fingerprint only, not a security primitive
+            return md5(value, usedforsecurity=False).hexdigest()
+        except ValueError:
+            # FIPS mode refuses MD5 outright, and 3.8 has no usedforsecurity
+            # escape hatch; this value is only a cache fingerprint, so any
+            # stable digest of the same input works
+            return sha256(value).hexdigest()
 
     def prepare_pip(self):
         self.pip_args_md5 = ""
