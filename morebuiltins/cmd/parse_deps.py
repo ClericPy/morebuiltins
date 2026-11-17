@@ -18,22 +18,31 @@ except AttributeError:
 stds_libs = stdlibs | set(sys.builtin_module_names)
 
 
-def _relative_import_siblings(file_path: Path, node: ast.ImportFrom):
+def _relative_import_siblings(file_path: Path, node: ast.ImportFrom, project_dir: Path = None):
     """Resolve `from . import sibling` to sibling modules that exist on disk.
 
     A node without a module name but with a level (``node.module is None and
     node.level``) imports names from the relative base directory; only names
-    matching an actual module file are dependencies.
+    matching an actual module file are dependencies. A base directory that
+    escapes `project_dir` is skipped: `from ... import x` near the root would
+    otherwise pick up a module outside the project (site-packages, the stdlib)
+    and pollute the dependency graph.
     """
     base_dir = file_path.parent
     for _ in range(node.level - 1):
         base_dir = base_dir.parent
+    root = Path(project_dir).resolve() if project_dir is not None else None
     siblings = set()
     for alias in node.names:
         sibling = alias.name
         if not sibling or sibling == "*":
             continue
         sibling_path = base_dir / sibling
+        if root is not None:
+            try:
+                sibling_path.resolve().relative_to(root)
+            except ValueError:
+                continue
         if sibling_path.with_suffix(".py").is_file() or (sibling_path / "__init__.py").is_file():
             siblings.add("." * node.level + sibling)
     return siblings
@@ -49,10 +58,10 @@ def _deps_from_import(node: ast.Import, ignore_stds: bool) -> set:
     return result
 
 
-def _deps_from_importfrom(node: ast.ImportFrom, file_path: Path, ignore_stds: bool) -> set:
+def _deps_from_importfrom(node: ast.ImportFrom, file_path: Path, ignore_stds: bool, project_dir: Path = None) -> set:
     """Dependencies declared by one `from a import b` statement."""
     if node.module is None and node.level:
-        return _relative_import_siblings(file_path, node)
+        return _relative_import_siblings(file_path, node, project_dir)
     name = node.module or ""
     if not name:
         return set()
@@ -61,7 +70,7 @@ def _deps_from_importfrom(node: ast.ImportFrom, file_path: Path, ignore_stds: bo
     return {"." * node.level + name}
 
 
-def _get_dependencies(file_path: Path, ignore_stds=True):
+def _get_dependencies(file_path: Path, ignore_stds=True, project_dir: Path = None):
     dependencies: set = set()
     try:
         tree = ast.parse(file_path.read_text("utf-8", "ignore"))
@@ -71,7 +80,7 @@ def _get_dependencies(file_path: Path, ignore_stds=True):
         if isinstance(node, ast.Import):
             dependencies.update(_deps_from_import(node, ignore_stds))
         elif isinstance(node, ast.ImportFrom):
-            dependencies.update(_deps_from_importfrom(node, file_path, ignore_stds))
+            dependencies.update(_deps_from_importfrom(node, file_path, ignore_stds, project_dir))
     return dependencies
 
 
@@ -206,7 +215,7 @@ def parse_deps(project_dir, ignore_stds=True, format_path=True, pattern_list=("*
     dependencies = {}
     for pattern in pattern_list:
         for file_path in project_dir.rglob(pattern):
-            deps = _get_dependencies(file_path, ignore_stds=ignore_stds)
+            deps = _get_dependencies(file_path, ignore_stds=ignore_stds, project_dir=project_dir)
             if deps:
                 key = "./" + file_path.relative_to(project_dir).as_posix()
                 if key in dependencies:

@@ -141,7 +141,14 @@ def create_timer_file(args: Dict[str, Any]) -> Tuple[str, str]:
         "Persistent",
         "WakeSystem",
     ]
-    timer_content.extend(f"{param}={args[param]}" for param in timer_params if args.get(param))
+    for param in timer_params:
+        value = args.get(param)
+        if not value:
+            continue
+        if isinstance(value, list):
+            timer_content.extend(f"{param}={v}" for v in value)
+        else:
+            timer_content.append(f"{param}={value}")
 
     timer_content.append("\n[Install]")
     timer_content.append(f"WantedBy={args.get('WantedBy', 'timers.target')}")
