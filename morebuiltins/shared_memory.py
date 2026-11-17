@@ -1,11 +1,13 @@
 import atexit
+import logging
 import os
 import sys
 import time
 import typing
-import warnings
 from contextlib import closing, suppress
 from multiprocessing.shared_memory import SharedMemory
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["PLock", "SharedBytes"]
 
@@ -216,11 +218,11 @@ class PLock:
                 elif self._locked:
                     # another process force-rewrote the pid after `locked` was
                     # computed; unlinking now would leave that owner with a
-                    # vanished segment
-                    warnings.warn(
-                        f"PLock {self.name}: holder pid changed before unlink, "
-                        "skip unlink to avoid removing another owner's segment",
-                        stacklevel=2,
+                    # vanished segment. Debug level: this is a defensive race
+                    # branch, not something the caller must act on
+                    logger.debug(
+                        "PLock %s: holder pid changed before unlink, skip unlink to avoid removing another owner's segment",
+                        self.name,
                     )
 
     def __enter__(self):

@@ -1150,6 +1150,10 @@ class LoggerStream:
 
 
 def test_LogHelper():
+    # a crashed or interrupted earlier run can leave rotated files behind, and
+    # this test counts what this run produces: clean the stale ones first
+    for stale in Path(".").glob("app_test.log*"):
+        stale.unlink(missing_ok=True)
     logger = LogHelper.bind_handler("app_test", filename="app_test.log", maxBytes=1, backupCount=2)
     for i in range(3):
         logger.info(str(i))

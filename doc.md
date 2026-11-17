@@ -2853,10 +2853,13 @@ Notes:
 
 ```python
 
-[SECURITY WARNING]: There is no authentication on the socket protocol. Every
-incoming frame is still decoded as a bare pickle (arbitrary code on load); the
-restricted unpickler only guards formatter settings nested in the "log_setting"
-payload. Keep host=127.0.0.1 and never expose the server to untrusted networks.
+[SECURITY WARNING]: There is no authentication on the socket protocol, and
+every incoming frame is decoded as a bare pickle (arbitrary code on load);
+the restricted unpickler only guards formatter settings nested in the
+"log_setting" payload. Binding a non-loopback host is therefore refused at
+construction: run the server on 127.0.0.1/::1 and forward logs through a
+trusted channel (SSH tunnel, trusted subnet gateway). This guards against
+misuse, not against a malicious client that can already reach the port.
 
 [WARNING]: Ensure your log msg is "" if you only want to update settings, or the msg will be skipped.
 
@@ -3103,6 +3106,16 @@ Args:
     bind (str, optional): Defaults to "127.0.0.1:8080".
     open_browser (bool, optional): auto open browser. Defaults to False.
     keepalive_timeout (int, optional): shutdown if no request after timeout. Defaults to 60.
+    allowed_hosts (Union[str, Sequence[str], None], optional): extra Host/Origin
+        hosts, comma separated or a sequence. Loopback and the bind host are
+        always allowed. Defaults to None.
+
+Notes:
+    - The Host/Origin allowlist contains loopback (IPv4 and IPv6) plus the bind
+      host, so `--web-bind 0.0.0.0` is reachable: a client that types an IP or
+      hostname other than the bind host must be added with
+      `--web-allowed-hosts`. A rejected request prints the live allowlist to
+      stderr and answers 403.
 
 ```
 
