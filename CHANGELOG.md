@@ -1,5 +1,16 @@
 ## Changelog
 
+### 1.4.1 (2026-11-18)
+1. `morebuiltins.cmd.ui`: the Host/Origin allowlist follows the bind address (loopback IPv4/IPv6 plus the bind host; `[::1]:port` bind strings parse), the new `--web-allowed-hosts` supplies extra hosts for remote access, a rejected request answers 403 and prints the live allowlist to stderr, output produced on a non-owner thread is written back to the real stdout instead of being dropped, `SimpleHTTPRequestHandler` is kept as an alias of `FuncWebHandler`, `TKUI.get_result()` works without arguments, and an exception returns only `repr(err)` to the browser while the traceback goes to the process stderr.
+2. `morebuiltins.cmd.log_server`: `end_callback` joins the consumer with `CONSUMER_JOIN_TIMEOUT` instead of hanging `close()`, `default_handler` names its parameter `record` again, and `__del__` tolerates a half-constructed instance.
+   1. [**Compatibility Warnings**] binding a non-loopback host now raises ValueError at construction (`--host` exits with a parser error): the socket protocol has no authentication and every frame is unpickled; run on 127.0.0.1/::1 and forward logs over a trusted channel.
+3. `morebuiltins.cmd.systemd.timer` and `morebuiltins.cmd.parse_deps`: timer parameters given as a list are emitted one line per value instead of a Python repr; relative imports whose base directory escapes `project_dir` are skipped.
+4. `morebuiltins.zipapps`: `download_python` downloads to a temp file and replaces the target only after the digest verifies, so a failed download keeps the previous good file; unversioned assets sort after versioned ones; the interactive and auto selection paths share one matcher; MD5 fingerprinting falls back to SHA-256 when the interpreter is in FIPS mode or lacks `usedforsecurity`; `freezing` computes the UTC offset from the target timestamp, so the DST of that moment applies.
+   1. [**Compatibility Warnings**] a failed or interrupted download keeps the previous tarball instead of deleting it.
+5. `morebuiltins.request`: the `req` and `DomainParser` doctests run against a loopback echo server and a temporary public suffix list instead of `postman-echo.com` / `publicsuffix.org`, so `test.py` no longer needs outbound network.
+6. `morebuiltins.shared_memory`: `PLock.close()` logs the "holder pid changed before unlink" race at debug level instead of emitting a `RuntimeWarning`, and `logs.test_LogHelper` clears stale `app_test.log*` files before counting so an interrupted earlier run no longer fails the suite.
+   1. [**Compatibility Warnings**] `PLock.close()` no longer emits the `RuntimeWarning` for that race; rely on the `morebuiltins.shared_memory` debug log instead.
+
 ### 1.4.0 (2026-11-16)
 1. `morebuiltins.date.Crontab`: invalid/out-of-range fields raise ValueError; fields may be separated by any whitespace; day-of-month/day-of-week follow Vixie cron (ORed only when both restricted); ValueError is raised when no match is found within max_tries instead of silently yielding nothing; `count` now means the number of distinct callback values (dedup uses a private sentinel, so falsy and `None` values are still deduplicated).
 2. `morebuiltins.date.ScheduleTimer`: fix step lookup for negated patterns; dedup never worked because `last_item` was never assigned; dedup sentinel broke with falsy callback values.

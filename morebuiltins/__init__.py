@@ -1,4 +1,4 @@
-__version__ = "1.4.0"
+__version__ = "1.4.1"
 
 # this __all__ is used for documentation generation, not for imports: every
 # entry is a module path (e.g. "morebuiltins.utils") intentionally absent as a
