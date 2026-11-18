@@ -2157,7 +2157,7 @@ def base_encode(
     '2q3Rktoe'
     >>> base_encode(10000000000000, "0123456789")
     '10000000000000'
-    >>> # 顺序性：补零后字典序等于数值序（含大小写边界）
+    >>> # ordering: zero-padding makes lexicographic order equal numeric order (case boundary included)
     >>> [base_encode(i).zfill(3) for i in range(8)]
     ['000', '001', '002', '003', '004', '005', '006', '007']
     >>> [base_encode(i).zfill(3) for i in (9, 10, 35, 36, 61, 62)]
@@ -2165,7 +2165,7 @@ def base_encode(
     >>> a = [base_encode(i).zfill(10) for i in range(10000)]
     >>> sorted(a) == a
     True
-    >>> # 大数字同样保持有序
+    >>> # large numbers stay ordered as well
     >>> a = [base_encode(i).zfill(10) for i in range(0, 10_000_000, 500_000)]
     >>> sorted(a) == a
     True

@@ -619,7 +619,8 @@ class FuncWebHandler(BaseHTTPRequestHandler):
                     print("keepalive timeout", cls.keepalive_timeout, flush=True)
                     break
             else:
-                # 程序执行中，不判断存活
+                # a request is in flight: last_alive stays 0 until it finishes, so
+                # the idle timeout must not fire
                 pass
             time.sleep(1)
 

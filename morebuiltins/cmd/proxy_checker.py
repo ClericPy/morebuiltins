@@ -127,7 +127,7 @@ class ProxyChecker:
         return proxy_info(proxy, ok, cost, error)
 
 
-# 使用示例
+# usage example
 def _parse_args():
     import argparse
 
