@@ -2476,26 +2476,62 @@ True
 
 ```python
 
->>> import time
->>> r = req.get("https://postman-echo.com/get?a=2", headers={"User-Agent": "Chrome"}, timeout=3, params={"b": "3"})
->>> r.url
-'https://postman-echo.com/get?a=2&b=3'
+The examples run a throwaway echo server on 127.0.0.1, so they send real
+HTTP requests without leaving the machine; no outbound network is needed.
+
+>>> import json
+>>> from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+>>> from threading import Thread
+>>> from urllib.request import ProxyHandler
+>>> class EchoHandler(BaseHTTPRequestHandler):
+...     def log_message(self, *args):
+...         pass
+...     def _reply(self):
+...         body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+...         args = dict(parse_qsl(urlparse(self.path).query, keep_blank_values=True))
+...         payload = {"args": args, "data": None, "json": None}
+...         if body:
+...             is_json = self.headers.get("Content-Type", "").startswith("application/json")
+...             payload["json" if is_json else "data"] = json.loads(body) if is_json else body.decode()
+...         reply = json.dumps(payload).encode()
+...         self.send_response(200)
+...         self.send_header("Content-Type", "application/json")
+...         self.send_header("Content-Length", str(len(reply)))
+...         self.end_headers()
+...         self.wfile.write(reply)
+...     do_GET = do_POST = _reply
+>>> server = ThreadingHTTPServer(("127.0.0.1", 0), EchoHandler)
+>>> _ = Thread(target=server.serve_forever, daemon=True).start()
+>>> base = f"http://127.0.0.1:{server.server_address[1]}"
+>>> direct = {"build_opener_handlers": [ProxyHandler({})]}
+>>> r = req.get(base + "/get?a=2", headers={"User-Agent": "Chrome"}, timeout=3, params={"b": "3"}, **direct)
+>>> r.url == base + "/get?a=2&b=3"
+True
 >>> r.ok
 True
 >>> r.status_code
 200
 >>> r.text.startswith('{')
 True
->>> r = req.post("https://postman-echo.com/post?a=2", headers={"User-Agent": "Chrome"}, timeout=3, params={"b": "3"}, data=b"mock data")
+>>> r = req.post(
+...     base + "/post?a=2", headers={"User-Agent": "Chrome"}, timeout=3, params={"b": "3"}, data=b"mock data", **direct
+... )
 >>> r.json()["data"]
 'mock data'
 >>> r.json()["args"]
 {'a': '2', 'b': '3'}
->>> r = req.post("https://postman-echo.com/post?a=2", headers={"User-Agent": "Chrome"}, timeout=3, json={"data": "yes json"})
+>>> r = req.post(
+...     base + "/post?a=2", headers={"User-Agent": "Chrome"}, timeout=3, json={"data": "yes json"}, **direct
+... )
 >>> r.json()["json"]
 {'data': 'yes json'}
+>>> server.shutdown()
+>>> server.server_close()
 
 Notes:
+    - The examples pass ``build_opener_handlers=[ProxyHandler({})]`` so
+      ambient ``HTTP(S)_PROXY`` variables cannot reroute the loopback
+      request: urllib does not bypass the proxy for 127.0.0.1 by default.
     - params accepts a dict (None values are dropped) or a sequence of
       (key, value) pairs (None values dropped, duplicate keys kept).
     - verify=False only takes effect when the caller does not pass its own
@@ -2518,7 +2554,15 @@ The constructor does no network IO: it only loads the local cache file.
 When the cache file is missing, it is downloaded lazily on the first
 parse_hostname / parse_url call.
 
->>> domain_parser = DomainParser()
+The examples pin a small local public suffix file, so they run without
+downloading the list.
+
+>>> from pathlib import Path
+>>> from tempfile import TemporaryDirectory
+>>> psl_dir = TemporaryDirectory()
+>>> psl_file = Path(psl_dir.name) / "public_suffix_list.dat"
+>>> _ = psl_file.write_text("com\ncom.cn\njp\n*.kawasaki.jp\n!city.kawasaki.jp\n", encoding="utf-8")
+>>> domain_parser = DomainParser(public_suffix_file_path=psl_file)
 >>> domain_parser.parse_hostname("github.com")
 'github.com'
 >>> domain_parser.parse_hostname("www.github.com")
@@ -2535,6 +2579,7 @@ parse_hostname / parse_url call.
 'b.c'
 >>> domain_parser.parse_url("https://github.com/ClericPy/morebuiltins")
 'github.com'
+>>> psl_dir.cleanup()
 
 
 ```
